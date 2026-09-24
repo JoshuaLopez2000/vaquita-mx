@@ -37,7 +37,7 @@ Minimum initial variables:
 
 ## Local containers
 
-`docker-compose.yml` defines the API and PostgreSQL environment. It has been built and smoke-tested locally with Docker Desktop: PostgreSQL reached its healthy state, the API health endpoint responded, and the simulated provider created an MXN payment request.
+`docker-compose.yml` defines the API and PostgreSQL environment. It has been built and smoke-tested locally with Docker Desktop: PostgreSQL reached its healthy state, schema migration and seed data completed, API mutations persisted across a full container restart, and the simulated provider created an MXN payment request.
 
 ```bash
 docker compose up --detach --build --wait

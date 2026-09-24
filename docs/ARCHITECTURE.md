@@ -66,7 +66,11 @@ Recommended database rules:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/healthz` | Hosting health probe |
+| `GET` | `/api/v1/groups` | Load groups, members, expenses, and settlements |
+| `POST` | `/api/v1/groups` | Create a group and its members |
+| `POST` | `/api/v1/groups/{id}/expenses` | Add an equally split expense |
+| `POST` | `/api/v1/groups/{id}/settlements` | Record a simulated settlement |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
 
-The initial endpoint is intentionally unauthenticated only to make the skeleton easy to exercise. Authentication is required before any non-local deployment exposes domain mutations.
+The development endpoints are intentionally unauthenticated to make the local vertical slice easy to exercise. Authentication is required before any non-local deployment exposes domain mutations.

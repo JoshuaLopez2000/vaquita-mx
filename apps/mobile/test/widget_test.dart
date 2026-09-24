@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vaquita_mx/src/app.dart';
+import 'package:vaquita_mx/src/store.dart';
 
 void main() {
   testWidgets('shows balances, groups, and navigation', (tester) async {
-    await tester.pumpWidget(const VaquitaApp());
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
     expect(find.text('VAQUITA MX'), findsOneWidget);
     expect(find.text('Weekend in CDMX'), findsOneWidget);
@@ -15,7 +16,7 @@ void main() {
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {
-    await tester.pumpWidget(const VaquitaApp());
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
     await tester.tap(find.byKey(const Key('create-group-button')));
     await tester.pumpAndSettle();
@@ -35,7 +36,7 @@ void main() {
   });
 
   testWidgets('opens a group and adds an expense', (tester) async {
-    await tester.pumpWidget(const VaquitaApp());
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
     await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
     await tester.pumpAndSettle();

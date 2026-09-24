@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 
 class VaquitaApp extends StatefulWidget {
-  const VaquitaApp({super.key});
+  const VaquitaApp({this.store, super.key});
+
+  final DemoStore? store;
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -18,16 +21,24 @@ class VaquitaApp extends StatefulWidget {
 
 class _VaquitaAppState extends State<VaquitaApp> {
   late final DemoStore store;
+  late final bool _ownsStore;
 
   @override
   void initState() {
     super.initState();
-    store = DemoStore.seeded();
+    _ownsStore = widget.store == null;
+    store = widget.store ??
+        DemoStore.remote(ApiClient(baseUrl: VaquitaApp.apiBaseUrl));
+    if (_ownsStore) {
+      store.load();
+    }
   }
 
   @override
   void dispose() {
-    store.dispose();
+    if (_ownsStore) {
+      store.dispose();
+    }
     super.dispose();
   }
 
@@ -91,12 +102,17 @@ class _AppShellState extends State<AppShell> {
   Future<void> _createGroup() async {
     final input = await showCreateGroupSheet(context);
     if (input == null || !mounted) return;
-    widget.store.createGroup(
+    final created = await widget.store.createGroup(
       name: input.name,
       memberNames: input.memberNames,
     );
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${input.name} created.')),
+      SnackBar(
+        content: Text(
+          created ? '${input.name} created.' : 'Could not create the group.',
+        ),
+      ),
     );
   }
 
@@ -219,6 +235,28 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             ),
+            if (store.isLoading)
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+                sliver: SliverToBoxAdapter(child: LinearProgressIndicator()),
+              ),
+            if (store.errorMessage != null)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Card(
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_off_rounded),
+                      title: Text(store.errorMessage!),
+                      trailing: TextButton(
+                        onPressed: store.load,
+                        child: const Text('Retry'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 28, 20, 12),
               sliver: SliverToBoxAdapter(

@@ -47,7 +47,7 @@ docker compose up --detach --build --wait
 docker compose ps
 ```
 
-The API is then available at `http://localhost:8080`; PostgreSQL stays private to the Compose network. Stop the services while preserving database data with:
+The API is then available at `http://localhost:8080`; PostgreSQL stays private to the Compose network. Groups, expenses, and settlements created by the Android app are stored in PostgreSQL and survive container restarts. Stop the services while preserving database data with:
 
 ```bash
 docker compose down
@@ -62,6 +62,8 @@ cd apps/mobile
 flutter pub get
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
+
+`10.0.2.2` routes from the Android emulator to Docker on the host machine. Keep the Compose stack running while using the app. For a physical Android device, use the computer's reachable LAN address during development; production builds must use an HTTPS server.
 
 The standard Android runner is committed with the project. Product application code lives under `lib/`.
 

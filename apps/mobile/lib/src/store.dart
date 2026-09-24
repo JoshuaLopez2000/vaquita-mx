@@ -1,19 +1,55 @@
 import 'package:flutter/foundation.dart';
+import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/models.dart';
 
 class DemoStore extends ChangeNotifier {
-  DemoStore.seeded() : groups = _seedGroups();
+  DemoStore.seeded()
+      : _apiClient = null,
+        groups = _seedGroups();
+
+  DemoStore.remote(this._apiClient) : groups = [];
 
   static const currentUserId = 'me';
+  final ApiClient? _apiClient;
   final List<ExpenseGroup> groups;
   int _sequence = 100;
+  bool isLoading = false;
+  String? errorMessage;
+
+  bool get isRemote => _apiClient != null;
 
   Member get currentUser => const Member(id: currentUserId, name: 'You');
 
   ExpenseGroup groupById(String id) =>
       groups.firstWhere((group) => group.id == id);
 
-  void createGroup({required String name, required List<String> memberNames}) {
+  Future<void> load() async {
+    if (_apiClient == null) return;
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final loaded = await _apiClient.listGroups();
+      groups
+        ..clear()
+        ..addAll(loaded);
+    } catch (_) {
+      errorMessage = 'Cannot reach the Vaquita server. Is Docker running?';
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> createGroup({
+    required String name,
+    required List<String> memberNames,
+  }) async {
+    if (_apiClient != null) {
+      return _sync(
+        () => _apiClient.createGroup(name: name, memberNames: memberNames),
+      );
+    }
     final id = _nextId('group');
     final members = <Member>[currentUser];
     for (final rawName in memberNames) {
@@ -31,15 +67,27 @@ class DemoStore extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    return true;
   }
 
-  void addExpense({
+  Future<bool> addExpense({
     required String groupId,
     required String description,
     required int amountCents,
     required String payerId,
     required List<String> participantIds,
-  }) {
+  }) async {
+    if (_apiClient != null) {
+      return _sync(
+        () => _apiClient.addExpense(
+          groupId: groupId,
+          description: description,
+          amountCents: amountCents,
+          payerId: payerId,
+          participantIds: participantIds,
+        ),
+      );
+    }
     groupById(groupId).expenses.insert(
           0,
           Expense(
@@ -52,12 +100,24 @@ class DemoStore extends ChangeNotifier {
           ),
         );
     notifyListeners();
+    return true;
   }
 
-  void settleBalance({required String groupId, required String memberId}) {
+  Future<bool> settleBalance({
+    required String groupId,
+    required String memberId,
+  }) async {
+    if (_apiClient != null) {
+      return _sync(
+        () => _apiClient.settleBalance(
+          groupId: groupId,
+          memberId: memberId,
+        ),
+      );
+    }
     final group = groupById(groupId);
     final memberBalance = balances(group)[memberId] ?? 0;
-    if (memberBalance == 0) return;
+    if (memberBalance == 0) return false;
     group.settlements.insert(
       0,
       Settlement(
@@ -69,6 +129,7 @@ class DemoStore extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    return true;
   }
 
   Map<String, int> balances(ExpenseGroup group) {
@@ -97,6 +158,32 @@ class DemoStore extends ChangeNotifier {
 
   int currentUserBalance(ExpenseGroup group) =>
       balances(group)[currentUserId] ?? 0;
+
+  Future<bool> _sync(Future<void> Function() mutation) async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      await mutation();
+      final loaded = await _apiClient!.listGroups();
+      groups
+        ..clear()
+        ..addAll(loaded);
+      return true;
+    } catch (_) {
+      errorMessage = 'The server request failed. Check Docker and try again.';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _apiClient?.close();
+    super.dispose();
+  }
 
   String _nextId(String prefix) => '${prefix}_${_sequence++}';
 

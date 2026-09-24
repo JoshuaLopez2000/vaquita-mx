@@ -16,15 +16,22 @@ class GroupDetailScreen extends StatelessWidget {
   Future<void> _addExpense(BuildContext context, ExpenseGroup group) async {
     final input = await showAddExpenseSheet(context, group);
     if (input == null || !context.mounted) return;
-    store.addExpense(
+    final created = await store.addExpense(
       groupId: group.id,
       description: input.description,
       amountCents: input.amountCents,
       payerId: input.payerId,
       participantIds: input.participantIds,
     );
+    if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${input.description} added.')),
+      SnackBar(
+        content: Text(
+          created
+              ? '${input.description} added.'
+              : 'Could not add the expense.',
+        ),
+      ),
     );
   }
 
@@ -184,12 +191,21 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 22),
               FilledButton.icon(
                 key: Key('settle-${member.id}'),
-                onPressed: () {
-                  store.settleBalance(groupId: group.id, memberId: member.id);
+                onPressed: () async {
+                  final settled = await store.settleBalance(
+                    groupId: group.id,
+                    memberId: member.id,
+                  );
+                  if (!sheetContext.mounted || !context.mounted) return;
                   Navigator.pop(sheetContext);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Simulated payment confirmed.')),
+                    SnackBar(
+                      content: Text(
+                        settled
+                            ? 'Simulated payment confirmed.'
+                            : 'Could not confirm the payment.',
+                      ),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.check_circle_outline_rounded),
