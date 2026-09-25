@@ -1,12 +1,29 @@
 class Member {
-  const Member({required this.id, required this.name});
+  const Member(
+      {required this.id,
+      required this.name,
+      this.userId = '',
+      this.phone = '',
+      this.active = true,
+      this.salarySharing = false,
+      this.accepted = true});
 
   final String id;
+  final String userId;
   final String name;
+  final String phone;
+  final bool active;
+  final bool salarySharing;
+  final bool accepted;
 
   factory Member.fromJson(Map<String, dynamic> json) => Member(
         id: json['id'] as String,
+        userId: json['user_id'] as String? ?? '',
         name: json['name'] as String,
+        phone: json['phone'] as String? ?? '',
+        active: json['active'] as bool? ?? true,
+        salarySharing: json['salary_sharing'] as bool? ?? false,
+        accepted: json['accepted'] as bool? ?? true,
       );
 
   String get initials {
@@ -22,7 +39,29 @@ class AppContact {
   final String id;
   final String name;
   final String phone;
-  factory AppContact.fromJson(Map<String, dynamic> json) => AppContact(id: json['id'] as String, name: json['name'] as String, phone: json['phone'] as String);
+  factory AppContact.fromJson(Map<String, dynamic> json) => AppContact(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      phone: json['phone'] as String);
+}
+
+class ContactStatus {
+  const ContactStatus({required this.member, required this.amountCents});
+  final Member member;
+  final int amountCents;
+  factory ContactStatus.fromJson(Map<String, dynamic> json) => ContactStatus(
+      member: Member.fromJson(json['member'] as Map<String, dynamic>),
+      amountCents: json['amount_cents'] as int);
+}
+
+class GroupInvitation {
+  const GroupInvitation({required this.group, required this.member});
+  final ExpenseGroup group;
+  final Member member;
+  factory GroupInvitation.fromJson(Map<String, dynamic> json) =>
+      GroupInvitation(
+          group: ExpenseGroup.fromJson(json['group'] as Map<String, dynamic>),
+          member: Member.fromJson(json['member'] as Map<String, dynamic>));
 }
 
 class Expense {
@@ -33,6 +72,7 @@ class Expense {
     required this.payerId,
     required this.participantIds,
     required this.createdAt,
+    this.splitMode = 'equal',
   });
 
   final String id;
@@ -41,6 +81,7 @@ class Expense {
   final String payerId;
   final List<String> participantIds;
   final DateTime createdAt;
+  final String splitMode;
 
   factory Expense.fromJson(Map<String, dynamic> json) => Expense(
         id: json['id'] as String,
@@ -50,6 +91,7 @@ class Expense {
         participantIds:
             (json['participant_ids'] as List<dynamic>).cast<String>(),
         createdAt: DateTime.parse(json['created_at'] as String),
+        splitMode: json['split_mode'] as String? ?? 'equal',
       );
 }
 
@@ -83,6 +125,9 @@ class ExpenseGroup {
     required this.name,
     required this.emoji,
     required this.members,
+    this.visibility = 'personal',
+    this.salarySplitEnabled = false,
+    this.salarySplitAvailable = false,
     List<Expense>? expenses,
     List<Settlement>? settlements,
   })  : expenses = expenses ?? [],
@@ -92,6 +137,9 @@ class ExpenseGroup {
   final String name;
   final String emoji;
   final List<Member> members;
+  final String visibility;
+  final bool salarySplitEnabled;
+  final bool salarySplitAvailable;
   final List<Expense> expenses;
   final List<Settlement> settlements;
 
@@ -99,13 +147,16 @@ class ExpenseGroup {
         id: json['id'] as String,
         name: json['name'] as String,
         emoji: json['emoji'] as String,
+        visibility: json['visibility'] as String? ?? 'personal',
+        salarySplitEnabled: json['salary_split_enabled'] as bool? ?? false,
+        salarySplitAvailable: json['salary_split_available'] as bool? ?? false,
         members: (json['members'] as List<dynamic>)
             .map((value) => Member.fromJson(value as Map<String, dynamic>))
             .toList(),
-        expenses: (json['expenses'] as List<dynamic>)
+        expenses: ((json['expenses'] as List<dynamic>?) ?? const [])
             .map((value) => Expense.fromJson(value as Map<String, dynamic>))
             .toList(),
-        settlements: (json['settlements'] as List<dynamic>)
+        settlements: ((json['settlements'] as List<dynamic>?) ?? const [])
             .map((value) => Settlement.fromJson(value as Map<String, dynamic>))
             .toList(),
       );

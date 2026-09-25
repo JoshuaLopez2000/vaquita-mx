@@ -22,15 +22,22 @@ var (
 )
 
 type User struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	Phone       string `json:"phone"`
+	SalaryCents int64  `json:"salary_cents,omitempty"`
 }
 
 type Session struct {
 	Token string `json:"token"`
 	User  User   `json:"user"`
+}
+type Contact struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Phone  string `json:"phone"`
+	UserID string `json:"user_id,omitempty"`
 }
 
 type Repository struct{ db *sql.DB }
@@ -50,10 +57,10 @@ func (r *Repository) Migrate(ctx context.Context) error {
 	return err
 }
 
-func (r *Repository) Register(ctx context.Context, name, email, phone, password string) (Session, error) {
+func (r *Repository) Register(ctx context.Context, name, email, phone, password string, salaryCents int64) (Session, error) {
 	name, email = strings.TrimSpace(name), strings.ToLower(strings.TrimSpace(email))
 	phone, validPhone := NormalizePhone(phone)
-	if len(name) < 2 || !strings.Contains(email, "@") || !validPhone || len(password) < 8 {
+	if len(name) < 2 || !strings.Contains(email, "@") || !validPhone || len(password) < 8 || salaryCents < 0 {
 		return Session{}, ErrInvalid
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -64,8 +71,8 @@ func (r *Repository) Register(ctx context.Context, name, email, phone, password 
 	if err != nil {
 		return Session{}, err
 	}
-	user := User{ID: userID, Name: name, Email: email, Phone: phone}
-	result, err := r.db.ExecContext(ctx, `INSERT INTO users (id, name, email, phone, password_hash) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`, user.ID, user.Name, user.Email, user.Phone, string(hash))
+	user := User{ID: userID, Name: name, Email: email, Phone: phone, SalaryCents: salaryCents}
+	result, err := r.db.ExecContext(ctx, `INSERT INTO users (id, name, email, phone, password_hash, salary_cents) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`, user.ID, user.Name, user.Email, user.Phone, string(hash), user.SalaryCents)
 	if err != nil {
 		return Session{}, fmt.Errorf("insert user: %w", err)
 	}
@@ -78,7 +85,7 @@ func (r *Repository) Register(ctx context.Context, name, email, phone, password 
 func (r *Repository) Login(ctx context.Context, email, password string) (Session, error) {
 	var user User
 	var hash string
-	err := r.db.QueryRowContext(ctx, `SELECT id, name, email, COALESCE(phone, ''), password_hash FROM users WHERE email = $1`, strings.ToLower(strings.TrimSpace(email))).Scan(&user.ID, &user.Name, &user.Email, &user.Phone, &hash)
+	err := r.db.QueryRowContext(ctx, `SELECT id, name, email, COALESCE(phone, ''), COALESCE(salary_cents, 0), password_hash FROM users WHERE email = $1`, strings.ToLower(strings.TrimSpace(email))).Scan(&user.ID, &user.Name, &user.Email, &user.Phone, &user.SalaryCents, &hash)
 	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
 		return Session{}, ErrInvalid
 	}
@@ -89,9 +96,9 @@ func (r *Repository) UserForToken(ctx context.Context, token string) (User, erro
 	hash := sha256.Sum256([]byte(token))
 	var user User
 	err := r.db.QueryRowContext(ctx, `
-SELECT u.id, u.name, u.email, COALESCE(u.phone, '')
+SELECT u.id, u.name, u.email, COALESCE(u.phone, ''), COALESCE(u.salary_cents, 0)
 FROM sessions s JOIN users u ON u.id = s.user_id
-WHERE s.token_hash = $1 AND s.expires_at > now()`, hex.EncodeToString(hash[:])).Scan(&user.ID, &user.Name, &user.Email, &user.Phone)
+WHERE s.token_hash = $1 AND s.expires_at > now()`, hex.EncodeToString(hash[:])).Scan(&user.ID, &user.Name, &user.Email, &user.Phone, &user.SalaryCents)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrUnauthorized
 	}
@@ -119,6 +126,48 @@ func (r *Repository) Contacts(ctx context.Context, userID string, phones []strin
 		contacts = append(contacts, user)
 	}
 	return contacts, rows.Err()
+}
+
+func (r *Repository) SaveContacts(ctx context.Context, ownerID string, contacts []Contact) ([]Contact, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	for _, contact := range contacts {
+		contact.Name = strings.TrimSpace(contact.Name)
+		phone, ok := NormalizePhone(contact.Phone)
+		if contact.Name == "" || !ok {
+			continue
+		}
+		id, err := newID("contact")
+		if err != nil {
+			return nil, err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO contacts(id,owner_id,name,phone,linked_user_id) VALUES($1,$2,$3,$4,(SELECT id FROM users WHERE phone=$4)) ON CONFLICT(owner_id,phone) DO UPDATE SET name=EXCLUDED.name,linked_user_id=EXCLUDED.linked_user_id`, id, ownerID, contact.Name, phone); err != nil {
+			return nil, err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.ListContacts(ctx, ownerID)
+}
+func (r *Repository) ListContacts(ctx context.Context, ownerID string) ([]Contact, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id,name,phone,COALESCE(linked_user_id,'') FROM contacts WHERE owner_id=$1 ORDER BY name`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Contact, 0)
+	for rows.Next() {
+		var c Contact
+		if err = rows.Scan(&c.ID, &c.Name, &c.Phone, &c.UserID); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 func NormalizePhone(value string) (string, bool) {
@@ -167,10 +216,13 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
 	phone TEXT UNIQUE,
   password_hash TEXT NOT NULL,
+  salary_cents BIGINT NOT NULL DEFAULT 0 CHECK (salary_cents >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS salary_cents BIGINT NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL;
+CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, phone TEXT NOT NULL, linked_user_id TEXT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(owner_id, phone));
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

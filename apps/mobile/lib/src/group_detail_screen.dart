@@ -22,6 +22,7 @@ class GroupDetailScreen extends StatelessWidget {
       amountCents: input.amountCents,
       payerId: input.payerId,
       participantIds: input.participantIds,
+      splitMode: input.splitMode,
     );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -64,6 +65,11 @@ class GroupDetailScreen extends StatelessWidget {
             children: [
               _GroupHeader(
                   group: group, balance: store.currentUserBalance(group)),
+              const SizedBox(height: 14),
+              _SalarySplitCard(
+                group: group,
+                onConfigure: () => _editGroup(context, group),
+              ),
               const SizedBox(height: 24),
               _SectionHeader(
                 title: 'Balances',
@@ -74,21 +80,48 @@ class GroupDetailScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     for (var index = 0;
-                        index < group.members.length;
+                        index <
+                            group.members
+                                .where((member) => member.active)
+                                .length;
                         index++) ...[
                       _MemberBalanceTile(
-                        member: group.members[index],
-                        balance: balances[group.members[index].id] ?? 0,
-                        isCurrentUser:
-                            group.members[index].id == DemoStore.currentUserId,
+                        member: group.members
+                            .where((member) => member.active)
+                            .elementAt(index),
+                        balance: balances[group.members
+                                .where((member) => member.active)
+                                .elementAt(index)
+                                .id] ??
+                            0,
+                        isCurrentUser: group.members
+                                    .where((member) => member.active)
+                                    .elementAt(index)
+                                    .userId ==
+                                store.currentUserId ||
+                            group.members
+                                    .where((member) => member.active)
+                                    .elementAt(index)
+                                    .id ==
+                                store.currentUserId,
                         onSettle: () => _showSettlement(
                           context,
                           group,
-                          group.members[index],
-                          balances[group.members[index].id] ?? 0,
+                          group.members
+                              .where((member) => member.active)
+                              .elementAt(index),
+                          balances[group.members
+                                  .where((member) => member.active)
+                                  .elementAt(index)
+                                  .id] ??
+                              0,
                         ),
                       ),
-                      if (index != group.members.length - 1)
+                      if (index !=
+                          group.members
+                                  .where((member) => member.active)
+                                  .length -
+                              1)
                         const Divider(height: 1, indent: 72),
                     ],
                   ],
@@ -131,8 +164,17 @@ class GroupDetailScreen extends StatelessWidget {
                     ),
               ),
               const SizedBox(height: 12),
-              Text(group.members.map((member) => member.name).join(', ')),
+              Text(
+                  '${group.visibility == 'shared' ? 'Shared group' : 'Personal group'} · ${group.members.map((member) => member.name).join(', ')}'),
               const SizedBox(height: 20),
+              OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _editGroup(context, group);
+                  },
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Edit group and add contacts')),
+              const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Close'),
@@ -144,13 +186,101 @@ class GroupDetailScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _editGroup(BuildContext context, ExpenseGroup group) async {
+    final self = group.members
+        .where((member) => member.userId == store.currentUserId)
+        .toList();
+    final name = TextEditingController(text: group.name);
+    final emoji = TextEditingController(text: group.emoji);
+    final member = TextEditingController();
+    final phone = TextEditingController();
+    await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheet) => Padding(
+            padding: EdgeInsets.fromLTRB(
+                24, 20, 24, 24 + MediaQuery.viewInsetsOf(sheet).bottom),
+            child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Group name')),
+              const SizedBox(height: 8),
+              TextField(
+                  controller: emoji,
+                  decoration: const InputDecoration(labelText: 'Icon')),
+              const SizedBox(height: 8),
+              FilledButton(
+                  onPressed: () async {
+                    await store.updateGroup(
+                        group.id, {'name': name.text, 'emoji': emoji.text});
+                    if (sheet.mounted) Navigator.pop(sheet);
+                  },
+                  child: const Text('Save group')),
+              if (group.salarySplitAvailable)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: group.salarySplitEnabled,
+                  title: const Text('Enable salary-based splits'),
+                  subtitle: const Text('Every active member has consented.'),
+                  onChanged: (value) async {
+                    await store
+                        .updateGroup(group.id, {'salary_split_enabled': value});
+                    if (sheet.mounted) Navigator.pop(sheet);
+                  },
+                )
+              else if (group.visibility == 'shared')
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: Text(
+                      'Salary splits unlock after every member accepts and opts in.'),
+                ),
+              const Divider(height: 28),
+              TextField(
+                  controller: member,
+                  decoration: const InputDecoration(labelText: 'Contact name')),
+              const SizedBox(height: 8),
+              TextField(
+                  controller: phone,
+                  keyboardType: TextInputType.phone,
+                  decoration:
+                      const InputDecoration(labelText: 'Mexican phone number')),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                  onPressed: () async {
+                    await store.addMember(group.id, member.text, phone.text);
+                    if (sheet.mounted) Navigator.pop(sheet);
+                  },
+                  child: const Text('Add contact')),
+              if (group.visibility == 'shared' && self.isNotEmpty)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: self.single.salarySharing,
+                  title: const Text('Allow this group to use my salary'),
+                  subtitle: const Text(
+                      'Your salary value stays private; only your proportional share is used.'),
+                  onChanged: (value) async {
+                    await store.updateMember(
+                        group.id, self.single.id, {'salary_sharing': value});
+                    if (sheet.mounted) Navigator.pop(sheet);
+                  },
+                ),
+            ]))));
+    name.dispose();
+    emoji.dispose();
+    member.dispose();
+    phone.dispose();
+  }
+
   void _showSettlement(
     BuildContext context,
     ExpenseGroup group,
     Member member,
     int balance,
   ) {
-    if (member.id == DemoStore.currentUserId || balance == 0) return;
+    if (member.userId == store.currentUserId ||
+        member.id == store.currentUserId ||
+        balance == 0) return;
     final memberOwes = balance < 0;
     showModalBottomSheet<void>(
       context: context,
@@ -216,6 +346,38 @@ class GroupDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _SalarySplitCard extends StatelessWidget {
+  const _SalarySplitCard({required this.group, required this.onConfigure});
+  final ExpenseGroup group;
+  final VoidCallback onConfigure;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = group.salarySplitEnabled;
+    final available = group.salarySplitAvailable;
+    final message = enabled
+        ? 'Expenses can be divided in proportion to salary.'
+        : available
+            ? 'Everyone consented. Turn it on to use it for new expenses.'
+            : group.visibility == 'shared'
+                ? 'Waiting for every member to accept and share salary consent.'
+                : 'Salary splits require a shared group so every member can consent.';
+    return Card(
+        child: ListTile(
+      leading: Icon(Icons.pie_chart_outline_rounded,
+          color: Theme.of(context).colorScheme.primary),
+      title:
+          Text(enabled ? 'Salary-based splits enabled' : 'Salary-based splits'),
+      subtitle: Text(message),
+      trailing: TextButton(
+          onPressed: onConfigure,
+          child: Text(available || group.visibility == 'shared'
+              ? 'Configure'
+              : 'Info')),
+    ));
   }
 }
 
@@ -352,7 +514,7 @@ class _ExpenseCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
-          'Paid by ${payer.name} · split ${expense.participantIds.length} ways',
+          'Paid by ${payer.name} · ${expense.splitMode == 'salary' ? 'split by salary' : 'split'} ${expense.participantIds.length} ways',
         ),
         trailing: Text(
           formatMoney(expense.amountCents),

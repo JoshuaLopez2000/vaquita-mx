@@ -114,6 +114,10 @@ class _AppShellState extends State<AppShell> {
     final created = await widget.store.createGroup(
       name: input.name,
       memberNames: input.memberNames,
+      members: input.members,
+      emoji: input.emoji,
+      visibility: input.visibility,
+      salarySplitEnabled: input.salarySplitEnabled,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -133,7 +137,7 @@ class _AppShellState extends State<AppShell> {
           index: _selectedIndex,
           children: [
             DashboardScreen(store: widget.store),
-            ActivityScreen(store: widget.store),
+            StatusScreen(store: widget.store),
             ProfileScreen(store: widget.store),
           ],
         ),
@@ -194,6 +198,27 @@ class DashboardScreen extends StatelessWidget {
         return CustomScrollView(
           key: const Key('dashboard-scroll'),
           slivers: [
+            if (store.groups.isEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                sliver: SliverToBoxAdapter(
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(children: [
+                        const Icon(Icons.groups_outlined, size: 42),
+                        const SizedBox(height: 10),
+                        Text('No groups yet',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        const Text(
+                            'Create a group and select contacts to get started.',
+                            textAlign: TextAlign.center),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
               sliver: SliverToBoxAdapter(
@@ -494,49 +519,75 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
-class ActivityScreen extends StatelessWidget {
-  const ActivityScreen({required this.store, super.key});
+class StatusScreen extends StatefulWidget {
+  const StatusScreen({required this.store, super.key});
 
   final DemoStore store;
 
   @override
+  State<StatusScreen> createState() => _StatusScreenState();
+}
+
+class _StatusScreenState extends State<StatusScreen> {
+  @override
+  void initState() {
+    super.initState();
+    widget.store.loadStatus();
+    widget.store.loadInvitations();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: store,
+      animation: widget.store,
       builder: (context, _) {
-        final rows = [
-          for (final group in store.groups)
-            for (final expense in group.expenses)
-              (group: group, expense: expense),
-        ]..sort((a, b) => b.expense.createdAt.compareTo(a.expense.createdAt));
+        final rows = widget.store.contactStatus;
 
         return CustomScrollView(
           slivers: [
             SliverAppBar.large(
-              title: const Text('Activity'),
+              title: const Text('Contact status'),
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               sliver: SliverList.separated(
-                itemCount: rows.length,
+                itemCount: rows.length + widget.store.invitations.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
-                  final row = rows[index];
-                  final payer = row.group.members
-                      .firstWhere((member) => member.id == row.expense.payerId);
+                  if (index < widget.store.invitations.length) {
+                    final invite = widget.store.invitations[index];
+                    return Card(
+                        child: ListTile(
+                      leading: CircleAvatar(child: Text(invite.group.emoji)),
+                      title: Text('Join ${invite.group.name}?'),
+                      subtitle: const Text('Shared group invitation'),
+                      trailing: Wrap(spacing: 4, children: [
+                        TextButton(
+                            onPressed: () => widget.store
+                                .respondInvitation(invite.group.id, false),
+                            child: const Text('Decline')),
+                        FilledButton(
+                            onPressed: () => widget.store
+                                .respondInvitation(invite.group.id, true),
+                            child: const Text('Accept')),
+                      ]),
+                    ));
+                  }
+                  final row = rows[index - widget.store.invitations.length];
                   return Card(
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 7,
                       ),
-                      leading: CircleAvatar(child: Text(row.group.emoji)),
-                      title: Text(row.expense.description),
-                      subtitle:
-                          Text('${row.group.name} · paid by ${payer.name}'),
+                      leading: CircleAvatar(child: Text(row.member.initials)),
+                      title: Text(row.member.name),
+                      subtitle: Text(row.amountCents > 0
+                          ? 'You owe this contact'
+                          : 'This contact owes you'),
                       trailing: Text(
-                        formatMoney(row.expense.amountCents),
+                        formatMoney(row.amountCents.abs()),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -559,12 +610,18 @@ class ProfileScreen extends StatelessWidget {
 
   Future<void> _findContacts(BuildContext context) async {
     try {
-      final phones = await _contacts.invokeListMethod<String>('getPhoneNumbers');
+      final phones =
+          await _contacts.invokeListMethod<String>('getPhoneNumbers');
       await store.findContacts(phones ?? []);
     } on PlatformException catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Contacts permission is required.')));
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text(error.message ?? 'Contacts permission is required.')));
     } catch (_) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not match contacts.')));
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not match contacts.')));
     }
   }
 
@@ -617,13 +674,31 @@ class ProfileScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        Text('Contacts', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        Text('Contacts',
+            style: Theme.of(context)
+                .textTheme
+                .titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
-        Text('Find people already using Vaquita. Your contacts are matched only after you choose this.', style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+            'Find people already using Vaquita. Your contacts are matched only after you choose this.',
+            style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 10),
-        OutlinedButton.icon(onPressed: () => _findContacts(context), icon: const Icon(Icons.contacts_outlined), label: const Text('Find contacts on Vaquita')),
+        OutlinedButton.icon(
+            onPressed: () => _findContacts(context),
+            icon: const Icon(Icons.contacts_outlined),
+            label: const Text('Find contacts on Vaquita')),
         if (store.contacts.isNotEmpty)
-          Card(child: Column(children: [for (final contact in store.contacts) ListTile(leading: CircleAvatar(child: Text(contact.name.substring(0, 1).toUpperCase())), title: Text(contact.name), subtitle: Text(contact.phone), trailing: const Icon(Icons.person_add_alt_1_rounded))])),
+          Card(
+              child: Column(children: [
+            for (final contact in store.contacts)
+              ListTile(
+                  leading: CircleAvatar(
+                      child: Text(contact.name.substring(0, 1).toUpperCase())),
+                  title: Text(contact.name),
+                  subtitle: Text(contact.phone),
+                  trailing: const Icon(Icons.person_add_alt_1_rounded))
+          ])),
         const SizedBox(height: 18),
         Card(
           child: ListTile(

@@ -20,20 +20,26 @@ class ApiClient {
   final String _baseUrl;
   final http.Client _client;
   String? _token;
+  String? _userId;
+  String? get userId => _userId;
 
   Future<void> login({required String email, required String password}) =>
-      _authenticate('/api/v1/auth/login', {'email': email, 'password': password});
+      _authenticate(
+          '/api/v1/auth/login', {'email': email, 'password': password});
 
   Future<void> register({
     required String name,
     required String email,
     required String phone,
     required String password,
-  }) => _authenticate('/api/v1/auth/register', {
+    int salaryCents = 0,
+  }) =>
+      _authenticate('/api/v1/auth/register', <String, dynamic>{
         'name': name,
         'email': email,
         'phone': phone,
         'password': password,
+        'salary_cents': salaryCents,
       });
 
   Future<List<ExpenseGroup>> listGroups() async {
@@ -41,7 +47,7 @@ class ApiClient {
         .get(Uri.parse('$_baseUrl/api/v1/groups'), headers: _headers())
         .timeout(const Duration(seconds: 8));
     final body = _decode(response);
-    return (body['groups'] as List<dynamic>)
+    return ((body['groups'] as List<dynamic>?) ?? const [])
         .map((value) => ExpenseGroup.fromJson(value as Map<String, dynamic>))
         .toList();
   }
@@ -49,20 +55,91 @@ class ApiClient {
   Future<void> createGroup({
     required String name,
     required List<String> memberNames,
+    String emoji = '',
+    String visibility = 'personal',
+    bool salarySplitEnabled = false,
+    List<Map<String, String>>? members,
   }) async {
     final response = await _client
         .post(
           Uri.parse('$_baseUrl/api/v1/groups'),
           headers: _headers(),
-          body: jsonEncode({'name': name, 'member_names': memberNames}),
+          body: jsonEncode({
+            'name': name,
+            if (members == null)
+              'member_names': memberNames
+            else
+              'members': members,
+            'emoji': emoji,
+            'visibility': visibility,
+            'salary_split_enabled': salarySplitEnabled
+          }),
         )
         .timeout(const Duration(seconds: 8));
     _decode(response);
   }
 
+  Future<void> updateGroup(String groupId, Map<String, dynamic> input) async {
+    final response = await _client
+        .patch(Uri.parse('$_baseUrl/api/v1/groups/$groupId'),
+            headers: _headers(), body: jsonEncode(input))
+        .timeout(const Duration(seconds: 8));
+    _decode(response);
+  }
+
+  Future<void> addMember(String groupId,
+      {required String name, required String phone}) async {
+    final response = await _client
+        .post(Uri.parse('$_baseUrl/api/v1/groups/$groupId/members'),
+            headers: _headers(),
+            body: jsonEncode({'name': name, 'phone': phone}))
+        .timeout(const Duration(seconds: 8));
+    _decode(response);
+  }
+
+  Future<void> updateMember(
+      String groupId, String memberId, Map<String, dynamic> input) async {
+    final response = await _client
+        .patch(Uri.parse('$_baseUrl/api/v1/groups/$groupId/members/$memberId'),
+            headers: _headers(), body: jsonEncode(input))
+        .timeout(const Duration(seconds: 8));
+    _decode(response);
+  }
+
+  Future<List<Map<String, dynamic>>> status() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/v1/status'), headers: _headers())
+        .timeout(const Duration(seconds: 8));
+    return (_decode(response)['contacts'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+  }
+
+  Future<List<GroupInvitation>> invitations() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/v1/group-invitations'),
+            headers: _headers())
+        .timeout(const Duration(seconds: 8));
+    return ((_decode(response)['invitations'] as List<dynamic>?) ?? const [])
+        .map((value) => GroupInvitation.fromJson(value as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> respondInvitation(String groupId, bool accept) async {
+    final response = await _client
+        .post(Uri.parse('$_baseUrl/api/v1/group-invitations/$groupId/response'),
+            headers: _headers(), body: jsonEncode({'accept': accept}))
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 204) _decode(response);
+  }
+
   Future<List<AppContact>> matchContacts(List<String> phones) async {
-    final response = await _client.post(Uri.parse('$_baseUrl/api/v1/contacts/matches'), headers: _headers(), body: jsonEncode({'phones': phones})).timeout(const Duration(seconds: 8));
-    return (_decode(response)['contacts'] as List<dynamic>).map((value) => AppContact.fromJson(value as Map<String, dynamic>)).toList();
+    final response = await _client
+        .post(Uri.parse('$_baseUrl/api/v1/contacts/matches'),
+            headers: _headers(), body: jsonEncode({'phones': phones}))
+        .timeout(const Duration(seconds: 8));
+    return (_decode(response)['contacts'] as List<dynamic>)
+        .map((value) => AppContact.fromJson(value as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> addExpense({
@@ -71,6 +148,7 @@ class ApiClient {
     required int amountCents,
     required String payerId,
     required List<String> participantIds,
+    String splitMode = 'equal',
   }) async {
     final response = await _client
         .post(
@@ -81,6 +159,7 @@ class ApiClient {
             'amount_cents': amountCents,
             'payer_id': payerId,
             'participant_ids': participantIds,
+            'split_mode': splitMode,
           }),
         )
         .timeout(const Duration(seconds: 8));
@@ -101,6 +180,14 @@ class ApiClient {
     _decode(response);
   }
 
+  Future<void> removeMember(String groupId, String memberId) async {
+    final response = await _client
+        .delete(Uri.parse('$_baseUrl/api/v1/groups/$groupId/members/$memberId'),
+            headers: _headers())
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 204) _decode(response);
+  }
+
   Map<String, dynamic> _decode(http.Response response) {
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -109,7 +196,7 @@ class ApiClient {
     return decoded;
   }
 
-  Future<void> _authenticate(String path, Map<String, String> input) async {
+  Future<void> _authenticate(String path, Map<String, dynamic> input) async {
     final response = await _client
         .post(
           Uri.parse('$_baseUrl$path'),
@@ -117,7 +204,9 @@ class ApiClient {
           body: jsonEncode(input),
         )
         .timeout(const Duration(seconds: 8));
-    _token = _decode(response)['token'] as String;
+    final result = _decode(response);
+    _token = result['token'] as String;
+    _userId = (result['user'] as Map<String, dynamic>?)?['id'] as String?;
   }
 
   Map<String, String> _headers() => {

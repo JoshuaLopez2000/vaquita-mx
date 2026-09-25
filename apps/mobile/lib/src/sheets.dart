@@ -3,10 +3,26 @@ import 'package:flutter/services.dart';
 import 'package:vaquita_mx/src/models.dart';
 
 class NewGroupInput {
-  const NewGroupInput({required this.name, required this.memberNames});
+  const NewGroupInput(
+      {required this.name,
+      required this.memberNames,
+      required this.members,
+      required this.emoji,
+      required this.visibility,
+      required this.salarySplitEnabled});
 
   final String name;
   final List<String> memberNames;
+  final List<Map<String, String>> members;
+  final String emoji;
+  final String visibility;
+  final bool salarySplitEnabled;
+}
+
+class GroupMemberDraft {
+  const GroupMemberDraft({required this.name, this.phone = ''});
+  final String name;
+  final String phone;
 }
 
 class NewExpenseInput {
@@ -15,12 +31,14 @@ class NewExpenseInput {
     required this.amountCents,
     required this.payerId,
     required this.participantIds,
+    required this.splitMode,
   });
 
   final String description;
   final int amountCents;
   final String payerId;
   final List<String> participantIds;
+  final String splitMode;
 }
 
 Future<NewGroupInput?> showCreateGroupSheet(BuildContext context) {
@@ -54,28 +72,72 @@ class _CreateGroupSheet extends StatefulWidget {
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _membersController = TextEditingController();
+  final _memberNameController = TextEditingController();
+  final _memberPhoneController = TextEditingController();
+  final _members = <GroupMemberDraft>[];
+  final _emojiController = TextEditingController(text: '👥');
+  var _visibility = 'personal';
+  var _salarySplits = false;
 
   @override
   void dispose() {
     _nameController.dispose();
-    _membersController.dispose();
+    _memberNameController.dispose();
+    _memberPhoneController.dispose();
+    _emojiController.dispose();
     super.dispose();
   }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
+    final pendingName = _memberNameController.text.trim();
+    final pendingPhone = _memberPhoneController.text.trim();
+    if (pendingName.isNotEmpty || pendingPhone.isNotEmpty) {
+      if (pendingName.isEmpty || pendingPhone.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content:
+                  Text('Each member needs a name and Mexican phone number.')),
+        );
+        return;
+      }
+      _members.add(GroupMemberDraft(name: pendingName, phone: pendingPhone));
+    }
+    if (_members.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one member.')),
+      );
+      return;
+    }
     Navigator.pop(
       context,
       NewGroupInput(
         name: _nameController.text.trim(),
-        memberNames: _membersController.text
-            .split(',')
-            .map((name) => name.trim())
-            .where((name) => name.isNotEmpty)
-            .toList(),
+        memberNames: _members.map((member) => member.name).toList(),
+        members: List.unmodifiable(_members
+            .map((member) => {'name': member.name, 'phone': member.phone})
+            .toList()),
+        emoji: _emojiController.text.trim(),
+        visibility: _visibility,
+        salarySplitEnabled: _salarySplits,
       ),
     );
+  }
+
+  void _addMember() {
+    final name = _memberNameController.text.trim();
+    final phone = _memberPhoneController.text.trim();
+    if (name.isEmpty || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a name and Mexican phone number.')),
+      );
+      return;
+    }
+    setState(() {
+      _members.add(GroupMemberDraft(name: name, phone: phone));
+      _memberNameController.clear();
+      _memberPhoneController.clear();
+    });
   }
 
   @override
@@ -87,7 +149,8 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
         24,
         24 + MediaQuery.viewInsetsOf(context).bottom,
       ),
-      child: Form(
+      child: SingleChildScrollView(
+          child: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -102,7 +165,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'You are added automatically. Separate other members with commas.',
+              'You are added automatically. Add each contact with their Mexican phone number.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 20),
@@ -122,19 +185,74 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             ),
             const SizedBox(height: 14),
             TextFormField(
+                controller: _emojiController,
+                decoration: const InputDecoration(
+                    labelText: 'Group icon',
+                    prefixIcon: Icon(Icons.emoji_emotions_outlined))),
+            const SizedBox(height: 10),
+            SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'personal', label: Text('Personal')),
+                  ButtonSegment(value: 'shared', label: Text('Shared'))
+                ],
+                selected: {
+                  _visibility
+                },
+                onSelectionChanged: (value) =>
+                    setState(() => _visibility = value.first)),
+            SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _salarySplits,
+                title: const Text('Allow salary-based splits'),
+                subtitle: const Text('Only members who opt in can use this'),
+                onChanged: (value) => setState(() => _salarySplits = value)),
+            const SizedBox(height: 6),
+            TextFormField(
               key: const Key('group-members-field'),
-              controller: _membersController,
+              controller: _memberNameController,
               textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _submit(),
+              onFieldSubmitted: (_) => _addMember(),
               decoration: const InputDecoration(
-                labelText: 'Members',
+                labelText: 'Member name',
                 hintText: 'Ana, Diego, Sofía',
                 prefixIcon: Icon(Icons.person_add_alt_1_rounded),
               ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Add at least one other member'
-                  : null,
+              validator: (_) => null,
             ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _memberPhoneController,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                labelText: _visibility == 'shared'
+                    ? 'Mexican phone number'
+                    : 'Mexican phone number',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  tooltip: 'Add member',
+                  onPressed: _addMember,
+                ),
+              ),
+              onSubmitted: (_) => _addMember(),
+            ),
+            if (_members.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (var index = 0; index < _members.length; index++)
+                      InputChip(
+                        label: Text(_members[index].phone.isEmpty
+                            ? _members[index].name
+                            : '${_members[index].name} · ${_members[index].phone}'),
+                        onDeleted: () =>
+                            setState(() => _members.removeAt(index)),
+                      ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 20),
             FilledButton.icon(
               key: const Key('create-group-submit'),
@@ -144,7 +262,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 }
@@ -164,6 +282,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   final _amountController = TextEditingController();
   late String _payerId;
   late final Set<String> _participantIds;
+  var _splitMode = 'equal';
 
   @override
   void initState() {
@@ -201,6 +320,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
         amountCents: _parseAmount()!,
         payerId: _payerId,
         participantIds: _participantIds.toList(),
+        splitMode: _splitMode,
       ),
     );
   }
@@ -279,8 +399,33 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               onChanged: (value) => setState(() => _payerId = value!),
             ),
             const SizedBox(height: 18),
+            if (widget.group.salarySplitEnabled)
+              SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'equal', label: Text('Equal')),
+                    ButtonSegment(value: 'salary', label: Text('By salary'))
+                  ],
+                  selected: {
+                    _splitMode
+                  },
+                  onSelectionChanged: (value) => setState(() {
+                        _splitMode = value.first;
+                        if (_splitMode == 'salary') {
+                          _participantIds.removeWhere((id) => !widget
+                              .group.members
+                              .firstWhere((m) => m.id == id)
+                              .salarySharing);
+                        }
+                      })),
+            if (_splitMode == 'salary')
+              const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                      'Only members who shared their salary are eligible.')),
             Text(
-              'Split equally between',
+              _splitMode == 'salary'
+                  ? 'Split by salary between'
+                  : 'Split equally between',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -293,15 +438,17 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 value: _participantIds.contains(member.id),
                 title: Text(member.name),
                 controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (selected) {
-                  setState(() {
-                    if (selected ?? false) {
-                      _participantIds.add(member.id);
-                    } else {
-                      _participantIds.remove(member.id);
-                    }
-                  });
-                },
+                onChanged: _splitMode == 'salary' && !member.salarySharing
+                    ? null
+                    : (selected) {
+                        setState(() {
+                          if (selected ?? false) {
+                            _participantIds.add(member.id);
+                          } else {
+                            _participantIds.remove(member.id);
+                          }
+                        });
+                      },
               ),
             const SizedBox(height: 12),
             FilledButton.icon(

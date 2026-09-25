@@ -9,10 +9,12 @@ class DemoStore extends ChangeNotifier {
 
   DemoStore.remote(this._apiClient) : groups = [];
 
-  static const currentUserId = 'me';
+  static const seedUserId = 'me';
   final ApiClient? _apiClient;
   final List<ExpenseGroup> groups;
   final List<AppContact> contacts = [];
+  final List<ContactStatus> contactStatus = [];
+  final List<GroupInvitation> invitations = [];
   int _sequence = 100;
   bool isLoading = false;
   String? errorMessage;
@@ -20,7 +22,8 @@ class DemoStore extends ChangeNotifier {
   bool get isRemote => _apiClient != null;
   ApiClient? get apiClient => _apiClient;
 
-  Member get currentUser => const Member(id: currentUserId, name: 'You');
+  String get currentUserId => _apiClient?.userId ?? seedUserId;
+  Member get currentUser => Member(id: currentUserId, name: 'You');
 
   ExpenseGroup groupById(String id) =>
       groups.firstWhere((group) => group.id == id);
@@ -35,6 +38,8 @@ class DemoStore extends ChangeNotifier {
       groups
         ..clear()
         ..addAll(loaded);
+    } on ApiException catch (error) {
+      errorMessage = error.message;
     } catch (_) {
       errorMessage = 'Cannot reach the Vaquita server. Is Docker running?';
     } finally {
@@ -54,18 +59,28 @@ class DemoStore extends ChangeNotifier {
   Future<bool> createGroup({
     required String name,
     required List<String> memberNames,
+    String emoji = '',
+    String visibility = 'personal',
+    bool salarySplitEnabled = false,
+    List<Map<String, String>>? members,
   }) async {
     if (_apiClient != null) {
       return _sync(
-        () => _apiClient.createGroup(name: name, memberNames: memberNames),
+        () => _apiClient.createGroup(
+            name: name,
+            memberNames: memberNames,
+            emoji: emoji,
+            visibility: visibility,
+            salarySplitEnabled: salarySplitEnabled,
+            members: members),
       );
     }
     final id = _nextId('group');
-    final members = <Member>[currentUser];
+    final localMembers = <Member>[currentUser];
     for (final rawName in memberNames) {
       final trimmed = rawName.trim();
       if (trimmed.isEmpty || trimmed.toLowerCase() == 'you') continue;
-      members.add(Member(id: _nextId('member'), name: trimmed));
+      localMembers.add(Member(id: _nextId('member'), name: trimmed));
     }
     groups.insert(
       0,
@@ -73,11 +88,50 @@ class DemoStore extends ChangeNotifier {
         id: id,
         name: name.trim(),
         emoji: _emojiFor(groups.length),
-        members: members,
+        members: localMembers,
       ),
     );
     notifyListeners();
     return true;
+  }
+
+  Future<bool> updateGroup(String groupId, Map<String, dynamic> input) =>
+      _apiClient != null
+          ? _sync(() => _apiClient.updateGroup(groupId, input))
+          : Future.value(false);
+  Future<bool> addMember(String groupId, String name, String phone) =>
+      _apiClient != null
+          ? _sync(() => _apiClient.addMember(groupId, name: name, phone: phone))
+          : Future.value(false);
+  Future<bool> updateMember(
+          String groupId, String memberId, Map<String, dynamic> input) =>
+      _apiClient != null
+          ? _sync(() => _apiClient.updateMember(groupId, memberId, input))
+          : Future.value(false);
+
+  Future<void> loadStatus() async {
+    if (_apiClient == null) return;
+    final rows = await _apiClient.status();
+    contactStatus
+      ..clear()
+      ..addAll(rows.map(ContactStatus.fromJson));
+    notifyListeners();
+  }
+
+  Future<void> loadInvitations() async {
+    if (_apiClient == null) return;
+    invitations
+      ..clear()
+      ..addAll(await _apiClient.invitations());
+    notifyListeners();
+  }
+
+  Future<bool> respondInvitation(String groupId, bool accept) async {
+    if (_apiClient == null) return false;
+    final updated =
+        await _sync(() => _apiClient.respondInvitation(groupId, accept));
+    if (updated) await loadInvitations();
+    return updated;
   }
 
   Future<bool> addExpense({
@@ -86,6 +140,7 @@ class DemoStore extends ChangeNotifier {
     required int amountCents,
     required String payerId,
     required List<String> participantIds,
+    String splitMode = 'equal',
   }) async {
     if (_apiClient != null) {
       return _sync(
@@ -95,6 +150,7 @@ class DemoStore extends ChangeNotifier {
           amountCents: amountCents,
           payerId: payerId,
           participantIds: participantIds,
+          splitMode: splitMode,
         ),
       );
     }
@@ -109,6 +165,20 @@ class DemoStore extends ChangeNotifier {
             createdAt: DateTime.now(),
           ),
         );
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> removeMember(String groupId, String memberId) async {
+    if (_apiClient != null)
+      return _sync(() => _apiClient.removeMember(groupId, memberId));
+    final group = groupById(groupId);
+    final index = group.members.indexWhere((member) => member.id == memberId);
+    if (index < 0) return false;
+    group.members[index] = Member(
+        id: group.members[index].id,
+        name: group.members[index].name,
+        active: false);
     notifyListeners();
     return true;
   }
@@ -166,8 +236,13 @@ class DemoStore extends ChangeNotifier {
     return result;
   }
 
-  int currentUserBalance(ExpenseGroup group) =>
-      balances(group)[currentUserId] ?? 0;
+  int currentUserBalance(ExpenseGroup group) {
+    final member = group.members
+        .where((member) =>
+            member.userId == currentUserId || member.id == currentUserId)
+        .toList();
+    return member.isEmpty ? 0 : balances(group)[member.first.id] ?? 0;
+  }
 
   Future<bool> _sync(Future<void> Function() mutation) async {
     isLoading = true;
@@ -180,6 +255,9 @@ class DemoStore extends ChangeNotifier {
         ..clear()
         ..addAll(loaded);
       return true;
+    } on ApiException catch (error) {
+      errorMessage = error.message;
+      return false;
     } catch (_) {
       errorMessage = 'The server request failed. Check Docker and try again.';
       return false;
@@ -203,7 +281,7 @@ class DemoStore extends ChangeNotifier {
   }
 
   static List<ExpenseGroup> _seedGroups() {
-    const you = Member(id: currentUserId, name: 'You');
+    const you = Member(id: seedUserId, name: 'You');
     const ana = Member(id: 'ana', name: 'Ana');
     const diego = Member(id: 'diego', name: 'Diego');
     const sofia = Member(id: 'sofia', name: 'Sofía');
@@ -221,8 +299,8 @@ class DemoStore extends ChangeNotifier {
             id: 'expense_tacos',
             description: 'Tacos and drinks',
             amountCents: 128000,
-            payerId: currentUserId,
-            participantIds: const [currentUserId, 'ana', 'diego', 'sofia'],
+            payerId: seedUserId,
+            participantIds: const [seedUserId, 'ana', 'diego', 'sofia'],
             createdAt: now.subtract(const Duration(hours: 3)),
           ),
           Expense(
@@ -230,7 +308,7 @@ class DemoStore extends ChangeNotifier {
             description: 'Museum tickets',
             amountCents: 36000,
             payerId: 'ana',
-            participantIds: const [currentUserId, 'ana', 'diego'],
+            participantIds: const [seedUserId, 'ana', 'diego'],
             createdAt: now.subtract(const Duration(days: 1)),
           ),
         ],
@@ -246,7 +324,7 @@ class DemoStore extends ChangeNotifier {
             description: 'Internet — September',
             amountCents: 64900,
             payerId: 'marco',
-            participantIds: const [currentUserId, 'marco'],
+            participantIds: const [seedUserId, 'marco'],
             createdAt: now.subtract(const Duration(days: 4)),
           ),
         ],

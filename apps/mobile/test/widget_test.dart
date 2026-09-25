@@ -26,13 +26,14 @@ void main() {
     );
     await tester.enterText(
       find.byKey(const Key('group-members-field')),
-      'Laura, Mateo',
+      'Laura',
     );
+    await tester.enterText(find.byType(TextField).at(3), '55 0000 0099');
     await tester.tap(find.byKey(const Key('create-group-submit')));
     await tester.pumpAndSettle();
 
     expect(find.text('Birthday dinner'), findsOneWidget);
-    expect(find.text('3 members · 0 expenses'), findsOneWidget);
+    expect(find.text('2 members · 0 expenses'), findsOneWidget);
   });
 
   testWidgets('opens a group and adds an expense', (tester) async {

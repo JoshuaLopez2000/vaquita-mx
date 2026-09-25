@@ -41,3 +41,14 @@ func TestBalancesAppliesSettlement(t *testing.T) {
 		t.Fatalf("unexpected settled balances: %#v", balances)
 	}
 }
+
+func TestBalancesSplitsBySalary(t *testing.T) {
+	group := Group{
+		Members:  []Member{{ID: "me", SalaryCents: 1000}, {ID: "ana", SalaryCents: 3000}},
+		Expenses: []Expense{{AmountCents: 400, PayerID: "me", ParticipantIDs: []string{"me", "ana"}, SplitMode: "salary"}},
+	}
+	balances := Balances(group)
+	if balances["me"] != 300 || balances["ana"] != -300 {
+		t.Fatalf("expected 25/75 salary split, got %#v", balances)
+	}
+}
