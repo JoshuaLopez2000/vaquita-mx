@@ -7,13 +7,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/your-user/vaquita-mx/services/api/internal/auth"
 	"github.com/your-user/vaquita-mx/services/api/internal/groups"
 	"github.com/your-user/vaquita-mx/services/api/internal/payments"
 )
 
 type application struct {
+	auth     *auth.Repository
 	payments payments.Provider
 	groups   *groups.Repository
 }
@@ -33,21 +36,35 @@ func main() {
 		os.Exit(1)
 	}
 	defer repository.Close()
+	authRepository, err := auth.Open(databaseURL)
+	if err != nil {
+		slog.Error("connect auth database", "error", err)
+		os.Exit(1)
+	}
+	defer authRepository.Close()
+	if err := authRepository.Migrate(startupContext); err != nil {
+		slog.Error("migrate auth database", "error", err)
+		os.Exit(1)
+	}
 	if err := repository.Migrate(startupContext); err != nil {
 		slog.Error("migrate database", "error", err)
 		os.Exit(1)
 	}
 	app := application{
+		auth:     authRepository,
 		payments: payments.SimulatedProvider{},
 		groups:   repository,
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", app.health)
-	mux.HandleFunc("GET /api/v1/groups", app.listGroups)
-	mux.HandleFunc("POST /api/v1/groups", app.createGroup)
-	mux.HandleFunc("POST /api/v1/groups/{groupID}/expenses", app.addExpense)
-	mux.HandleFunc("POST /api/v1/groups/{groupID}/settlements", app.addSettlement)
+	mux.HandleFunc("POST /api/v1/auth/register", app.register)
+	mux.HandleFunc("POST /api/v1/auth/login", app.login)
+	mux.HandleFunc("POST /api/v1/contacts/matches", app.requireUser(app.matchContacts))
+	mux.HandleFunc("GET /api/v1/groups", app.requireUser(app.listGroups))
+	mux.HandleFunc("POST /api/v1/groups", app.requireUser(app.createGroup))
+	mux.HandleFunc("POST /api/v1/groups/{groupID}/expenses", app.requireUser(app.addExpense))
+	mux.HandleFunc("POST /api/v1/groups/{groupID}/settlements", app.requireUser(app.addSettlement))
 	mux.HandleFunc("GET /api/v1/payment-providers", app.providers)
 	mux.HandleFunc("POST /api/v1/payment-requests", app.createPaymentRequest)
 
@@ -65,6 +82,52 @@ func main() {
 		slog.Error("api stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func (app application) register(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, err := app.auth.Register(r.Context(), input.Name, input.Email, input.Phone, input.Password)
+	if errors.Is(err, auth.ErrInvalid) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "name, valid email, Mexican mobile number, and an 8-character password are required"})
+		return
+	}
+	if errors.Is(err, auth.ErrEmailInUse) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "email is already registered"})
+		return
+	}
+	if err != nil {
+		serverError(w, "register", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, session)
+}
+
+func (app application) login(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, err := app.auth.Login(r.Context(), input.Email, input.Password)
+	if errors.Is(err, auth.ErrInvalid) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+		return
+	}
+	if err != nil {
+		serverError(w, "login", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, session)
 }
 
 func runHealthcheck() {
@@ -86,8 +149,50 @@ func (app application) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "vaquita-api"})
 }
 
+func (app application) requireUser(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		user, err := app.auth.UserForToken(r.Context(), token)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, user.ID)))
+	}
+}
+
+type userIDKey struct{}
+
+func userID(r *http.Request) string { return r.Context().Value(userIDKey{}).(string) }
+
+func (app application) matchContacts(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Phones []string `json:"phones"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if len(input.Phones) > 500 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at most 500 contacts can be matched at once"})
+		return
+	}
+	phones := make([]string, 0, len(input.Phones))
+	seen := map[string]bool{}
+	for _, value := range input.Phones {
+		if phone, ok := auth.NormalizePhone(value); ok && !seen[phone] {
+			phones, seen[phone] = append(phones, phone), true
+		}
+	}
+	contacts, err := app.auth.Contacts(r.Context(), userID(r), phones)
+	if err != nil {
+		serverError(w, "match contacts", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"contacts": contacts})
+}
+
 func (app application) listGroups(w http.ResponseWriter, r *http.Request) {
-	result, err := app.groups.List(r.Context())
+	result, err := app.groups.List(r.Context(), userID(r))
 	if err != nil {
 		serverError(w, "list groups", err)
 		return
@@ -100,7 +205,7 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.Create(r.Context(), input)
+	result, err := app.groups.Create(r.Context(), userID(r), input)
 	if errors.Is(err, groups.ErrInvalid) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name and at least one member are required"})
 		return
@@ -117,7 +222,7 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddExpense(r.Context(), r.PathValue("groupID"), input)
+	result, err := app.groups.AddExpense(r.Context(), userID(r), r.PathValue("groupID"), input)
 	if errors.Is(err, groups.ErrInvalid) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "invalid expense or group member"})
 		return
@@ -140,7 +245,7 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddSettlement(r.Context(), r.PathValue("groupID"), input.MemberID)
+	result, err := app.groups.AddSettlement(r.Context(), userID(r), r.PathValue("groupID"), input.MemberID)
 	if errors.Is(err, groups.ErrInvalid) {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "member has no balance to settle"})
 		return

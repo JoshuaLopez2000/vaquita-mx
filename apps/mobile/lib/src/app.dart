@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vaquita_mx/src/api_client.dart';
+import 'package:vaquita_mx/src/auth_screen.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
@@ -22,6 +24,7 @@ class VaquitaApp extends StatefulWidget {
 class _VaquitaAppState extends State<VaquitaApp> {
   late final DemoStore store;
   late final bool _ownsStore;
+  var _authenticated = false;
 
   @override
   void initState() {
@@ -29,9 +32,7 @@ class _VaquitaAppState extends State<VaquitaApp> {
     _ownsStore = widget.store == null;
     store = widget.store ??
         DemoStore.remote(ApiClient(baseUrl: VaquitaApp.apiBaseUrl));
-    if (_ownsStore) {
-      store.load();
-    }
+    _authenticated = !_ownsStore;
   }
 
   @override
@@ -82,7 +83,15 @@ class _VaquitaAppState extends State<VaquitaApp> {
           ),
         ),
       ),
-      home: AppShell(store: store),
+      home: _authenticated
+          ? AppShell(store: store)
+          : AuthScreen(
+              api: store.apiClient!,
+              onAuthenticated: () {
+                setState(() => _authenticated = true);
+                store.load();
+              },
+            ),
     );
   }
 }
@@ -125,7 +134,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             DashboardScreen(store: widget.store),
             ActivityScreen(store: widget.store),
-            const ProfileScreen(),
+            ProfileScreen(store: widget.store),
           ],
         ),
       ),
@@ -543,7 +552,21 @@ class ActivityScreen extends StatelessWidget {
 }
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({required this.store, super.key});
+
+  final DemoStore store;
+  static const _contacts = MethodChannel('mx.vaquita.vaquita_mx/contacts');
+
+  Future<void> _findContacts(BuildContext context) async {
+    try {
+      final phones = await _contacts.invokeListMethod<String>('getPhoneNumbers');
+      await store.findContacts(phones ?? []);
+    } on PlatformException catch (error) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message ?? 'Contacts permission is required.')));
+    } catch (_) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not match contacts.')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -593,6 +616,14 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 18),
+        Text('Contacts', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text('Find people already using Vaquita. Your contacts are matched only after you choose this.', style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(onPressed: () => _findContacts(context), icon: const Icon(Icons.contacts_outlined), label: const Text('Find contacts on Vaquita')),
+        if (store.contacts.isNotEmpty)
+          Card(child: Column(children: [for (final contact in store.contacts) ListTile(leading: CircleAvatar(child: Text(contact.name.substring(0, 1).toUpperCase())), title: Text(contact.name), subtitle: Text(contact.phone), trailing: const Icon(Icons.person_add_alt_1_rounded))])),
         const SizedBox(height: 18),
         Card(
           child: ListTile(

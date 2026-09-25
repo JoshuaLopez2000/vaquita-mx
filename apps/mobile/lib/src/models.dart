@@ -17,6 +17,14 @@ class Member {
   }
 }
 
+class AppContact {
+  const AppContact({required this.id, required this.name, required this.phone});
+  final String id;
+  final String name;
+  final String phone;
+  factory AppContact.fromJson(Map<String, dynamic> json) => AppContact(id: json['id'] as String, name: json['name'] as String, phone: json['phone'] as String);
+}
+
 class Expense {
   const Expense({
     required this.id,

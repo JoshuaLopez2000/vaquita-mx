@@ -19,10 +19,26 @@ class ApiClient {
 
   final String _baseUrl;
   final http.Client _client;
+  String? _token;
+
+  Future<void> login({required String email, required String password}) =>
+      _authenticate('/api/v1/auth/login', {'email': email, 'password': password});
+
+  Future<void> register({
+    required String name,
+    required String email,
+    required String phone,
+    required String password,
+  }) => _authenticate('/api/v1/auth/register', {
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'password': password,
+      });
 
   Future<List<ExpenseGroup>> listGroups() async {
     final response = await _client
-        .get(Uri.parse('$_baseUrl/api/v1/groups'))
+        .get(Uri.parse('$_baseUrl/api/v1/groups'), headers: _headers())
         .timeout(const Duration(seconds: 8));
     final body = _decode(response);
     return (body['groups'] as List<dynamic>)
@@ -37,11 +53,16 @@ class ApiClient {
     final response = await _client
         .post(
           Uri.parse('$_baseUrl/api/v1/groups'),
-          headers: const {'Content-Type': 'application/json'},
+          headers: _headers(),
           body: jsonEncode({'name': name, 'member_names': memberNames}),
         )
         .timeout(const Duration(seconds: 8));
     _decode(response);
+  }
+
+  Future<List<AppContact>> matchContacts(List<String> phones) async {
+    final response = await _client.post(Uri.parse('$_baseUrl/api/v1/contacts/matches'), headers: _headers(), body: jsonEncode({'phones': phones})).timeout(const Duration(seconds: 8));
+    return (_decode(response)['contacts'] as List<dynamic>).map((value) => AppContact.fromJson(value as Map<String, dynamic>)).toList();
   }
 
   Future<void> addExpense({
@@ -54,7 +75,7 @@ class ApiClient {
     final response = await _client
         .post(
           Uri.parse('$_baseUrl/api/v1/groups/$groupId/expenses'),
-          headers: const {'Content-Type': 'application/json'},
+          headers: _headers(),
           body: jsonEncode({
             'description': description,
             'amount_cents': amountCents,
@@ -73,7 +94,7 @@ class ApiClient {
     final response = await _client
         .post(
           Uri.parse('$_baseUrl/api/v1/groups/$groupId/settlements'),
-          headers: const {'Content-Type': 'application/json'},
+          headers: _headers(),
           body: jsonEncode({'member_id': memberId}),
         )
         .timeout(const Duration(seconds: 8));
@@ -87,6 +108,22 @@ class ApiClient {
     }
     return decoded;
   }
+
+  Future<void> _authenticate(String path, Map<String, String> input) async {
+    final response = await _client
+        .post(
+          Uri.parse('$_baseUrl$path'),
+          headers: _headers(),
+          body: jsonEncode(input),
+        )
+        .timeout(const Duration(seconds: 8));
+    _token = _decode(response)['token'] as String;
+  }
+
+  Map<String, String> _headers() => {
+        'Content-Type': 'application/json',
+        if (_token != null) 'Authorization': 'Bearer $_token',
+      };
 
   void close() => _client.close();
 }

@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+import 'package:vaquita_mx/src/api_client.dart';
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({required this.api, required this.onAuthenticated, super.key});
+
+  final ApiClient api;
+  final VoidCallback onAuthenticated;
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _phone = TextEditingController();
+  final _password = TextEditingController();
+  var _registering = false;
+  var _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() { _submitting = true; _error = null; });
+    try {
+      if (_registering) {
+        await widget.api.register(name: _name.text, email: _email.text, phone: _phone.text, password: _password.text);
+      } else {
+        await widget.api.login(email: _email.text, password: _password.text);
+      }
+      if (mounted) widget.onAuthenticated();
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Cannot reach the Vaquita server.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(Icons.account_balance_wallet_rounded, size: 64, color: theme.colorScheme.primary),
+                  const SizedBox(height: 20),
+                  Text('VAQUITA MX', textAlign: TextAlign.center, style: theme.textTheme.labelLarge?.copyWith(letterSpacing: 2, color: theme.colorScheme.primary, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text(_registering ? 'Create your account' : 'Welcome back', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 28),
+                  if (_registering) ...[
+                    TextField(key: const Key('auth-name-field'), controller: _name, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Name')),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(key: const Key('auth-email-field'), controller: _email, keyboardType: TextInputType.emailAddress, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Email')),
+                  const SizedBox(height: 12),
+                  if (_registering) ...[
+                    TextField(key: const Key('auth-phone-field'), controller: _phone, keyboardType: TextInputType.phone, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Mexican mobile number', hintText: '55 1234 5678')),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(key: const Key('auth-password-field'), controller: _password, obscureText: true, onSubmitted: (_) => _submitting ? null : _submit(), decoration: const InputDecoration(labelText: 'Password')),
+                  if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: theme.colorScheme.error))),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    key: const Key('auth-submit'),
+                    onPressed: _submitting ? null : _submit,
+                    child: _submitting ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_registering ? 'Create account' : 'Sign in'),
+                  ),
+                  TextButton(
+                    onPressed: _submitting ? null : () => setState(() { _registering = !_registering; _error = null; }),
+                    child: Text(_registering ? 'Already have an account? Sign in' : 'New here? Create an account'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

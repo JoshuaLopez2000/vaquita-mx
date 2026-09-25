@@ -12,11 +12,13 @@ class DemoStore extends ChangeNotifier {
   static const currentUserId = 'me';
   final ApiClient? _apiClient;
   final List<ExpenseGroup> groups;
+  final List<AppContact> contacts = [];
   int _sequence = 100;
   bool isLoading = false;
   String? errorMessage;
 
   bool get isRemote => _apiClient != null;
+  ApiClient? get apiClient => _apiClient;
 
   Member get currentUser => const Member(id: currentUserId, name: 'You');
 
@@ -39,6 +41,14 @@ class DemoStore extends ChangeNotifier {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> findContacts(List<String> phones) async {
+    if (_apiClient == null) return;
+    contacts
+      ..clear()
+      ..addAll(await _apiClient.matchContacts(phones));
+    notifyListeners();
   }
 
   Future<bool> createGroup({

@@ -105,8 +105,8 @@ func (r *Repository) Migrate(ctx context.Context) error {
 	return r.seed(ctx)
 }
 
-func (r *Repository) List(ctx context.Context) ([]Group, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, emoji FROM expense_groups ORDER BY created_at DESC`)
+func (r *Repository) List(ctx context.Context, ownerID string) ([]Group, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, emoji FROM expense_groups WHERE owner_id = $1 ORDER BY created_at DESC`, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("list groups: %w", err)
 	}
@@ -131,12 +131,12 @@ func (r *Repository) List(ctx context.Context) ([]Group, error) {
 	return result, nil
 }
 
-func (r *Repository) Get(ctx context.Context, id string) (Group, error) {
+func (r *Repository) Get(ctx context.Context, ownerID, id string) (Group, error) {
 	var group Group
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, name, emoji FROM expense_groups WHERE id = $1`,
-		id,
+		`SELECT id, name, emoji FROM expense_groups WHERE id = $1 AND owner_id = $2`,
+		id, ownerID,
 	).Scan(&group.ID, &group.Name, &group.Emoji)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
@@ -150,7 +150,7 @@ func (r *Repository) Get(ctx context.Context, id string) (Group, error) {
 	return group, nil
 }
 
-func (r *Repository) Create(ctx context.Context, input CreateGroupInput) (Group, error) {
+func (r *Repository) Create(ctx context.Context, ownerID string, input CreateGroupInput) (Group, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	if len(input.Name) < 2 || len(input.MemberNames) == 0 {
 		return Group{}, ErrInvalid
@@ -166,7 +166,7 @@ func (r *Repository) Create(ctx context.Context, input CreateGroupInput) (Group,
 	defer tx.Rollback()
 
 	emoji := emojiFor(input.Name)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO expense_groups (id, name, emoji) VALUES ($1, $2, $3)`, id, input.Name, emoji); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO expense_groups (id, name, emoji, owner_id) VALUES ($1, $2, $3, $4)`, id, input.Name, emoji, ownerID); err != nil {
 		return Group{}, fmt.Errorf("insert group: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO group_members (group_id, member_id, position) VALUES ($1, $2, 0)`, id, CurrentUserID); err != nil {
@@ -196,15 +196,15 @@ func (r *Repository) Create(ctx context.Context, input CreateGroupInput) (Group,
 	if err := tx.Commit(); err != nil {
 		return Group{}, fmt.Errorf("commit group: %w", err)
 	}
-	return r.Get(ctx, id)
+	return r.Get(ctx, ownerID, id)
 }
 
-func (r *Repository) AddExpense(ctx context.Context, groupID string, input AddExpenseInput) (Group, error) {
+func (r *Repository) AddExpense(ctx context.Context, ownerID, groupID string, input AddExpenseInput) (Group, error) {
 	input.Description = strings.TrimSpace(input.Description)
 	if input.Description == "" || input.AmountCents <= 0 || input.PayerID == "" || len(input.ParticipantIDs) == 0 {
 		return Group{}, ErrInvalid
 	}
-	group, err := r.Get(ctx, groupID)
+	group, err := r.Get(ctx, ownerID, groupID)
 	if err != nil {
 		return Group{}, err
 	}
@@ -246,11 +246,11 @@ func (r *Repository) AddExpense(ctx context.Context, groupID string, input AddEx
 	if err := tx.Commit(); err != nil {
 		return Group{}, fmt.Errorf("commit expense: %w", err)
 	}
-	return r.Get(ctx, groupID)
+	return r.Get(ctx, ownerID, groupID)
 }
 
-func (r *Repository) AddSettlement(ctx context.Context, groupID, memberID string) (Group, error) {
-	group, err := r.Get(ctx, groupID)
+func (r *Repository) AddSettlement(ctx context.Context, ownerID, groupID, memberID string) (Group, error) {
+	group, err := r.Get(ctx, ownerID, groupID)
 	if err != nil {
 		return Group{}, err
 	}
@@ -274,7 +274,7 @@ func (r *Repository) AddSettlement(ctx context.Context, groupID, memberID string
 	if err != nil {
 		return Group{}, fmt.Errorf("insert settlement: %w", err)
 	}
-	return r.Get(ctx, groupID)
+	return r.Get(ctx, ownerID, groupID)
 }
 
 func Balances(group Group) map[string]int64 {
@@ -413,8 +413,11 @@ CREATE TABLE IF NOT EXISTS expense_groups (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL CHECK (length(trim(name)) > 0),
     emoji TEXT NOT NULL,
+	owner_id TEXT REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE expense_groups ADD COLUMN IF NOT EXISTS owner_id TEXT REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS expense_groups_owner_created_idx ON expense_groups(owner_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS group_members (
     group_id TEXT NOT NULL REFERENCES expense_groups(id) ON DELETE CASCADE,
     member_id TEXT NOT NULL REFERENCES members(id),
