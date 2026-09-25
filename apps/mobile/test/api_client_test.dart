@@ -54,4 +54,17 @@ void main() {
 
     await client.createGroup(name: 'Roommates', memberNames: ['Ana']);
   });
+
+  test('sends login credentials and keeps the session token', () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        expect(request.url.path, '/api/v1/auth/login');
+        expect(jsonDecode(request.body), {'email': 'ana@example.com', 'password': 'password1'});
+        return http.Response(jsonEncode({'token': 'session-token', 'user': {}}), 200);
+      }),
+    );
+
+    await client.login(email: 'ana@example.com', password: 'password1');
+  });
 }
