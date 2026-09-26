@@ -60,11 +60,47 @@ void main() {
       baseUrl: 'http://example.test',
       client: MockClient((request) async {
         expect(request.url.path, '/api/v1/auth/login');
-        expect(jsonDecode(request.body), {'email': 'ana@example.com', 'password': 'password1'});
-        return http.Response(jsonEncode({'token': 'session-token', 'user': {}}), 200);
+        expect(jsonDecode(request.body),
+            {'email': 'ana@example.com', 'password': 'password1'});
+        return http.Response(
+            jsonEncode({'token': 'session-token', 'user': {}}), 200);
       }),
     );
 
     await client.login(email: 'ana@example.com', password: 'password1');
+  });
+
+  test('loads invitations with compact group payloads', () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/group-invitations');
+        return http.Response(
+          jsonEncode({
+            'invitations': [
+              {
+                'group': {
+                  'id': 'group-1',
+                  'name': 'Beach trip',
+                  'emoji': '🏖️',
+                  'visibility': 'shared',
+                  'salary_split_enabled': false,
+                },
+                'member': {'id': 'member-1', 'name': 'Diego'},
+              }
+            ]
+          }),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    final invitations = await client.invitations();
+
+    expect(invitations, hasLength(1));
+    expect(invitations.single.group.members, isEmpty);
+    expect(invitations.single.group.name, 'Beach trip');
   });
 }

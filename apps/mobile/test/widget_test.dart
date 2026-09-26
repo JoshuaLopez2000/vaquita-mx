@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vaquita_mx/src/app.dart';
+import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/store.dart';
 
 void main() {
@@ -13,6 +14,19 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
+  });
+
+  testWidgets('shows an empty state on the activity tab', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('You\'re all caught up'), findsOneWidget);
+    expect(
+      find.text('Invitations and contact balances will appear here.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {
@@ -64,5 +78,20 @@ void main() {
     );
     expect(find.text('Coffee'), findsOneWidget);
     expect(find.text(r'$240.00'), findsOneWidget);
+  });
+
+  testWidgets('shows pending invitations in the group member list',
+      (tester) async {
+    final store = DemoStore.seeded();
+    store.groupById('cdmx-weekend').members.add(
+          const Member(id: 'pending-member', name: 'Lucía', accepted: false),
+        );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lucía'), findsOneWidget);
+    expect(find.text('Invitation pending'), findsOneWidget);
   });
 }

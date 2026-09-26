@@ -150,7 +150,7 @@ class ExpenseGroup {
         visibility: json['visibility'] as String? ?? 'personal',
         salarySplitEnabled: json['salary_split_enabled'] as bool? ?? false,
         salarySplitAvailable: json['salary_split_available'] as bool? ?? false,
-        members: (json['members'] as List<dynamic>)
+        members: ((json['members'] as List<dynamic>?) ?? const [])
             .map((value) => Member.fromJson(value as Map<String, dynamic>))
             .toList(),
         expenses: ((json['expenses'] as List<dynamic>?) ?? const [])

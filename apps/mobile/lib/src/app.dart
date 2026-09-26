@@ -154,6 +154,10 @@ class _AppShellState extends State<AppShell> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
           setState(() => _selectedIndex = index);
+          if (index == 1) {
+            widget.store.loadStatus();
+            widget.store.loadInvitations();
+          }
         },
         destinations: const [
           NavigationDestination(
@@ -529,11 +533,33 @@ class StatusScreen extends StatefulWidget {
 }
 
 class _StatusScreenState extends State<StatusScreen> {
+  String? _respondingInvitationId;
+
   @override
   void initState() {
     super.initState();
     widget.store.loadStatus();
     widget.store.loadInvitations();
+  }
+
+  Future<void> _respondToInvitation(
+      GroupInvitation invitation, bool accept) async {
+    setState(() => _respondingInvitationId = invitation.group.id);
+    final updated =
+        await widget.store.respondInvitation(invitation.group.id, accept);
+    if (!mounted) return;
+    setState(() => _respondingInvitationId = null);
+    if (updated) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(accept
+            ? 'You joined ${invitation.group.name}.'
+            : 'Invitation to ${invitation.group.name} declined.'),
+      ));
+    } else if (widget.store.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(widget.store.errorMessage!)),
+      );
+    }
   }
 
   @override
@@ -549,52 +575,127 @@ class _StatusScreenState extends State<StatusScreen> {
               title: const Text('Contact status'),
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-              sliver: SliverList.separated(
-                itemCount: rows.length + widget.store.invitations.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  if (index < widget.store.invitations.length) {
-                    final invite = widget.store.invitations[index];
+            if (rows.isEmpty && widget.store.invitations.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.inbox_outlined,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'You\'re all caught up',
+                        style: Theme.of(context).textTheme.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Invitations and contact balances will appear here.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                sliver: SliverList.separated(
+                  itemCount: rows.length + widget.store.invitations.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    if (index < widget.store.invitations.length) {
+                      final invite = widget.store.invitations[index];
+                      final responding =
+                          _respondingInvitationId == invite.group.id;
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [
+                                CircleAvatar(child: Text(invite.group.emoji)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Join ${invite.group.name}?',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium),
+                                      const Text('Shared group invitation'),
+                                    ],
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 16),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    key: Key(
+                                        'decline-invitation-${invite.group.id}'),
+                                    onPressed: responding
+                                        ? null
+                                        : () =>
+                                            _respondToInvitation(invite, false),
+                                    child: const Text('Decline'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    key: Key(
+                                        'accept-invitation-${invite.group.id}'),
+                                    onPressed: responding
+                                        ? null
+                                        : () =>
+                                            _respondToInvitation(invite, true),
+                                    child: responding
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2),
+                                          )
+                                        : const Text('Accept invitation'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    final row = rows[index - widget.store.invitations.length];
                     return Card(
-                        child: ListTile(
-                      leading: CircleAvatar(child: Text(invite.group.emoji)),
-                      title: Text('Join ${invite.group.name}?'),
-                      subtitle: const Text('Shared group invitation'),
-                      trailing: Wrap(spacing: 4, children: [
-                        TextButton(
-                            onPressed: () => widget.store
-                                .respondInvitation(invite.group.id, false),
-                            child: const Text('Decline')),
-                        FilledButton(
-                            onPressed: () => widget.store
-                                .respondInvitation(invite.group.id, true),
-                            child: const Text('Accept')),
-                      ]),
-                    ));
-                  }
-                  final row = rows[index - widget.store.invitations.length];
-                  return Card(
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 7,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 7,
+                        ),
+                        leading: CircleAvatar(child: Text(row.member.initials)),
+                        title: Text(row.member.name),
+                        subtitle: Text(row.amountCents > 0
+                            ? 'You owe this contact'
+                            : 'This contact owes you'),
+                        trailing: Text(
+                          formatMoney(row.amountCents.abs()),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
-                      leading: CircleAvatar(child: Text(row.member.initials)),
-                      title: Text(row.member.name),
-                      subtitle: Text(row.amountCents > 0
-                          ? 'You owe this contact'
-                          : 'This contact owes you'),
-                      trailing: Text(
-                        formatMoney(row.amountCents.abs()),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
           ],
         );
       },

@@ -245,13 +245,44 @@ class GroupDetailScreen extends StatelessWidget {
                   keyboardType: TextInputType.phone,
                   decoration:
                       const InputDecoration(labelText: 'Mexican phone number')),
+              if (group.visibility == 'shared')
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child:
+                        Text('They will appear as pending until they accept.'),
+                  ),
+                ),
               const SizedBox(height: 8),
               OutlinedButton(
                   onPressed: () async {
-                    await store.addMember(group.id, member.text, phone.text);
+                    final added = await store.addMember(
+                        group.id, member.text.trim(), phone.text.trim());
+                    if (!added) {
+                      if (sheet.mounted) {
+                        ScaffoldMessenger.of(sheet).showSnackBar(
+                          const SnackBar(
+                              content: Text('Could not add this contact.')),
+                        );
+                      }
+                      return;
+                    }
+                    await store.load();
                     if (sheet.mounted) Navigator.pop(sheet);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(group.visibility == 'shared'
+                              ? 'Invitation sent to ${member.text.trim()}.'
+                              : 'Contact added.'),
+                        ),
+                      );
+                    }
                   },
-                  child: const Text('Add contact')),
+                  child: Text(group.visibility == 'shared'
+                      ? 'Send invitation'
+                      : 'Add contact')),
               if (group.visibility == 'shared' && self.isNotEmpty)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -465,22 +496,26 @@ class _MemberBalanceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final subtitle = balance > 0
-        ? 'gets back ${formatMoney(balance)}'
-        : balance < 0
-            ? 'owes ${formatMoney(balance.abs())}'
-            : 'settled up';
+    final subtitle = !member.accepted
+        ? 'Invitation pending'
+        : balance > 0
+            ? 'gets back ${formatMoney(balance)}'
+            : balance < 0
+                ? 'owes ${formatMoney(balance.abs())}'
+                : 'settled up';
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(child: Text(member.initials)),
       title: Text(isCurrentUser ? 'You' : member.name),
       subtitle: Text(subtitle),
-      trailing: isCurrentUser || balance == 0
-          ? Icon(Icons.check_circle_rounded, color: colors.primary)
-          : TextButton(
-              onPressed: onSettle,
-              child: Text(balance < 0 ? 'Request' : 'Pay'),
-            ),
+      trailing: !member.accepted
+          ? Icon(Icons.hourglass_empty_rounded, color: colors.secondary)
+          : isCurrentUser || balance == 0
+              ? Icon(Icons.check_circle_rounded, color: colors.primary)
+              : TextButton(
+                  onPressed: onSettle,
+                  child: Text(balance < 0 ? 'Request' : 'Pay'),
+                ),
     );
   }
 }
