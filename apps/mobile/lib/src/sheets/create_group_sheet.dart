@@ -160,6 +160,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 title: Text(l10n.allowSalarySplits),
                 subtitle: Text(l10n.salaryOptInOnly),
                 onChanged: (value) => setState(() => _salarySplits = value)),
+            if (_salarySplits) const SalaryInferenceNotice(),
             if (widget.contacts.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(l10n.addSavedContacts,

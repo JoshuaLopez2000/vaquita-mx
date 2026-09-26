@@ -989,8 +989,14 @@ abstract class AppLocalizations {
   /// No description provided for @salaryPrivacy.
   ///
   /// In es, this message translates to:
-  /// **'Tu salario permanece privado; solo se usa tu proporción.'**
+  /// **'Tu salario exacto se oculta, pero los resultados proporcionales pueden revelar diferencias salariales relativas.'**
   String get salaryPrivacy;
+
+  /// No description provided for @salaryInferenceDisclosure.
+  ///
+  /// In es, this message translates to:
+  /// **'Aviso de privacidad: los miembros del grupo pueden inferir diferencias salariales relativas a partir de los porcentajes y montos resultantes.'**
+  String get salaryInferenceDisclosure;
 
   /// No description provided for @simulatePayment.
   ///

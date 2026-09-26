@@ -499,7 +499,11 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get salaryPrivacy =>
-      'Tu salario permanece privado; solo se usa tu proporción.';
+      'Tu salario exacto se oculta, pero los resultados proporcionales pueden revelar diferencias salariales relativas.';
+
+  @override
+  String get salaryInferenceDisclosure =>
+      'Aviso de privacidad: los miembros del grupo pueden inferir diferencias salariales relativas a partir de los porcentajes y montos resultantes.';
 
   @override
   String get simulatePayment => 'Simular pago';

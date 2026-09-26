@@ -6,6 +6,7 @@ import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
+import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
 
 part 'group_detail/settlement_sheet.dart';
 part 'group_detail/salary_split_card.dart';
@@ -262,6 +263,10 @@ class GroupDetailScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(l10n.salarySplitsUnlock),
                 ),
+              if (group.salarySplitEnabled) ...[
+                const SalaryInferenceNotice(),
+                const SizedBox(height: 12),
+              ],
               const Divider(height: 28),
               TextField(
                   controller: member,

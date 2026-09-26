@@ -100,6 +100,10 @@ void main() {
 
     await tester.tap(find.byKey(const Key('create-group-button')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('salary-inference-notice')), findsNothing);
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('salary-inference-notice')), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('group-name-field')),
       'Birthday dinner',
@@ -109,6 +113,7 @@ void main() {
       'Laura',
     );
     await tester.enterText(find.byType(TextField).at(3), '55 0000 0099');
+    await tester.ensureVisible(find.byKey(const Key('create-group-submit')));
     await tester.tap(find.byKey(const Key('create-group-submit')));
     await tester.pumpAndSettle();
 
@@ -234,11 +239,42 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Editar grupo y agregar contactos'));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('salary-inference-notice')), findsNothing);
     await tester.enterText(find.byType(TextField).first, 'Updated weekend');
 
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();
 
     expect(find.text('Weekend in CDMX'), findsOneWidget);
+  });
+
+  testWidgets('shows salary inference notice for salary-based groups',
+      (tester) async {
+    final store = DemoStore.seeded();
+    store.groups.insert(
+      0,
+      ExpenseGroup(
+        id: 'salary-group',
+        name: 'Salary group',
+        emoji: '\u{1F4B0}',
+        members: const [
+          Member(id: DemoStore.seedUserId, name: 'You'),
+          Member(id: 'ana', name: 'Ana'),
+        ],
+        visibility: 'shared',
+        salarySplitEnabled: true,
+        salarySplitAvailable: true,
+      ),
+    );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.byKey(const Key('group-salary-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Opciones del grupo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Editar grupo y agregar contactos'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('salary-inference-notice')), findsOneWidget);
   });
 }
