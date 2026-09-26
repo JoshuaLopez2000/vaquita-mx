@@ -51,15 +51,16 @@ type Settlement struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 type Group struct {
-	ID                   string       `json:"id"`
-	Name                 string       `json:"name"`
-	Emoji                string       `json:"emoji"`
-	Visibility           string       `json:"visibility"`
-	SalarySplitEnabled   bool         `json:"salary_split_enabled"`
-	SalarySplitAvailable bool         `json:"salary_split_available"`
-	Members              []Member     `json:"members"`
-	Expenses             []Expense    `json:"expenses"`
-	Settlements          []Settlement `json:"settlements"`
+	ID                   string           `json:"id"`
+	Name                 string           `json:"name"`
+	Emoji                string           `json:"emoji"`
+	Visibility           string           `json:"visibility"`
+	SalarySplitEnabled   bool             `json:"salary_split_enabled"`
+	SalarySplitAvailable bool             `json:"salary_split_available"`
+	Members              []Member         `json:"members"`
+	Expenses             []Expense        `json:"expenses"`
+	Settlements          []Settlement     `json:"settlements"`
+	Balances             map[string]int64 `json:"balances"`
 }
 type MemberInput struct {
 	Name  string `json:"name"`
@@ -617,7 +618,11 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		}
 		g.Settlements = append(g.Settlements, x)
 	}
-	return ss.Err()
+	if err := ss.Err(); err != nil {
+		return err
+	}
+	g.Balances = Balances(*g)
+	return nil
 }
 func newID(p string) (string, error) {
 	b := make([]byte, 12)

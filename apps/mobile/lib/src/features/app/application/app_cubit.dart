@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
+import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/store.dart';
 
 /// Application use-case coordinator. It is the only presentation-state
@@ -75,6 +76,13 @@ class AppCubit extends Cubit<AppState> {
       store.removeMember(groupId, memberId);
 
   Future<void> findContacts(List<String> phones) => store.findContacts(phones);
+  Future<void> loadContacts() => store.loadContacts();
+  Future<bool> saveContact(String name, String phone) =>
+      store.saveContact(name, phone);
+  Future<bool> saveContacts(List<AppContact> contacts) =>
+      store.saveContacts(contacts);
+  Future<bool> removeContact(String contactId) =>
+      store.removeContact(contactId);
 
   void showMovements() => store.showMovements();
 

@@ -144,6 +144,43 @@ class ApiClient {
         .toList();
   }
 
+  Future<List<AppContact>> listContacts() async {
+    final response = await _client
+        .get(Uri.parse('$_baseUrl/api/v1/contacts'), headers: _headers())
+        .timeout(const Duration(seconds: 8));
+    return ((_decode(response)['contacts'] as List<dynamic>?) ?? const [])
+        .map((value) => AppContact.fromJson(value as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<AppContact>> saveContact(String name, String phone) async {
+    return saveContacts([AppContact(id: '', name: name, phone: phone)]);
+  }
+
+  Future<List<AppContact>> saveContacts(List<AppContact> contacts) async {
+    final response = await _client
+        .post(Uri.parse('$_baseUrl/api/v1/contacts'),
+            headers: _headers(),
+            body: jsonEncode({
+              'contacts': [
+                for (final contact in contacts)
+                  {'name': contact.name, 'phone': contact.phone}
+              ]
+            }))
+        .timeout(const Duration(seconds: 8));
+    return ((_decode(response)['contacts'] as List<dynamic>?) ?? const [])
+        .map((value) => AppContact.fromJson(value as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> removeContact(String contactId) async {
+    final response = await _client
+        .delete(Uri.parse('$_baseUrl/api/v1/contacts/$contactId'),
+            headers: _headers())
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 204) _decode(response);
+  }
+
   Future<void> addExpense({
     required String groupId,
     required String description,

@@ -170,6 +170,18 @@ func (r *Repository) ListContacts(ctx context.Context, ownerID string) ([]Contac
 	return out, rows.Err()
 }
 
+func (r *Repository) RemoveContact(ctx context.Context, ownerID, contactID string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM contacts WHERE id=$1 AND owner_id=$2`, contactID, ownerID)
+	if err != nil {
+		return fmt.Errorf("delete contact: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil || deleted == 0 {
+		return ErrInvalid
+	}
+	return nil
+}
+
 func NormalizePhone(value string) (string, bool) {
 	var digits strings.Builder
 	for _, char := range value {

@@ -69,6 +69,59 @@ class DemoStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> loadContacts() async {
+    if (_apiClient == null) return;
+    contacts
+      ..clear()
+      ..addAll(await _apiClient.listContacts());
+    notifyListeners();
+  }
+
+  Future<bool> saveContact(String name, String phone) async {
+    return saveContacts([AppContact(id: '', name: name, phone: phone)]);
+  }
+
+  Future<bool> saveContacts(List<AppContact> newContacts) async {
+    if (_apiClient == null) {
+      contacts.addAll(newContacts.map((contact) => AppContact(
+          id: _nextId('contact'), name: contact.name, phone: contact.phone)));
+      notifyListeners();
+      return true;
+    }
+    return _syncContacts(() async {
+      await _apiClient.saveContacts(newContacts);
+    });
+  }
+
+  Future<bool> removeContact(String contactId) async {
+    if (_apiClient == null) {
+      contacts.removeWhere((contact) => contact.id == contactId);
+      notifyListeners();
+      return true;
+    }
+    return _syncContacts(() => _apiClient.removeContact(contactId));
+  }
+
+  Future<bool> _syncContacts(Future<void> Function() mutation) async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      await mutation();
+      await loadContacts();
+      return true;
+    } on ApiException catch (error) {
+      errorMessage = error.message;
+      return false;
+    } catch (_) {
+      errorMessage = 'The server request failed. Check Docker and try again.';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> createGroup({
     required String name,
     required List<String> memberNames,
@@ -252,17 +305,19 @@ class DemoStore extends ChangeNotifier {
   }
 
   Map<String, int> balances(ExpenseGroup group) {
+    if (_apiClient != null) return Map.unmodifiable(group.balances);
+    return _localBalances(group);
+  }
+
+  Map<String, int> _localBalances(ExpenseGroup group) {
     final result = {for (final member in group.members) member.id: 0};
     for (final expense in group.expenses) {
       result[expense.payerId] =
           (result[expense.payerId] ?? 0) + expense.amountCents;
-      final count = expense.participantIds.length;
-      if (count == 0) continue;
-      final baseShare = expense.amountCents ~/ count;
-      var remainder = expense.amountCents % count;
-      for (final participantId in expense.participantIds) {
-        final share = baseShare + (remainder > 0 ? 1 : 0);
-        if (remainder > 0) remainder--;
+      final shares = _equalShares(expense.amountCents, expense.participantIds);
+      for (final entry in shares.entries) {
+        final participantId = entry.key;
+        final share = entry.value;
         result[participantId] = (result[participantId] ?? 0) - share;
       }
     }
@@ -273,6 +328,18 @@ class DemoStore extends ChangeNotifier {
           (result[settlement.toMemberId] ?? 0) - settlement.amountCents;
     }
     return result;
+  }
+
+  Map<String, int> _equalShares(int amountCents, List<String> participantIds) {
+    if (participantIds.isEmpty) return const {};
+    final shares = <String, int>{};
+    final baseShare = amountCents ~/ participantIds.length;
+    var remainder = amountCents % participantIds.length;
+    for (final participantId in participantIds) {
+      shares[participantId] = baseShare + (remainder > 0 ? 1 : 0);
+      if (remainder > 0) remainder--;
+    }
+    return shares;
   }
 
   int currentUserBalance(ExpenseGroup group) {

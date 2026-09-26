@@ -63,6 +63,7 @@ func main() {
 	mux.HandleFunc("POST /api/v1/contacts/matches", app.requireUser(app.matchContacts))
 	mux.HandleFunc("GET /api/v1/contacts", app.requireUser(app.listContacts))
 	mux.HandleFunc("POST /api/v1/contacts", app.requireUser(app.saveContacts))
+	mux.HandleFunc("DELETE /api/v1/contacts/{contactID}", app.requireUser(app.removeContact))
 	mux.HandleFunc("GET /api/v1/groups", app.requireUser(app.listGroups))
 	mux.HandleFunc("GET /api/v1/group-invitations", app.requireUser(app.listInvitations))
 	mux.HandleFunc("POST /api/v1/group-invitations/{groupID}/response", app.requireUser(app.respondInvitation))
@@ -286,6 +287,19 @@ func (app application) saveContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"contacts": contacts})
+}
+
+func (app application) removeContact(w http.ResponseWriter, r *http.Request) {
+	err := app.auth.RemoveContact(r.Context(), userID(r), r.PathValue("contactID"))
+	if errors.Is(err, auth.ErrInvalid) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "contact not found"})
+		return
+	}
+	if err != nil {
+		serverError(w, "remove contact", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (app application) listGroups(w http.ResponseWriter, r *http.Request) {

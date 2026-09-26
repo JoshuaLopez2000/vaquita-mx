@@ -14,6 +14,7 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Inbox'), findsOneWidget);
     expect(find.text('Movements'), findsOneWidget);
+    expect(find.text('Contacts'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
   });
 

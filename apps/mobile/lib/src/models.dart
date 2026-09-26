@@ -152,10 +152,12 @@ class ExpenseGroup {
     this.visibility = 'personal',
     this.salarySplitEnabled = false,
     this.salarySplitAvailable = false,
+    Map<String, int>? balances,
     List<Expense>? expenses,
     List<Settlement>? settlements,
   })  : expenses = expenses ?? [],
-        settlements = settlements ?? [];
+        settlements = settlements ?? [],
+        balances = balances ?? {};
 
   final String id;
   final String name;
@@ -166,6 +168,7 @@ class ExpenseGroup {
   final bool salarySplitAvailable;
   final List<Expense> expenses;
   final List<Settlement> settlements;
+  final Map<String, int> balances;
 
   factory ExpenseGroup.fromJson(Map<String, dynamic> json) => ExpenseGroup(
         id: json['id'] as String,
@@ -174,6 +177,8 @@ class ExpenseGroup {
         visibility: json['visibility'] as String? ?? 'personal',
         salarySplitEnabled: json['salary_split_enabled'] as bool? ?? false,
         salarySplitAvailable: json['salary_split_available'] as bool? ?? false,
+        balances: ((json['balances'] as Map<String, dynamic>?) ?? const {})
+            .map((key, value) => MapEntry(key, value as int)),
         members: ((json['members'] as List<dynamic>?) ?? const [])
             .map((value) => Member.fromJson(value as Map<String, dynamic>))
             .toList(),

@@ -41,12 +41,15 @@ class NewExpenseInput {
   final String splitMode;
 }
 
-Future<NewGroupInput?> showCreateGroupSheet(BuildContext context) {
+Future<NewGroupInput?> showCreateGroupSheet(
+  BuildContext context, {
+  List<AppContact> contacts = const [],
+}) {
   return showModalBottomSheet<NewGroupInput>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => const _CreateGroupSheet(),
+    builder: (_) => _CreateGroupSheet(contacts: contacts),
   );
 }
 
@@ -63,7 +66,9 @@ Future<NewExpenseInput?> showAddExpenseSheet(
 }
 
 class _CreateGroupSheet extends StatefulWidget {
-  const _CreateGroupSheet();
+  const _CreateGroupSheet({required this.contacts});
+
+  final List<AppContact> contacts;
 
   @override
   State<_CreateGroupSheet> createState() => _CreateGroupSheetState();
@@ -140,6 +145,19 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     });
   }
 
+  void _toggleContact(AppContact contact) {
+    setState(() {
+      final index =
+          _members.indexWhere((member) => member.phone == contact.phone);
+      if (index >= 0) {
+        _members.removeAt(index);
+      } else {
+        _members
+            .add(GroupMemberDraft(name: contact.name, phone: contact.phone));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -206,6 +224,25 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 title: const Text('Allow salary-based splits'),
                 subtitle: const Text('Only members who opt in can use this'),
                 onChanged: (value) => setState(() => _salarySplits = value)),
+            if (widget.contacts.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Add saved contacts',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final contact in widget.contacts)
+                    FilterChip(
+                      label: Text(contact.name),
+                      selected: _members
+                          .any((member) => member.phone == contact.phone),
+                      onSelected: (_) => _toggleContact(contact),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 6),
             TextFormField(
               key: const Key('group-members-field'),

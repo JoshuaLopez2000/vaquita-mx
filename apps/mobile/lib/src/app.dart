@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/auth_screen.dart';
+import 'package:vaquita_mx/src/contacts_screen.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
@@ -122,6 +122,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    context.read<AppCubit>().loadContacts();
   }
 
   @override
@@ -144,7 +145,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _createGroup() async {
-    final input = await showCreateGroupSheet(context);
+    final input = await showCreateGroupSheet(
+      context,
+      contacts: context.read<AppCubit>().state.contacts,
+    );
     if (input == null || !mounted) return;
     final created = await context.read<AppCubit>().createGroup(
           name: input.name,
@@ -178,6 +182,7 @@ class _AppShellState extends State<AppShell> {
               DashboardScreen(store: widget.store),
               StatusScreen(store: widget.store),
               MovementsScreen(store: widget.store),
+              const ContactsScreen(),
               ProfileScreen(store: widget.store),
             ],
           ),
@@ -214,6 +219,11 @@ class _AppShellState extends State<AppShell> {
               icon: Icon(Icons.swap_horiz_outlined),
               selectedIcon: Icon(Icons.swap_horiz_rounded),
               label: 'Movements',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.contacts_outlined),
+              selectedIcon: Icon(Icons.contacts_rounded),
+              label: 'Contacts',
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline_rounded),
@@ -1092,28 +1102,6 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({required this.store, super.key});
 
   final DemoStore store;
-  static const _contacts = MethodChannel('mx.vaquita.vaquita_mx/contacts');
-
-  Future<void> _findContacts(BuildContext context) async {
-    final appCubit = context.read<AppCubit>();
-    try {
-      final phones =
-          await _contacts.invokeListMethod<String>('getPhoneNumbers');
-      await appCubit.findContacts(phones ?? []);
-    } on PlatformException catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:
-                Text(error.message ?? 'Contacts permission is required.')));
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not match contacts.')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
@@ -1177,9 +1165,13 @@ class ProfileScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-                onPressed: () => _findContacts(context),
+                onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ContactsScreen(),
+                      ),
+                    ),
                 icon: const Icon(Icons.contacts_outlined),
-                label: const Text('Find contacts on Vaquita')),
+                label: const Text('Manage contacts')),
             if (state.contacts.isNotEmpty)
               Card(
                   child: Column(children: [

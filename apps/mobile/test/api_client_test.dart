@@ -18,6 +18,7 @@ void main() {
               {
                 'id': 'group-1',
                 'name': 'Trip',
+                'balances': {'me': 400, 'ana': -400},
                 'emoji': '🏖️',
                 'members': [
                   {'id': 'me', 'name': 'You'},
@@ -37,6 +38,7 @@ void main() {
 
     expect(groups, hasLength(1));
     expect(groups.single.name, 'Trip');
+    expect(groups.single.balances['ana'], -400);
     expect(groups.single.members.single.id, 'me');
   });
 
