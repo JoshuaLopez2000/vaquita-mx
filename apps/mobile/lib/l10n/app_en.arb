@@ -1,0 +1,203 @@
+{
+  "@@locale": "en",
+  "appTitle": "Vaquita MX",
+  "home": "Home",
+  "inbox": "Inbox",
+  "movements": "Movements",
+  "contacts": "Contacts",
+  "profile": "Profile",
+  "newGroup": "New group",
+  "retry": "Retry",
+  "cancel": "Cancel",
+  "save": "Save",
+  "close": "Close",
+  "remove": "Remove",
+  "addContact": "Add contact",
+  "noContactsSaved": "No contacts saved yet.",
+  "noGroups": "No groups yet",
+  "noMovements": "No movements yet",
+  "noExpenses": "No expenses yet",
+  "createGroup": "Create group",
+  "addExpense": "Add expense",
+  "paymentProvider": "Payment provider",
+  "simulatedProvider": "Simulated — no real money moves",
+  "signIn": "Sign in",
+  "createAccount": "Create account",
+  "welcomeBack": "Welcome back",
+  "createYourAccount": "Create your account",
+  "email": "Email",
+  "password": "Password",
+  "name": "Name",
+  "phone": "Phone",
+  "groupName": "Group name",
+  "expenseDescription": "Description",
+  "amount": "Amount",
+  "you": "You",
+  "youOwe": "You owe",
+  "youAreOwed": "You are owed",
+  "settledUp": "Settled up",
+  "accept": "Accept",
+  "decline": "Decline",
+  "language": "Language",
+  "languageDescription": "Choose the app language",
+  "chooseLanguage": "Choose language",
+  "spanish": "Spanish",
+  "english": "English",
+  "yourAccount": "Your account",
+  "mobileNumber": "Mobile number",
+  "manageContacts": "Manage contacts",
+  "contactsDescription": "Find people already using Vaquita. Your contacts are matched only after you choose this.",
+  "aboutSimulatedProvider": "This build demonstrates the future CoDi collection flow with a simulated provider.",
+  "removeContact": "Remove contact?",
+  "removeContactDescription": "This will not remove them from any existing groups.",
+  "couldNotSaveContact": "Could not save contact.",
+  "couldNotImportContacts": "Could not import contacts.",
+  "contactsPermissionDenied": "Contacts permission was denied.",
+  "importContacts": "Import contacts",
+  "importFromPhone": "Import from phone",
+  "importSelected": "Import {count} selected",
+  "@importSelected": {"placeholders": {"count": {"type": "int"}}},
+  "removeContactTooltip": "Remove contact",
+  "accountName": "Name",
+  "mexicanMobileNumber": "Mexican mobile number",
+  "cannotReachServer": "Cannot reach the Vaquita server.",
+  "monthlySalary": "Monthly salary (optional for proportional splits)",
+  "alreadyHaveAccount": "Already have an account? Sign in",
+  "newHere": "New here? Create an account",
+  "acrossAllGroups": "Across all groups",
+  "yourGroups": "Your groups",
+  "activeGroups": "{count} active",
+  "@activeGroups": {"placeholders":{"count":{"type":"int"}}},
+  "groupSummary": "{members} members · {expenses} expenses",
+  "@groupSummary": {"placeholders":{"members":{"type":"int"},"expenses":{"type":"int"}}},
+  "groupBalanceOwed": "you are owed",
+  "groupBalanceYouOwe": "you owe",
+  "groupBalanceSettled": "settled up",
+  "noGroupsDescription": "Create a group and select contacts to get started."
+  ,"inboxEmptyTitle": "You're all caught up"
+  ,"inboxEmptyDescription": "Invitations and contact balances will appear here."
+  ,"movementsEmptyDescription": "Expenses and settlements from your groups will appear here."
+  ,"invitationDetails": "Invitation details"
+  ,"sharedGroupInvitation": "Shared group invitation"
+  ,"responseRequired": "Response required"
+  ,"balanceDetails": "Balance details"
+  ,"byGroup": "By group"
+  ,"concepts": "Concepts"
+  ,"noActiveBalances": "No active group balances to show."
+  ,"joinGroup": "Join {group}?"
+  ,"@joinGroup": {"placeholders":{"group":{"type":"String"}}}
+  ,"joinedGroup": "You joined {group}."
+  ,"@joinedGroup": {"placeholders":{"group":{"type":"String"}}}
+  ,"invitationDeclined": "Invitation to {group} declined."
+  ,"@invitationDeclined": {"placeholders":{"group":{"type":"String"}}}
+  ,"acceptInvitation": "Accept invitation"
+  ,"youOweContact": "You owe this contact"
+  ,"contactOwesYou": "This contact owes you"
+  ,"returnToInbox": "Return to Inbox to accept or decline this invitation."
+  ,"memberOwesYou": "{name} owes you"
+  ,"@memberOwesYou": {"placeholders":{"name":{"type":"String"}}}
+  ,"youOweMember": "You owe {name}"
+  ,"@youOweMember": {"placeholders":{"name":{"type":"String"}}}
+  ,"requestPayment": "Request payment"
+  ,"payContact": "Pay {name}"
+  ,"@payContact": {"placeholders":{"name":{"type":"String"}}}
+  ,"genericMember": "A member"
+  ,"memberPaid": "{name} paid"
+  ,"@memberPaid": {"placeholders":{"name":{"type":"String"}}}
+  ,"memberPaidMember": "{from} paid {to}"
+  ,"@memberPaidMember": {"placeholders":{"from":{"type":"String"},"to":{"type":"String"}}}
+  ,"settlement": "Settlement"
+  ,"today": "Today"
+  ,"yesterday": "Yesterday"
+  ,"daysAgo": "{count} days ago"
+  ,"@daysAgo": {"placeholders":{"count":{"type":"int"}}}
+  ,"groupCreated": "{name} created."
+  ,"@groupCreated": {"placeholders":{"name":{"type":"String"}}}
+  ,"couldNotCreateGroup": "Could not create the group."
+  ,"goodAfternoon": "Good afternoon 👋"
+  ,"memberNeedsNamePhone": "Each member needs a name and Mexican phone number."
+  ,"addAtLeastOneMember": "Add at least one member."
+  ,"enterNamePhone": "Enter a name and Mexican phone number."
+  ,"createAGroup": "Create a group"
+  ,"createGroupDescription": "You are added automatically. Add each contact with their Mexican phone number."
+  ,"groupIcon": "Group icon"
+  ,"personal": "Personal"
+  ,"shared": "Shared"
+  ,"allowSalarySplits": "Allow salary-based splits"
+  ,"salaryOptInOnly": "Only members who opt in can use this"
+  ,"addSavedContacts": "Add saved contacts"
+  ,"memberName": "Member name"
+  ,"addMember": "Add member"
+  ,"selectParticipant": "Select at least one participant."
+  ,"addAnExpense": "Add an expense"
+  ,"dinnerExample": "Dinner"
+  ,"addDescription": "Add a description"
+  ,"amountGreaterZero": "Enter an amount greater than zero"
+  ,"paidBy": "Paid by"
+  ,"equal": "Equal"
+  ,"bySalary": "By salary"
+  ,"salaryEligibleOnly": "Only members who shared their salary are eligible."
+  ,"splitBySalaryBetween": "Split by salary between"
+  ,"splitEquallyBetween": "Split equally between"
+  ,"saveExpense": "Save expense"
+  ,"beachWeekend": "Beach weekend"
+  ,"enterGroupName": "Enter a group name"
+  ,"expenseAdded": "{description} added."
+  ,"@expenseAdded": {"placeholders":{"description":{"type":"String"}}}
+  ,"couldNotAddExpense": "Could not add the expense."
+  ,"groupOptions": "Group options"
+  ,"balances": "Balances"
+  ,"expenses": "Expenses"
+  ,"membersCount": "{count} members"
+  ,"@membersCount": {"placeholders":{"count":{"type":"int"}}}
+  ,"sharedGroup": "Shared group"
+  ,"personalGroup": "Personal group"
+  ,"editGroupContacts": "Edit group and add contacts"
+  ,"saveGroup": "Save group"
+  ,"enableSalarySplits": "Enable salary-based splits"
+  ,"everyMemberConsented": "Every active member has consented."
+  ,"salarySplitsUnlock": "Salary splits unlock after every member accepts and opts in."
+  ,"contactName": "Contact name"
+  ,"pendingUntilAccept": "They will appear as pending until they accept."
+  ,"couldNotAddContact": "Could not add this contact."
+  ,"contactAdded": "Contact added."
+  ,"sendInvitation": "Send invitation"
+  ,"allowGroupSalary": "Allow this group to use my salary"
+  ,"salaryPrivacy": "Your salary value stays private; only your proportional share is used."
+  ,"simulatePayment": "Simulate payment"
+  ,"noExpensesYet": "No expenses yet"
+  ,"addFirstExpense": "Add the first one"
+  ,"invitationSent": "Invitation sent to {name}."
+  ,"@invitationSent": {"placeholders":{"name":{"type":"String"}}}
+  ,"requestFrom": "Request from {name}"
+  ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
+  ,"demoPaymentDescription": "Demo mode: this simulates a confirmed provider callback. No real money moves."
+  ,"paymentConfirmed": "Simulated payment confirmed."
+  ,"couldNotConfirmPayment": "Could not confirm the payment."
+  ,"salarySplitsEnabled": "Salary-based splits enabled"
+  ,"salarySplits": "Salary-based splits"
+  ,"salaryEnabledDescription": "Expenses can be divided in proportion to salary."
+  ,"salaryAvailableDescription": "Everyone consented. Turn it on to use it for new expenses."
+  ,"salaryWaitingDescription": "Waiting for every member to accept and share salary consent."
+  ,"salarySharedGroupRequired": "Salary splits require a shared group so every member can consent."
+  ,"configure": "Configure"
+  ,"info": "Info"
+  ,"yourGroupBalance": "Your group balance"
+  ,"youCurrentlyOwe": "You currently owe"
+  ,"invitationPending": "Invitation pending"
+  ,"getsBack": "gets back {amount}"
+  ,"@getsBack": {"placeholders":{"amount":{"type":"String"}}}
+  ,"owesAmount": "owes {amount}"
+  ,"@owesAmount": {"placeholders":{"amount":{"type":"String"}}}
+  ,"request": "Request"
+  ,"pay": "Pay"
+  ,"expenseSplitDetails": "Paid by {payer} · {mode} {count} ways"
+  ,"@expenseSplitDetails": {"placeholders":{"payer":{"type":"String"},"mode":{"type":"String"},"count":{"type":"int"}}}
+  ,"split": "split"
+  ,"serverUnavailable": "Cannot reach the Vaquita server. Is Docker running?"
+  ,"serverRequestFailed": "The server request failed. Check Docker and try again."
+  ,"requestFailed": "Request failed."
+  ,"movementMetadata": "{emoji} {group} · {detail} · {date}"
+  ,"@movementMetadata": {"placeholders":{"emoji":{"type":"String"},"group":{"type":"String"},"detail":{"type":"String"},"date":{"type":"String"}}}
+  ,"memberNamesExample": "Ana, Diego, Sofía"
+}

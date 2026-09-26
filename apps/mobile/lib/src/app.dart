@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/auth_screen.dart';
 import 'package:vaquita_mx/src/contacts_screen.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
+import 'package:vaquita_mx/l10n/localized_error.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
@@ -33,6 +36,9 @@ class _VaquitaAppState extends State<VaquitaApp> {
   late final bool _ownsStore;
   var _authenticated = false;
   var _restoringSession = true;
+  var _locale = const Locale('es');
+
+  void _setLocale(Locale locale) => setState(() => _locale = locale);
 
   @override
   void initState() {
@@ -79,7 +85,10 @@ class _VaquitaAppState extends State<VaquitaApp> {
     return BlocProvider.value(
       value: appCubit,
       child: MaterialApp(
-        title: 'Vaquita MX',
+        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: _locale,
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: colorScheme,
@@ -113,23 +122,28 @@ class _VaquitaAppState extends State<VaquitaApp> {
         home: _restoringSession
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : _authenticated
-                ? AppShell(store: store)
+                ? AppShell(store: store, onLocaleChanged: _setLocale)
                 : AuthScreen(
-                api: store.apiClient!,
-                onAuthenticated: () {
-                  setState(() => _authenticated = true);
-                  appCubit.loadGroups();
-                },
-              ),
+                    api: store.apiClient!,
+                    onAuthenticated: () {
+                      setState(() => _authenticated = true);
+                      appCubit.loadGroups();
+                    },
+                  ),
       ),
     );
   }
 }
 
 class AppShell extends StatefulWidget {
-  const AppShell({required this.store, super.key});
+  const AppShell({
+    required this.store,
+    required this.onLocaleChanged,
+    super.key,
+  });
 
   final DemoStore store;
+  final ValueChanged<Locale> onLocaleChanged;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -166,6 +180,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _createGroup() async {
+    final l10n = AppLocalizations.of(context)!;
     final input = await showCreateGroupSheet(
       context,
       contacts: context.read<AppCubit>().state.contacts,
@@ -183,7 +198,7 @@ class _AppShellState extends State<AppShell> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          created ? '${input.name} created.' : 'Could not create the group.',
+          created ? l10n.groupCreated(input.name) : l10n.couldNotCreateGroup,
         ),
       ),
     );
@@ -191,6 +206,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return BlocListener<AppCubit, AppState>(
       listenWhen: (_, state) => state.navigationTarget != null,
       listener: (_, state) => _selectTab(state.navigationTarget!),
@@ -204,7 +220,10 @@ class _AppShellState extends State<AppShell> {
               StatusScreen(store: widget.store),
               MovementsScreen(store: widget.store),
               const ContactsScreen(),
-              ProfileScreen(store: widget.store),
+              ProfileScreen(
+                store: widget.store,
+                onLocaleChanged: widget.onLocaleChanged,
+              ),
             ],
           ),
         ),
@@ -213,7 +232,7 @@ class _AppShellState extends State<AppShell> {
                 key: const Key('create-group-button'),
                 onPressed: _createGroup,
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('New group'),
+                label: Text(l10n.newGroup),
               )
             : null,
         bottomNavigationBar: NavigationBar(
@@ -225,31 +244,31 @@ class _AppShellState extends State<AppShell> {
             }
             if (index == 2) context.read<AppCubit>().loadGroups();
           },
-          destinations: const [
+          destinations: [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home_rounded),
-              label: 'Home',
+              label: l10n.home,
             ),
             NavigationDestination(
               icon: Icon(Icons.receipt_long_outlined),
               selectedIcon: Icon(Icons.receipt_long_rounded),
-              label: 'Inbox',
+              label: l10n.inbox,
             ),
             NavigationDestination(
               icon: Icon(Icons.swap_horiz_outlined),
               selectedIcon: Icon(Icons.swap_horiz_rounded),
-              label: 'Movements',
+              label: l10n.movements,
             ),
             NavigationDestination(
               icon: Icon(Icons.contacts_outlined),
               selectedIcon: Icon(Icons.contacts_rounded),
-              label: 'Contacts',
+              label: l10n.contacts,
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline_rounded),
               selectedIcon: Icon(Icons.person_rounded),
-              label: 'Profile',
+              label: l10n.profile,
             ),
           ],
         ),
@@ -267,6 +286,7 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
+        final l10n = AppLocalizations.of(context)!;
         var owedToYou = 0;
         var youOwe = 0;
         for (final group in store.groups) {
@@ -288,11 +308,10 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(children: [
                         const Icon(Icons.groups_outlined, size: 42),
                         const SizedBox(height: 10),
-                        Text('No groups yet',
+                        Text(l10n.noGroups,
                             style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 4),
-                        const Text(
-                            'Create a group and select contacts to get started.',
+                        Text(l10n.noGroupsDescription,
                             textAlign: TextAlign.center),
                       ]),
                     ),
@@ -309,7 +328,7 @@ class DashboardScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'VAQUITA MX',
+                            l10n.appTitle.toUpperCase(),
                             style: Theme.of(context)
                                 .textTheme
                                 .labelLarge
@@ -321,7 +340,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'Good afternoon 👋',
+                            l10n.goodAfternoon,
                             style: Theme.of(context)
                                 .textTheme
                                 .headlineSmall
@@ -332,9 +351,9 @@ class DashboardScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 23,
-                      child: Text('YO'),
+                      child: Text(l10n.you.toUpperCase()),
                     ),
                   ],
                 ),
@@ -362,10 +381,10 @@ class DashboardScreen extends StatelessWidget {
                     color: Theme.of(context).colorScheme.errorContainer,
                     child: ListTile(
                       leading: const Icon(Icons.cloud_off_rounded),
-                      title: Text(store.errorMessage!),
+                      title: Text(localizedError(l10n, store.errorMessage!)),
                       trailing: TextButton(
                         onPressed: store.load,
-                        child: const Text('Retry'),
+                        child: Text(l10n.retry),
                       ),
                     ),
                   ),
@@ -378,13 +397,13 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Your groups',
+                        l10n.yourGroups,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
                       ),
                     ),
-                    Text('${store.groups.length} active'),
+                    Text(l10n.activeGroups(store.groups.length)),
                   ],
                 ),
               ),
@@ -426,6 +445,7 @@ class _BalanceOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -441,7 +461,7 @@ class _BalanceOverview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Across all groups',
+            l10n.acrossAllGroups,
             style: TextStyle(color: colors.onPrimary.withValues(alpha: 0.8)),
           ),
           const SizedBox(height: 18),
@@ -449,7 +469,7 @@ class _BalanceOverview extends StatelessWidget {
             children: [
               Expanded(
                 child: _BalanceMetric(
-                  label: 'You are owed',
+                  label: l10n.youAreOwed,
                   value: formatMoney(owedToYou),
                   icon: Icons.south_west_rounded,
                 ),
@@ -463,7 +483,7 @@ class _BalanceOverview extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.only(left: 18),
                   child: _BalanceMetric(
-                    label: 'You owe',
+                    label: l10n.youOwe,
                     value: formatMoney(youOwe),
                     icon: Icons.north_east_rounded,
                   ),
@@ -527,13 +547,14 @@ class _GroupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final colors = Theme.of(context).colorScheme;
     final balanceColor = balance >= 0 ? colors.primary : colors.error;
     final balanceLabel = balance > 0
-        ? 'you are owed'
+        ? l10n.groupBalanceOwed
         : balance < 0
-            ? 'you owe'
-            : 'settled up';
+            ? l10n.groupBalanceYouOwe
+            : l10n.groupBalanceSettled;
 
     return Card(
       child: InkWell(
@@ -567,7 +588,8 @@ class _GroupCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${group.members.length} members · ${group.expenses.length} expenses',
+                      l10n.groupSummary(
+                          group.members.length, group.expenses.length),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -619,6 +641,7 @@ class _StatusScreenState extends State<StatusScreen> {
 
   Future<void> _respondToInvitation(
       GroupInvitation invitation, bool accept) async {
+    final l10n = AppLocalizations.of(context)!;
     setState(() => _respondingInvitationId = invitation.group.id);
     final updated = await context
         .read<AppCubit>()
@@ -628,12 +651,14 @@ class _StatusScreenState extends State<StatusScreen> {
     if (updated) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(accept
-            ? 'You joined ${invitation.group.name}.'
-            : 'Invitation to ${invitation.group.name} declined.'),
+            ? l10n.joinedGroup(invitation.group.name)
+            : l10n.invitationDeclined(invitation.group.name)),
       ));
     } else if (widget.store.errorMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.store.errorMessage!)),
+        SnackBar(
+            content: Text(localizedError(
+                AppLocalizations.of(context)!, widget.store.errorMessage!))),
       );
     }
   }
@@ -642,12 +667,13 @@ class _StatusScreenState extends State<StatusScreen> {
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
+        final l10n = AppLocalizations.of(context)!;
         final rows = widget.store.contactStatus;
 
         return CustomScrollView(
           slivers: [
             SliverAppBar.large(
-              title: const Text('Inbox'),
+              title: Text(l10n.inbox),
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             ),
             if (rows.isEmpty && widget.store.invitations.isEmpty)
@@ -665,13 +691,13 @@ class _StatusScreenState extends State<StatusScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'You\'re all caught up',
+                        l10n.inboxEmptyTitle,
                         style: Theme.of(context).textTheme.titleLarge,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Invitations and contact balances will appear here.',
+                        l10n.inboxEmptyDescription,
                         style: Theme.of(context).textTheme.bodyMedium,
                         textAlign: TextAlign.center,
                       ),
@@ -713,11 +739,11 @@ class _StatusScreenState extends State<StatusScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text('Join ${invite.group.name}?',
+                                        Text(l10n.joinGroup(invite.group.name),
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .titleMedium),
-                                        const Text('Shared group invitation'),
+                                        Text(l10n.sharedGroupInvitation),
                                       ],
                                     ),
                                   ),
@@ -733,7 +759,7 @@ class _StatusScreenState extends State<StatusScreen> {
                                           ? null
                                           : () => _respondToInvitation(
                                               invite, false),
-                                      child: const Text('Decline'),
+                                      child: Text(l10n.decline),
                                     ),
                                     const SizedBox(width: 8),
                                     FilledButton(
@@ -750,7 +776,7 @@ class _StatusScreenState extends State<StatusScreen> {
                                               child: CircularProgressIndicator(
                                                   strokeWidth: 2),
                                             )
-                                          : const Text('Accept invitation'),
+                                          : Text(l10n.acceptInvitation),
                                     ),
                                   ],
                                 ),
@@ -770,8 +796,8 @@ class _StatusScreenState extends State<StatusScreen> {
                         leading: CircleAvatar(child: Text(row.member.initials)),
                         title: Text(row.member.name),
                         subtitle: Text(row.amountCents > 0
-                            ? 'You owe this contact'
-                            : 'This contact owes you'),
+                            ? l10n.youOweContact
+                            : l10n.contactOwesYou),
                         trailing: Text(
                           formatMoney(row.amountCents.abs()),
                           style: const TextStyle(fontWeight: FontWeight.w700),
@@ -803,8 +829,9 @@ class InvitationDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Invitation details')),
+      appBar: AppBar(title: Text(l10n.invitationDetails)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -818,14 +845,13 @@ class InvitationDetailsScreen extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
-          const Text('Shared group invitation', textAlign: TextAlign.center),
+          Text(l10n.sharedGroupInvitation, textAlign: TextAlign.center),
           const SizedBox(height: 32),
-          const Card(
+          Card(
             child: ListTile(
               leading: Icon(Icons.info_outline),
-              title: Text('Response required'),
-              subtitle:
-                  Text('Return to Inbox to accept or decline this invitation.'),
+              title: Text(l10n.responseRequired),
+              subtitle: Text(l10n.returnToInbox),
             ),
           ),
         ],
@@ -873,6 +899,7 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
   }
 
   Widget _build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final balances = _groupBalances();
     final currentAmount =
         balances.fold<int>(0, (total, balance) => total + balance.amount);
@@ -881,21 +908,21 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         children: [
-          Text('Balance details',
+          Text(l10n.balanceDetails,
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(formatMoney(currentAmount.abs()),
               style: Theme.of(context).textTheme.headlineMedium),
           if (currentAmount == 0)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text('Settled up'),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(l10n.settledUp),
             ),
           const SizedBox(height: 24),
-          Text('By group', style: Theme.of(context).textTheme.titleMedium),
+          Text(l10n.byGroup, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (balances.isEmpty)
-            const Text('No active group balances to show.')
+            Text(l10n.noActiveBalances)
           else
             for (final balance in balances)
               Card(
@@ -905,8 +932,8 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                       leading: CircleAvatar(child: Text(balance.group.emoji)),
                       title: Text(balance.group.name),
                       subtitle: Text(balance.amount < 0
-                          ? '${status.member.name} owes you'
-                          : 'You owe ${status.member.name}'),
+                          ? l10n.memberOwesYou(status.member.name)
+                          : l10n.youOweMember(status.member.name)),
                       trailing: Text(formatMoney(balance.amount.abs()),
                           style: const TextStyle(fontWeight: FontWeight.w700)),
                       onTap: () => Navigator.of(context).push(
@@ -924,7 +951,7 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                         child: Align(
                           alignment: Alignment.centerLeft,
-                          child: Text('Concepts',
+                          child: Text(l10n.concepts,
                               style: Theme.of(context).textTheme.labelLarge),
                         ),
                       ),
@@ -953,8 +980,8 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                           }),
                           icon: const Icon(Icons.qr_code_2_rounded),
                           label: Text(balance.amount < 0
-                              ? 'Request payment'
-                              : 'Pay ${status.member.name}'),
+                              ? l10n.requestPayment
+                              : l10n.payContact(status.member.name)),
                         ),
                       ),
                     ),
@@ -981,27 +1008,37 @@ class MovementsScreen extends StatelessWidget {
 
   final DemoStore store;
 
-  List<_Movement> _items() {
+  List<_Movement> _items(AppLocalizations l10n) {
     final items = <_Movement>[];
     for (final group in store.groups) {
       final members = {for (final member in group.members) member.id: member};
+      String displayName(String memberId) {
+        final member = members[memberId];
+        if (member == null) return l10n.genericMember;
+        if (member.id == store.currentUserId ||
+            member.userId == store.currentUserId) {
+          return l10n.you;
+        }
+        return member.name;
+      }
+
       for (final expense in group.expenses) {
         items.add(_Movement(
           group: group,
           title: expense.description,
-          detail: '${members[expense.payerId]?.name ?? 'A member'} paid',
+          detail: l10n.memberPaid(displayName(expense.payerId)),
           amountCents: expense.amountCents,
           occurredAt: expense.createdAt,
           isSettlement: false,
         ));
       }
       for (final settlement in group.settlements) {
-        final from = members[settlement.fromMemberId]?.name ?? 'A member';
-        final to = members[settlement.toMemberId]?.name ?? 'a member';
+        final from = displayName(settlement.fromMemberId);
+        final to = displayName(settlement.toMemberId);
         items.add(_Movement(
           group: group,
-          title: '$from paid $to',
-          detail: 'Settlement',
+          title: l10n.memberPaidMember(from, to),
+          detail: l10n.settlement,
           amountCents: settlement.amountCents,
           occurredAt: settlement.createdAt,
           isSettlement: true,
@@ -1012,25 +1049,26 @@ class MovementsScreen extends StatelessWidget {
     return items;
   }
 
-  String _relativeDate(DateTime value) {
+  String _relativeDate(DateTime value, AppLocalizations l10n) {
     final date = value.toLocal();
     final today = DateUtils.dateOnly(DateTime.now());
     final daysAgo = today.difference(DateUtils.dateOnly(date)).inDays;
-    if (daysAgo == 0) return 'Today';
-    if (daysAgo == 1) return 'Yesterday';
-    if (daysAgo < 7) return '$daysAgo days ago';
-    return '${date.day}/${date.month}/${date.year}';
+    if (daysAgo == 0) return l10n.today;
+    if (daysAgo == 1) return l10n.yesterday;
+    if (daysAgo < 7) return l10n.daysAgo(daysAgo);
+    return DateFormat.yMd(l10n.localeName).format(date);
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
-        final items = _items();
+        final l10n = AppLocalizations.of(context)!;
+        final items = _items(l10n);
         return CustomScrollView(
           slivers: [
             SliverAppBar.large(
-              title: const Text('Movements'),
+              title: Text(l10n.movements),
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             ),
             if (items.isEmpty)
@@ -1046,11 +1084,11 @@ class MovementsScreen extends StatelessWidget {
                             size: 48,
                             color: Theme.of(context).colorScheme.secondary),
                         const SizedBox(height: 16),
-                        Text('No movements yet',
+                        Text(l10n.noMovements,
                             style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Expenses and settlements from your groups will appear here.',
+                        Text(
+                          l10n.movementsEmptyDescription,
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -1076,8 +1114,12 @@ class MovementsScreen extends StatelessWidget {
                               : Icons.receipt_long_outlined),
                         ),
                         title: Text(item.title),
-                        subtitle: Text(
-                            '${item.group.emoji} ${item.group.name} · ${item.detail} · ${_relativeDate(item.occurredAt)}'),
+                        subtitle: Text(l10n.movementMetadata(
+                          item.group.emoji,
+                          item.group.name,
+                          item.detail,
+                          _relativeDate(item.occurredAt, l10n),
+                        )),
                         trailing: Text(formatMoney(item.amountCents),
                             style:
                                 const TextStyle(fontWeight: FontWeight.w700)),
@@ -1120,15 +1162,21 @@ class _Movement {
 }
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({required this.store, super.key});
+  const ProfileScreen({
+    required this.store,
+    required this.onLocaleChanged,
+    super.key,
+  });
 
   final DemoStore store;
+  final ValueChanged<Locale> onLocaleChanged;
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, state) {
+        final l10n = AppLocalizations.of(context)!;
         final user = state.user;
-        final name = user?.name ?? 'Your account';
+        final name = user?.name ?? l10n.yourAccount;
         final initials = name
             .trim()
             .split(RegExp(r'\s+'))
@@ -1139,7 +1187,7 @@ class ProfileScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
           children: [
             Text(
-              'Profile',
+              l10n.profile,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -1162,27 +1210,26 @@ class ProfileScreen extends StatelessWidget {
                   children: [
                     ListTile(
                       leading: const Icon(Icons.email_outlined),
-                      title: const Text('Email'),
+                      title: Text(l10n.email),
                       trailing: Text(user.email),
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.phone_outlined),
-                      title: const Text('Mobile number'),
+                      title: Text(l10n.mobileNumber),
                       trailing: Text(user.phone),
                     ),
                   ],
                 ),
               ),
             const SizedBox(height: 18),
-            Text('Contacts',
+            Text(l10n.contacts,
                 style: Theme.of(context)
                     .textTheme
                     .titleLarge
                     ?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
-            Text(
-                'Find people already using Vaquita. Your contacts are matched only after you choose this.',
+            Text(l10n.contactsDescription,
                 style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -1192,7 +1239,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                 icon: const Icon(Icons.contacts_outlined),
-                label: const Text('Manage contacts')),
+                label: Text(l10n.manageContacts)),
             if (state.contacts.isNotEmpty)
               Card(
                   child: Column(children: [
@@ -1208,19 +1255,67 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 18),
             Card(
               child: ListTile(
+                key: const Key('language-settings-button'),
+                leading: const Icon(Icons.language_outlined),
+                title: Text(l10n.language),
+                subtitle: Text(l10n.languageDescription),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => showModalBottomSheet<void>(
+                  context: context,
+                  builder: (sheetContext) {
+                    final selected =
+                        Localizations.localeOf(context).languageCode;
+                    return SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(l10n.chooseLanguage,
+                                style: Theme.of(context).textTheme.titleLarge),
+                            RadioGroup<String>(
+                              groupValue: selected,
+                              onChanged: (language) {
+                                if (language == null) return;
+                                onLocaleChanged(Locale(language));
+                                Navigator.pop(sheetContext);
+                              },
+                              child: Column(
+                                children: [
+                                  RadioListTile<String>(
+                                    value: 'es',
+                                    title: Text(l10n.spanish),
+                                  ),
+                                  RadioListTile<String>(
+                                    value: 'en',
+                                    title: Text(l10n.english),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
                 leading: const Icon(Icons.shield_outlined),
-                title: const Text('Payment provider'),
-                subtitle: const Text('Simulated — no real money moves'),
+                title: Text(l10n.paymentProvider),
+                subtitle: Text(l10n.simulatedProvider),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () {
                   showAboutDialog(
                     context: context,
-                    applicationName: 'Vaquita MX',
+                    applicationName: l10n.appTitle,
                     applicationVersion: '0.1.0',
-                    children: const [
-                      Text(
-                        'This build demonstrates the future CoDi collection flow with a simulated provider.',
-                      ),
+                    children: [
+                      Text(l10n.aboutSimulatedProvider),
                     ],
                   );
                 },

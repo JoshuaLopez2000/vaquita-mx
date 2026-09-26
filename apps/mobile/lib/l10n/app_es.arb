@@ -1,0 +1,203 @@
+{
+  "@@locale": "es",
+  "appTitle": "Vaquita MX",
+  "home": "Inicio",
+  "inbox": "Bandeja",
+  "movements": "Movimientos",
+  "contacts": "Contactos",
+  "profile": "Perfil",
+  "newGroup": "Nuevo grupo",
+  "retry": "Reintentar",
+  "cancel": "Cancelar",
+  "save": "Guardar",
+  "close": "Cerrar",
+  "remove": "Eliminar",
+  "addContact": "Agregar contacto",
+  "noContactsSaved": "Aún no hay contactos guardados.",
+  "noGroups": "Aún no hay grupos",
+  "noMovements": "Aún no hay movimientos",
+  "noExpenses": "Aún no hay gastos",
+  "createGroup": "Crear grupo",
+  "addExpense": "Agregar gasto",
+  "paymentProvider": "Proveedor de pago",
+  "simulatedProvider": "Simulado — no se mueve dinero real",
+  "signIn": "Iniciar sesión",
+  "createAccount": "Crear cuenta",
+  "welcomeBack": "Bienvenido de nuevo",
+  "createYourAccount": "Crea tu cuenta",
+  "email": "Correo electrónico",
+  "password": "Contraseña",
+  "name": "Nombre",
+  "phone": "Teléfono",
+  "groupName": "Nombre del grupo",
+  "expenseDescription": "Descripción",
+  "amount": "Monto",
+  "you": "Tú",
+  "youOwe": "Debes",
+  "youAreOwed": "Te deben",
+  "settledUp": "Saldado",
+  "accept": "Aceptar",
+  "decline": "Rechazar",
+  "language": "Idioma",
+  "languageDescription": "Elige el idioma de la aplicación",
+  "chooseLanguage": "Elegir idioma",
+  "spanish": "Español",
+  "english": "Inglés",
+  "yourAccount": "Tu cuenta",
+  "mobileNumber": "Número de celular",
+  "manageContacts": "Administrar contactos",
+  "contactsDescription": "Encuentra personas que ya usan Vaquita. Tus contactos solo se comparan cuando lo eliges.",
+  "aboutSimulatedProvider": "Esta versión demuestra el futuro flujo de cobro CoDi con un proveedor simulado.",
+  "removeContact": "¿Eliminar contacto?",
+  "removeContactDescription": "No se eliminará de los grupos existentes.",
+  "couldNotSaveContact": "No se pudo guardar el contacto.",
+  "couldNotImportContacts": "No se pudieron importar los contactos.",
+  "contactsPermissionDenied": "Se denegó el permiso para contactos.",
+  "importContacts": "Importar contactos",
+  "importFromPhone": "Importar desde el teléfono",
+  "importSelected": "Importar {count} seleccionados",
+  "@importSelected": {"placeholders": {"count": {"type": "int"}}},
+  "removeContactTooltip": "Eliminar contacto",
+  "accountName": "Nombre",
+  "mexicanMobileNumber": "Número de celular mexicano",
+  "cannotReachServer": "No se puede conectar al servidor de Vaquita.",
+  "monthlySalary": "Salario mensual (opcional para divisiones proporcionales)",
+  "alreadyHaveAccount": "¿Ya tienes una cuenta? Inicia sesión",
+  "newHere": "¿Eres nuevo? Crea una cuenta",
+  "acrossAllGroups": "En todos los grupos",
+  "yourGroups": "Tus grupos",
+  "activeGroups": "{count} activos",
+  "@activeGroups": {"placeholders":{"count":{"type":"int"}}},
+  "groupSummary": "{members} miembros · {expenses} gastos",
+  "@groupSummary": {"placeholders":{"members":{"type":"int"},"expenses":{"type":"int"}}},
+  "groupBalanceOwed": "te deben",
+  "groupBalanceYouOwe": "debes",
+  "groupBalanceSettled": "saldado",
+  "noGroupsDescription": "Crea un grupo y selecciona contactos para comenzar."
+  ,"inboxEmptyTitle": "Estás al día"
+  ,"inboxEmptyDescription": "Las invitaciones y los saldos de contactos aparecerán aquí."
+  ,"movementsEmptyDescription": "Los gastos y liquidaciones de tus grupos aparecerán aquí."
+  ,"invitationDetails": "Detalles de la invitación"
+  ,"sharedGroupInvitation": "Invitación a grupo compartido"
+  ,"responseRequired": "Respuesta requerida"
+  ,"balanceDetails": "Detalles del saldo"
+  ,"byGroup": "Por grupo"
+  ,"concepts": "Conceptos"
+  ,"noActiveBalances": "No hay saldos activos de grupos para mostrar."
+  ,"joinGroup": "¿Unirse a {group}?"
+  ,"@joinGroup": {"placeholders":{"group":{"type":"String"}}}
+  ,"joinedGroup": "Te uniste a {group}."
+  ,"@joinedGroup": {"placeholders":{"group":{"type":"String"}}}
+  ,"invitationDeclined": "Rechazaste la invitación a {group}."
+  ,"@invitationDeclined": {"placeholders":{"group":{"type":"String"}}}
+  ,"acceptInvitation": "Aceptar invitación"
+  ,"youOweContact": "Le debes a este contacto"
+  ,"contactOwesYou": "Este contacto te debe"
+  ,"returnToInbox": "Vuelve a la bandeja para aceptar o rechazar esta invitación."
+  ,"memberOwesYou": "{name} te debe"
+  ,"@memberOwesYou": {"placeholders":{"name":{"type":"String"}}}
+  ,"youOweMember": "Le debes a {name}"
+  ,"@youOweMember": {"placeholders":{"name":{"type":"String"}}}
+  ,"requestPayment": "Solicitar pago"
+  ,"payContact": "Pagar a {name}"
+  ,"@payContact": {"placeholders":{"name":{"type":"String"}}}
+  ,"genericMember": "Un miembro"
+  ,"memberPaid": "{name} pagó"
+  ,"@memberPaid": {"placeholders":{"name":{"type":"String"}}}
+  ,"memberPaidMember": "{from} pagó a {to}"
+  ,"@memberPaidMember": {"placeholders":{"from":{"type":"String"},"to":{"type":"String"}}}
+  ,"settlement": "Liquidación"
+  ,"today": "Hoy"
+  ,"yesterday": "Ayer"
+  ,"daysAgo": "Hace {count} días"
+  ,"@daysAgo": {"placeholders":{"count":{"type":"int"}}}
+  ,"groupCreated": "Se creó {name}."
+  ,"@groupCreated": {"placeholders":{"name":{"type":"String"}}}
+  ,"couldNotCreateGroup": "No se pudo crear el grupo."
+  ,"goodAfternoon": "Buenas tardes 👋"
+  ,"memberNeedsNamePhone": "Cada miembro necesita un nombre y número mexicano."
+  ,"addAtLeastOneMember": "Agrega al menos un miembro."
+  ,"enterNamePhone": "Ingresa un nombre y número mexicano."
+  ,"createAGroup": "Crear un grupo"
+  ,"createGroupDescription": "Te agregamos automáticamente. Añade cada contacto con su número mexicano."
+  ,"groupIcon": "Ícono del grupo"
+  ,"personal": "Personal"
+  ,"shared": "Compartido"
+  ,"allowSalarySplits": "Permitir divisiones por salario"
+  ,"salaryOptInOnly": "Solo pueden usarlo los miembros que acepten"
+  ,"addSavedContacts": "Agregar contactos guardados"
+  ,"memberName": "Nombre del miembro"
+  ,"addMember": "Agregar miembro"
+  ,"selectParticipant": "Selecciona al menos un participante."
+  ,"addAnExpense": "Agregar un gasto"
+  ,"dinnerExample": "Cena"
+  ,"addDescription": "Agrega una descripción"
+  ,"amountGreaterZero": "Ingresa un monto mayor que cero"
+  ,"paidBy": "Pagado por"
+  ,"equal": "Igual"
+  ,"bySalary": "Por salario"
+  ,"salaryEligibleOnly": "Solo participan quienes compartieron su salario."
+  ,"splitBySalaryBetween": "Dividir por salario entre"
+  ,"splitEquallyBetween": "Dividir en partes iguales entre"
+  ,"saveExpense": "Guardar gasto"
+  ,"beachWeekend": "Fin de semana en la playa"
+  ,"enterGroupName": "Ingresa un nombre de grupo"
+  ,"expenseAdded": "Se agregó {description}."
+  ,"@expenseAdded": {"placeholders":{"description":{"type":"String"}}}
+  ,"couldNotAddExpense": "No se pudo agregar el gasto."
+  ,"groupOptions": "Opciones del grupo"
+  ,"balances": "Saldos"
+  ,"expenses": "Gastos"
+  ,"membersCount": "{count} miembros"
+  ,"@membersCount": {"placeholders":{"count":{"type":"int"}}}
+  ,"sharedGroup": "Grupo compartido"
+  ,"personalGroup": "Grupo personal"
+  ,"editGroupContacts": "Editar grupo y agregar contactos"
+  ,"saveGroup": "Guardar grupo"
+  ,"enableSalarySplits": "Activar divisiones por salario"
+  ,"everyMemberConsented": "Todos los miembros activos dieron su consentimiento."
+  ,"salarySplitsUnlock": "Las divisiones se habilitan cuando todos aceptan y dan su consentimiento."
+  ,"contactName": "Nombre del contacto"
+  ,"pendingUntilAccept": "Aparecerá como pendiente hasta que acepte."
+  ,"couldNotAddContact": "No se pudo agregar este contacto."
+  ,"contactAdded": "Contacto agregado."
+  ,"sendInvitation": "Enviar invitación"
+  ,"allowGroupSalary": "Permitir que este grupo use mi salario"
+  ,"salaryPrivacy": "Tu salario permanece privado; solo se usa tu proporción."
+  ,"simulatePayment": "Simular pago"
+  ,"noExpensesYet": "Aún no hay gastos"
+  ,"addFirstExpense": "Agregar el primero"
+  ,"invitationSent": "Invitación enviada a {name}."
+  ,"@invitationSent": {"placeholders":{"name":{"type":"String"}}}
+  ,"requestFrom": "Solicitar a {name}"
+  ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
+  ,"demoPaymentDescription": "Modo demo: simula una confirmación del proveedor. No se mueve dinero real."
+  ,"paymentConfirmed": "Pago simulado confirmado."
+  ,"couldNotConfirmPayment": "No se pudo confirmar el pago."
+  ,"salarySplitsEnabled": "Divisiones por salario activadas"
+  ,"salarySplits": "Divisiones por salario"
+  ,"salaryEnabledDescription": "Los gastos pueden dividirse proporcionalmente al salario."
+  ,"salaryAvailableDescription": "Todos aceptaron. Actívalo para nuevos gastos."
+  ,"salaryWaitingDescription": "Esperando que todos acepten y autoricen el uso del salario."
+  ,"salarySharedGroupRequired": "Se requiere un grupo compartido para que todos den su consentimiento."
+  ,"configure": "Configurar"
+  ,"info": "Información"
+  ,"yourGroupBalance": "Tu saldo del grupo"
+  ,"youCurrentlyOwe": "Actualmente debes"
+  ,"invitationPending": "Invitación pendiente"
+  ,"getsBack": "recibe {amount}"
+  ,"@getsBack": {"placeholders":{"amount":{"type":"String"}}}
+  ,"owesAmount": "debe {amount}"
+  ,"@owesAmount": {"placeholders":{"amount":{"type":"String"}}}
+  ,"request": "Solicitar"
+  ,"pay": "Pagar"
+  ,"expenseSplitDetails": "Pagado por {payer} · {mode} entre {count}"
+  ,"@expenseSplitDetails": {"placeholders":{"payer":{"type":"String"},"mode":{"type":"String"},"count":{"type":"int"}}}
+  ,"split": "dividido"
+  ,"serverUnavailable": "No se puede conectar al servidor de Vaquita. ¿Está Docker en ejecución?"
+  ,"serverRequestFailed": "La solicitud al servidor falló. Revisa Docker e inténtalo de nuevo."
+  ,"requestFailed": "La solicitud falló."
+  ,"movementMetadata": "{emoji} {group} · {detail} · {date}"
+  ,"@movementMetadata": {"placeholders":{"emoji":{"type":"String"},"group":{"type":"String"},"detail":{"type":"String"},"date":{"type":"String"}}}
+  ,"memberNamesExample": "Ana, Diego, Sofía"
+}

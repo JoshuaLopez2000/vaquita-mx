@@ -34,8 +34,8 @@ class ApiClient {
     final encodedUser = await _storage.read(key: _sessionUserKey);
     if (token == null || encodedUser == null) return false;
     try {
-      final user = AppUser.fromJson(
-          jsonDecode(encodedUser) as Map<String, dynamic>);
+      final user =
+          AppUser.fromJson(jsonDecode(encodedUser) as Map<String, dynamic>);
       _token = token;
       _user = user;
       _userId = user.id;
@@ -274,7 +274,7 @@ class ApiClient {
   Map<String, dynamic> _decode(http.Response response) {
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(decoded['error'] as String? ?? 'Request failed');
+      throw ApiException(decoded['error'] as String? ?? 'request_failed');
     }
     return decoded;
   }

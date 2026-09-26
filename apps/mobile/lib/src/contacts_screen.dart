@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/models.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -21,30 +22,30 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _addContact() async {
+    final l10n = AppLocalizations.of(context)!;
     final name = TextEditingController();
     final phone = TextEditingController();
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Add contact'),
+        title: Text(l10n.addContact),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
               controller: name,
-              decoration: const InputDecoration(labelText: 'Name')),
+              decoration: InputDecoration(labelText: l10n.accountName)),
           const SizedBox(height: 12),
           TextField(
               controller: phone,
               keyboardType: TextInputType.phone,
-              decoration:
-                  const InputDecoration(labelText: 'Mexican mobile number')),
+              decoration: InputDecoration(labelText: l10n.mexicanMobileNumber)),
         ]),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.cancel)),
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Save')),
+              child: Text(l10n.save)),
         ],
       ),
     );
@@ -53,8 +54,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
           .read<AppCubit>()
           .saveContact(name.text.trim(), phone.text.trim());
       if (mounted && !success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not save contact.')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.couldNotSaveContact)));
       }
     }
     name.dispose();
@@ -62,19 +63,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _removeContact(String id) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Remove contact?'),
-        content:
-            const Text('This will not remove them from any existing groups.'),
+        title: Text(l10n.removeContact),
+        content: Text(l10n.removeContactDescription),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
+              child: Text(l10n.cancel)),
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Remove')),
+              child: Text(l10n.remove)),
         ],
       ),
     );
@@ -84,6 +85,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _importFromPhone() async {
+    final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<AppCubit>();
     try {
       final raw =
@@ -106,18 +108,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(saved
-                ? '${selected.length} contacts imported.'
-                : 'Could not import contacts.')));
+                ? l10n.importSelected(selected.length)
+                : l10n.couldNotImportContacts)));
       }
     } on PlatformException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(error.message ?? 'Contacts permission was denied.')));
+            content: Text(error.message ?? l10n.contactsPermissionDenied)));
       }
     }
   }
 
   Future<List<_PhoneContact>?> _selectContacts(List<_PhoneContact> contacts) {
+    final l10n = AppLocalizations.of(context)!;
     final selected = <int>{};
     return showModalBottomSheet<List<_PhoneContact>>(
       context: context,
@@ -127,9 +130,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           child: SizedBox(
             height: MediaQuery.sizeOf(context).height * .78,
             child: Column(children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(24, 20, 24, 8),
-                child: Text('Import contacts',
+                child: Text(l10n.importContacts,
                     style:
                         TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
               ),
@@ -157,7 +160,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       ? null
                       : () => Navigator.pop(sheetContext,
                           selected.map((index) => contacts[index]).toList()),
-                  child: Text('Import ${selected.length} selected'),
+                  child: Text(l10n.importSelected(selected.length)),
                 ),
               ),
             ]),
@@ -170,10 +173,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('Contacts'),
+          title: Text(AppLocalizations.of(context)!.contacts),
           actions: [
             IconButton(
-              tooltip: 'Import from phone',
+              tooltip: AppLocalizations.of(context)!.importFromPhone,
               onPressed: _importFromPhone,
               icon: const Icon(Icons.contact_phone_outlined),
             ),
@@ -182,12 +185,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
         floatingActionButton: FloatingActionButton.extended(
           onPressed: _addContact,
           icon: const Icon(Icons.person_add_alt_1_rounded),
-          label: const Text('Add contact'),
+          label: Text(AppLocalizations.of(context)!.addContact),
         ),
         body: BlocBuilder<AppCubit, AppState>(
           builder: (context, state) {
             if (state.contacts.isEmpty) {
-              return const Center(child: Text('No contacts saved yet.'));
+              return Center(
+                  child: Text(AppLocalizations.of(context)!.noContactsSaved));
             }
             return ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
@@ -203,7 +207,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     title: Text(contact.name),
                     subtitle: Text(contact.phone),
                     trailing: IconButton(
-                      tooltip: 'Remove contact',
+                      tooltip:
+                          AppLocalizations.of(context)!.removeContactTooltip,
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () => _removeContact(contact.id),
                     ),

@@ -54,7 +54,7 @@ class DemoStore extends ChangeNotifier {
     } on ApiException catch (error) {
       errorMessage = error.message;
     } catch (_) {
-      errorMessage = 'Cannot reach the Vaquita server. Is Docker running?';
+      errorMessage = 'server_unavailable';
     } finally {
       isLoading = false;
       notifyListeners();
@@ -114,7 +114,7 @@ class DemoStore extends ChangeNotifier {
       errorMessage = error.message;
       return false;
     } catch (_) {
-      errorMessage = 'The server request failed. Check Docker and try again.';
+      errorMessage = 'server_request_failed';
       return false;
     } finally {
       isLoading = false;
@@ -365,7 +365,7 @@ class DemoStore extends ChangeNotifier {
       errorMessage = error.message;
       return false;
     } catch (_) {
-      errorMessage = 'The server request failed. Check Docker and try again.';
+      errorMessage = 'server_request_failed';
       return false;
     } finally {
       isLoading = false;

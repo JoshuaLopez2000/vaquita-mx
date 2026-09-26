@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vaquita_mx/src/models.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
 
 class NewGroupInput {
   const NewGroupInput(
@@ -94,15 +95,14 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   }
 
   void _submit() {
+    final l10n = AppLocalizations.of(context)!;
     if (!_formKey.currentState!.validate()) return;
     final pendingName = _memberNameController.text.trim();
     final pendingPhone = _memberPhoneController.text.trim();
     if (pendingName.isNotEmpty || pendingPhone.isNotEmpty) {
       if (pendingName.isEmpty || pendingPhone.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Each member needs a name and Mexican phone number.')),
+          SnackBar(content: Text(l10n.memberNeedsNamePhone)),
         );
         return;
       }
@@ -110,7 +110,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     }
     if (_members.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one member.')),
+        SnackBar(content: Text(l10n.addAtLeastOneMember)),
       );
       return;
     }
@@ -130,11 +130,12 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   }
 
   void _addMember() {
+    final l10n = AppLocalizations.of(context)!;
     final name = _memberNameController.text.trim();
     final phone = _memberPhoneController.text.trim();
     if (name.isEmpty || phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a name and Mexican phone number.')),
+        SnackBar(content: Text(l10n.enterNamePhone)),
       );
       return;
     }
@@ -160,6 +161,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -176,14 +178,14 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
           children: [
             const _SheetHandle(),
             Text(
-              'Create a group',
+              l10n.createAGroup,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'You are added automatically. Add each contact with their Mexican phone number.',
+              l10n.createGroupDescription,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 20),
@@ -192,26 +194,26 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               controller: _nameController,
               autofocus: true,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Group name',
-                hintText: 'Beach weekend',
-                prefixIcon: Icon(Icons.groups_rounded),
+              decoration: InputDecoration(
+                labelText: l10n.groupName,
+                hintText: l10n.beachWeekend,
+                prefixIcon: const Icon(Icons.groups_rounded),
               ),
               validator: (value) => value == null || value.trim().length < 2
-                  ? 'Enter a group name'
+                  ? l10n.enterGroupName
                   : null,
             ),
             const SizedBox(height: 14),
             TextFormField(
                 controller: _emojiController,
-                decoration: const InputDecoration(
-                    labelText: 'Group icon',
-                    prefixIcon: Icon(Icons.emoji_emotions_outlined))),
+                decoration: InputDecoration(
+                    labelText: l10n.groupIcon,
+                    prefixIcon: const Icon(Icons.emoji_emotions_outlined))),
             const SizedBox(height: 10),
             SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'personal', label: Text('Personal')),
-                  ButtonSegment(value: 'shared', label: Text('Shared'))
+                segments: [
+                  ButtonSegment(value: 'personal', label: Text(l10n.personal)),
+                  ButtonSegment(value: 'shared', label: Text(l10n.shared))
                 ],
                 selected: {
                   _visibility
@@ -221,12 +223,12 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _salarySplits,
-                title: const Text('Allow salary-based splits'),
-                subtitle: const Text('Only members who opt in can use this'),
+                title: Text(l10n.allowSalarySplits),
+                subtitle: Text(l10n.salaryOptInOnly),
                 onChanged: (value) => setState(() => _salarySplits = value)),
             if (widget.contacts.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text('Add saved contacts',
+              Text(l10n.addSavedContacts,
                   style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 6),
               Wrap(
@@ -249,10 +251,10 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               controller: _memberNameController,
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _addMember(),
-              decoration: const InputDecoration(
-                labelText: 'Member name',
-                hintText: 'Ana, Diego, Sofía',
-                prefixIcon: Icon(Icons.person_add_alt_1_rounded),
+              decoration: InputDecoration(
+                labelText: l10n.memberName,
+                hintText: l10n.memberNamesExample,
+                prefixIcon: const Icon(Icons.person_add_alt_1_rounded),
               ),
               validator: (_) => null,
             ),
@@ -261,12 +263,10 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               controller: _memberPhoneController,
               keyboardType: TextInputType.phone,
               decoration: InputDecoration(
-                labelText: _visibility == 'shared'
-                    ? 'Mexican phone number'
-                    : 'Mexican phone number',
+                labelText: l10n.mexicanMobileNumber,
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.add_circle_outline),
-                  tooltip: 'Add member',
+                  tooltip: l10n.addMember,
                   onPressed: _addMember,
                 ),
               ),
@@ -295,7 +295,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               key: const Key('create-group-submit'),
               onPressed: _submit,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Create group'),
+              label: Text(l10n.createGroup),
             ),
           ],
         ),
@@ -343,10 +343,11 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   }
 
   void _submit() {
+    final l10n = AppLocalizations.of(context)!;
     if (!_formKey.currentState!.validate()) return;
     if (_participantIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select at least one participant.')),
+        SnackBar(content: Text(l10n.selectParticipant)),
       );
       return;
     }
@@ -364,6 +365,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -379,7 +381,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
           children: [
             const _SheetHandle(),
             Text(
-              'Add an expense',
+              l10n.addAnExpense,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -390,13 +392,13 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               controller: _descriptionController,
               autofocus: true,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                hintText: 'Dinner',
-                prefixIcon: Icon(Icons.receipt_long_rounded),
+              decoration: InputDecoration(
+                labelText: l10n.expenseDescription,
+                hintText: l10n.dinnerExample,
+                prefixIcon: const Icon(Icons.receipt_long_rounded),
               ),
               validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Add a description'
+                  ? l10n.addDescription
                   : null,
             ),
             const SizedBox(height: 14),
@@ -408,23 +410,22 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
               ],
-              decoration: const InputDecoration(
-                labelText: 'Amount',
+              decoration: InputDecoration(
+                labelText: l10n.amount,
                 hintText: '0.00',
                 prefixText: r'$ ',
                 suffixText: 'MXN',
               ),
-              validator: (_) => _parseAmount() == null
-                  ? 'Enter an amount greater than zero'
-                  : null,
+              validator: (_) =>
+                  _parseAmount() == null ? l10n.amountGreaterZero : null,
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               key: const Key('expense-payer-field'),
               initialValue: _payerId,
-              decoration: const InputDecoration(
-                labelText: 'Paid by',
-                prefixIcon: Icon(Icons.account_balance_wallet_rounded),
+              decoration: InputDecoration(
+                labelText: l10n.paidBy,
+                prefixIcon: const Icon(Icons.account_balance_wallet_rounded),
               ),
               items: [
                 for (final member in widget.group.members)
@@ -438,9 +439,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             const SizedBox(height: 18),
             if (widget.group.salarySplitEnabled)
               SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'equal', label: Text('Equal')),
-                    ButtonSegment(value: 'salary', label: Text('By salary'))
+                  segments: [
+                    ButtonSegment(value: 'equal', label: Text(l10n.equal)),
+                    ButtonSegment(value: 'salary', label: Text(l10n.bySalary))
                   ],
                   selected: {
                     _splitMode
@@ -455,14 +456,13 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                         }
                       })),
             if (_splitMode == 'salary')
-              const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                      'Only members who shared their salary are eligible.')),
+              Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(l10n.salaryEligibleOnly)),
             Text(
               _splitMode == 'salary'
-                  ? 'Split by salary between'
-                  : 'Split equally between',
+                  ? l10n.splitBySalaryBetween
+                  : l10n.splitEquallyBetween,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -492,7 +492,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               key: const Key('add-expense-submit'),
               onPressed: _submit,
               icon: const Icon(Icons.check_rounded),
-              label: const Text('Save expense'),
+              label: Text(l10n.saveExpense),
             ),
           ],
         ),

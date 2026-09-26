@@ -11,22 +11,22 @@ void main() {
     expect(find.text('VAQUITA MX'), findsOneWidget);
     expect(find.text('Weekend in CDMX'), findsOneWidget);
     expect(find.text('Apartment'), findsOneWidget);
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Inbox'), findsOneWidget);
-    expect(find.text('Movements'), findsOneWidget);
-    expect(find.text('Contacts'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('Inicio'), findsOneWidget);
+    expect(find.text('Bandeja'), findsOneWidget);
+    expect(find.text('Movimientos'), findsOneWidget);
+    expect(find.text('Contactos'), findsOneWidget);
+    expect(find.text('Perfil'), findsOneWidget);
   });
 
   testWidgets('shows an empty state in the inbox tab', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
-    await tester.tap(find.text('Inbox'));
+    await tester.tap(find.text('Bandeja'));
     await tester.pumpAndSettle();
 
-    expect(find.text('You\'re all caught up'), findsOneWidget);
+    expect(find.text('Estás al día'), findsOneWidget);
     expect(
-      find.text('Invitations and contact balances will appear here.'),
+      find.text('Las invitaciones y los saldos de contactos aparecerán aquí.'),
       findsOneWidget,
     );
   });
@@ -34,7 +34,7 @@ void main() {
   testWidgets('shows group expenses in the movements tab', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
-    await tester.tap(find.text('Movements'));
+    await tester.tap(find.text('Movimientos'));
     await tester.pumpAndSettle();
 
     expect(find.text('Tacos and drinks'), findsOneWidget);
@@ -46,7 +46,23 @@ void main() {
     await tester.drag(find.byType(PageView), const Offset(-500, 0));
     await tester.pumpAndSettle();
 
-    expect(find.text('Inbox'), findsWidgets);
+    expect(find.text('Bandeja'), findsWidgets);
+  });
+
+  testWidgets('changes the app language from profile settings', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.text('Perfil'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('language-settings-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Español'), findsOneWidget);
+    expect(find.text('Inglés'), findsOneWidget);
+    await tester.tap(find.text('Inglés'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Home'), findsOneWidget);
   });
 
   testWidgets('opens balance details from an inbox card', (tester) async {
@@ -57,24 +73,24 @@ void main() {
     ));
     await tester.pumpWidget(VaquitaApp(store: store));
 
-    await tester.tap(find.text('Inbox'));
+    await tester.tap(find.text('Bandeja'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ana'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Balance details'), findsOneWidget);
+    expect(find.text('Detalles del saldo'), findsOneWidget);
     expect(find.text('Weekend in CDMX'), findsOneWidget);
     expect(find.text('Tacos and drinks'), findsOneWidget);
     expect(
         find.byKey(const Key('request-payment-cdmx-weekend')), findsOneWidget);
     await tester.tap(find.byKey(const Key('request-payment-cdmx-weekend')));
     await tester.pumpAndSettle();
-    expect(find.text('Request from Ana'), findsOneWidget);
-    expect(find.text('Simulate payment'), findsOneWidget);
+    expect(find.text('Solicitar a Ana'), findsOneWidget);
+    expect(find.text('Simular pago'), findsOneWidget);
     await tester.tap(find.byKey(const Key('settle-ana')));
     await tester.pumpAndSettle();
-    expect(find.text('Movements'), findsWidgets);
-    expect(find.text('Ana paid You'), findsOneWidget);
+    expect(find.text('Movimientos'), findsWidgets);
+    expect(find.text('Ana pagó a Tú'), findsOneWidget);
     expect(find.byKey(const Key('request-payment-cdmx-weekend')), findsNothing);
     expect(find.text('Ana'), findsNothing);
   });
@@ -97,7 +113,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Birthday dinner'), findsOneWidget);
-    expect(find.text('2 members · 0 expenses'), findsOneWidget);
+    expect(find.text('2 miembros · 0 gastos'), findsOneWidget);
   });
 
   testWidgets('opens a group and adds an expense', (tester) async {
@@ -142,7 +158,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Lucía'), findsOneWidget);
-    expect(find.text('Invitation pending'), findsOneWidget);
+    expect(find.text('Invitación pendiente'), findsOneWidget);
   });
 
   testWidgets('can dismiss group configuration while editing', (tester) async {
@@ -150,9 +166,9 @@ void main() {
 
     await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Group options'));
+    await tester.tap(find.byTooltip('Opciones del grupo'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit group and add contacts'));
+    await tester.tap(find.text('Editar grupo y agregar contactos'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Updated weekend');
 

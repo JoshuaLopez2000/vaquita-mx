@@ -4,6 +4,7 @@ import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
 
 class GroupDetailScreen extends StatelessWidget {
   const GroupDetailScreen({
@@ -16,6 +17,7 @@ class GroupDetailScreen extends StatelessWidget {
   final String groupId;
 
   Future<void> _addExpense(BuildContext context, ExpenseGroup group) async {
+    final l10n = AppLocalizations.of(context)!;
     final input = await showAddExpenseSheet(context, group);
     if (input == null || !context.mounted) return;
     final created = await context.read<AppCubit>().addExpense(
@@ -31,8 +33,8 @@ class GroupDetailScreen extends StatelessWidget {
       SnackBar(
         content: Text(
           created
-              ? '${input.description} added.'
-              : 'Could not add the expense.',
+              ? l10n.expenseAdded(input.description)
+              : l10n.couldNotAddExpense,
         ),
       ),
     );
@@ -43,6 +45,7 @@ class GroupDetailScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) {
+        final l10n = AppLocalizations.of(context)!;
         final group = store.groupById(groupId);
         final balances = store.balances(group);
         return Scaffold(
@@ -50,7 +53,7 @@ class GroupDetailScreen extends StatelessWidget {
             title: Text(group.name),
             actions: [
               IconButton(
-                tooltip: 'Group options',
+                tooltip: l10n.groupOptions,
                 onPressed: () => _showGroupInfo(context, group),
                 icon: const Icon(Icons.more_horiz_rounded),
               ),
@@ -60,7 +63,7 @@ class GroupDetailScreen extends StatelessWidget {
             key: const Key('add-expense-button'),
             onPressed: () => _addExpense(context, group),
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Add expense'),
+            label: Text(l10n.addExpense),
           ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
@@ -74,8 +77,8 @@ class GroupDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               _SectionHeader(
-                title: 'Balances',
-                detail: '${group.members.length} members',
+                title: l10n.balances,
+                detail: l10n.membersCount(group.members.length),
               ),
               const SizedBox(height: 10),
               Card(
@@ -131,7 +134,7 @@ class GroupDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               _SectionHeader(
-                title: 'Expenses',
+                title: l10n.expenses,
                 detail: formatMoney(group.totalSpentCents),
               ),
               const SizedBox(height: 10),
@@ -150,6 +153,7 @@ class GroupDetailScreen extends StatelessWidget {
   }
 
   Future<void> _showGroupInfo(BuildContext context, ExpenseGroup group) async {
+    final l10n = AppLocalizations.of(context)!;
     final editGroup = await showModalBottomSheet<bool>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -167,18 +171,18 @@ class GroupDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                  '${group.visibility == 'shared' ? 'Shared group' : 'Personal group'} · ${group.members.map((member) => member.name).join(', ')}'),
+                  '${group.visibility == 'shared' ? l10n.sharedGroup : l10n.personalGroup} · ${group.members.map((member) => member.name).join(', ')}'),
               const SizedBox(height: 20),
               OutlinedButton.icon(
                   onPressed: () {
                     Navigator.pop(sheetContext, true);
                   },
                   icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit group and add contacts')),
+                  label: Text(l10n.editGroupContacts)),
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => Navigator.pop(sheetContext, false),
-                child: const Text('Close'),
+                child: Text(l10n.close),
               ),
             ],
           ),
@@ -191,6 +195,7 @@ class GroupDetailScreen extends StatelessWidget {
   }
 
   Future<void> _editGroup(BuildContext context, ExpenseGroup group) async {
+    final l10n = AppLocalizations.of(context)!;
     final self = group.members
         .where((member) => member.userId == store.currentUserId)
         .toList();
@@ -208,11 +213,11 @@ class GroupDetailScreen extends StatelessWidget {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(
                   controller: name,
-                  decoration: const InputDecoration(labelText: 'Group name')),
+                  decoration: InputDecoration(labelText: l10n.groupName)),
               const SizedBox(height: 8),
               TextField(
                   controller: emoji,
-                  decoration: const InputDecoration(labelText: 'Icon')),
+                  decoration: InputDecoration(labelText: l10n.groupIcon)),
               const SizedBox(height: 8),
               FilledButton(
                   onPressed: () async {
@@ -220,13 +225,13 @@ class GroupDetailScreen extends StatelessWidget {
                         group.id, {'name': name.text, 'emoji': emoji.text});
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
-                  child: const Text('Save group')),
+                  child: Text(l10n.saveGroup)),
               if (group.salarySplitAvailable)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: group.salarySplitEnabled,
-                  title: const Text('Enable salary-based splits'),
-                  subtitle: const Text('Every active member has consented.'),
+                  title: Text(l10n.enableSalarySplits),
+                  subtitle: Text(l10n.everyMemberConsented),
                   onChanged: (value) async {
                     await store
                         .updateGroup(group.id, {'salary_split_enabled': value});
@@ -234,28 +239,26 @@ class GroupDetailScreen extends StatelessWidget {
                   },
                 )
               else if (group.visibility == 'shared')
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: Text(
-                      'Salary splits unlock after every member accepts and opts in.'),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(l10n.salarySplitsUnlock),
                 ),
               const Divider(height: 28),
               TextField(
                   controller: member,
-                  decoration: const InputDecoration(labelText: 'Contact name')),
+                  decoration: InputDecoration(labelText: l10n.contactName)),
               const SizedBox(height: 8),
               TextField(
                   controller: phone,
                   keyboardType: TextInputType.phone,
                   decoration:
-                      const InputDecoration(labelText: 'Mexican phone number')),
+                      InputDecoration(labelText: l10n.mexicanMobileNumber)),
               if (group.visibility == 'shared')
-                const Align(
+                Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
                     padding: EdgeInsets.only(top: 4),
-                    child:
-                        Text('They will appear as pending until they accept.'),
+                    child: Text(l10n.pendingUntilAccept),
                   ),
                 ),
               const SizedBox(height: 8),
@@ -267,8 +270,7 @@ class GroupDetailScreen extends StatelessWidget {
                     if (!added) {
                       if (sheet.mounted) {
                         ScaffoldMessenger.of(sheet).showSnackBar(
-                          const SnackBar(
-                              content: Text('Could not add this contact.')),
+                          SnackBar(content: Text(l10n.couldNotAddContact)),
                         );
                       }
                       return;
@@ -281,22 +283,21 @@ class GroupDetailScreen extends StatelessWidget {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(group.visibility == 'shared'
-                              ? 'Invitation sent to ${member.text.trim()}.'
-                              : 'Contact added.'),
+                              ? l10n.invitationSent(member.text.trim())
+                              : l10n.contactAdded),
                         ),
                       );
                     }
                   },
                   child: Text(group.visibility == 'shared'
-                      ? 'Send invitation'
-                      : 'Add contact')),
+                      ? l10n.sendInvitation
+                      : l10n.addContact)),
               if (group.visibility == 'shared' && self.isNotEmpty)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: self.single.salarySharing,
-                  title: const Text('Allow this group to use my salary'),
-                  subtitle: const Text(
-                      'Your salary value stays private; only your proportional share is used.'),
+                  title: Text(l10n.allowGroupSalary),
+                  subtitle: Text(l10n.salaryPrivacy),
                   onChanged: (value) async {
                     await context.read<AppCubit>().updateMember(
                         group.id, self.single.id, {'salary_sharing': value});
@@ -330,6 +331,7 @@ void showSettlementSheet(
   int balance, {
   VoidCallback? onSettled,
 }) {
+  final l10n = AppLocalizations.of(context)!;
   if (member.userId == store.currentUserId ||
       member.id == store.currentUserId ||
       balance == 0) {
@@ -352,7 +354,9 @@ void showSettlementSheet(
             ),
             const SizedBox(height: 14),
             Text(
-              memberOwes ? 'Request from ${member.name}' : 'Pay ${member.name}',
+              memberOwes
+                  ? l10n.requestFrom(member.name)
+                  : l10n.payContact(member.name),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
@@ -366,7 +370,7 @@ void showSettlementSheet(
             ),
             const SizedBox(height: 8),
             Text(
-              'Demo mode: this simulates a confirmed provider callback. No real money moves.',
+              l10n.demoPaymentDescription,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -384,15 +388,15 @@ void showSettlementSheet(
                   SnackBar(
                     content: Text(
                       settled
-                          ? 'Simulated payment confirmed.'
-                          : 'Could not confirm the payment.',
+                          ? l10n.paymentConfirmed
+                          : l10n.couldNotConfirmPayment,
                     ),
                   ),
                 );
                 if (settled) onSettled?.call();
               },
               icon: const Icon(Icons.check_circle_outline_rounded),
-              label: const Text('Simulate payment'),
+              label: Text(l10n.simulatePayment),
             ),
           ],
         ),
@@ -408,27 +412,27 @@ class _SalarySplitCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final enabled = group.salarySplitEnabled;
     final available = group.salarySplitAvailable;
     final message = enabled
-        ? 'Expenses can be divided in proportion to salary.'
+        ? l10n.salaryEnabledDescription
         : available
-            ? 'Everyone consented. Turn it on to use it for new expenses.'
+            ? l10n.salaryAvailableDescription
             : group.visibility == 'shared'
-                ? 'Waiting for every member to accept and share salary consent.'
-                : 'Salary splits require a shared group so every member can consent.';
+                ? l10n.salaryWaitingDescription
+                : l10n.salarySharedGroupRequired;
     return Card(
         child: ListTile(
       leading: Icon(Icons.pie_chart_outline_rounded,
           color: Theme.of(context).colorScheme.primary),
-      title:
-          Text(enabled ? 'Salary-based splits enabled' : 'Salary-based splits'),
+      title: Text(enabled ? l10n.salarySplitsEnabled : l10n.salarySplits),
       subtitle: Text(message),
       trailing: TextButton(
           onPressed: onConfigure,
           child: Text(available || group.visibility == 'shared'
-              ? 'Configure'
-              : 'Info')),
+              ? l10n.configure
+              : l10n.info)),
     ));
   }
 }
@@ -441,6 +445,7 @@ class _GroupHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(20),
@@ -457,7 +462,7 @@ class _GroupHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  balance >= 0 ? 'Your group balance' : 'You currently owe',
+                  balance >= 0 ? l10n.yourGroupBalance : l10n.youCurrentlyOwe,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 3),
@@ -516,18 +521,19 @@ class _MemberBalanceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final colors = Theme.of(context).colorScheme;
     final subtitle = !member.accepted
-        ? 'Invitation pending'
+        ? l10n.invitationPending
         : balance > 0
-            ? 'gets back ${formatMoney(balance)}'
+            ? l10n.getsBack(formatMoney(balance))
             : balance < 0
-                ? 'owes ${formatMoney(balance.abs())}'
-                : 'settled up';
+                ? l10n.owesAmount(formatMoney(balance.abs()))
+                : l10n.groupBalanceSettled;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(child: Text(member.initials)),
-      title: Text(isCurrentUser ? 'You' : member.name),
+      title: Text(isCurrentUser ? l10n.you : member.name),
       subtitle: Text(subtitle),
       trailing: !member.accepted
           ? Icon(Icons.hourglass_empty_rounded, color: colors.secondary)
@@ -535,7 +541,7 @@ class _MemberBalanceTile extends StatelessWidget {
               ? Icon(Icons.check_circle_rounded, color: colors.primary)
               : TextButton(
                   onPressed: onSettle,
-                  child: Text(balance < 0 ? 'Request' : 'Pay'),
+                  child: Text(balance < 0 ? l10n.request : l10n.pay),
                 ),
     );
   }
@@ -549,6 +555,7 @@ class _ExpenseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final payer = group.members.firstWhere(
       (member) => member.id == expense.payerId,
     );
@@ -570,7 +577,11 @@ class _ExpenseCard extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         subtitle: Text(
-          'Paid by ${payer.name} · ${expense.splitMode == 'salary' ? 'split by salary' : 'split'} ${expense.participantIds.length} ways',
+          l10n.expenseSplitDetails(
+            payer.name,
+            expense.splitMode == 'salary' ? l10n.bySalary : l10n.split,
+            expense.participantIds.length,
+          ),
         ),
         trailing: Text(
           formatMoney(expense.amountCents),
@@ -588,6 +599,7 @@ class _EmptyExpenses extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -595,12 +607,12 @@ class _EmptyExpenses extends StatelessWidget {
           children: [
             const Icon(Icons.receipt_long_outlined, size: 42),
             const SizedBox(height: 10),
-            const Text('No expenses yet'),
+            Text(l10n.noExpensesYet),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('Add the first one'),
+              label: Text(l10n.addFirstExpense),
             ),
           ],
         ),

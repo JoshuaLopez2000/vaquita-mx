@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:vaquita_mx/src/api_client.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
+import 'package:vaquita_mx/l10n/localized_error.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen(
@@ -68,9 +70,14 @@ class _AuthScreenState extends State<AuthScreen> {
       await _storage.write(key: _lastEmailKey, value: _email.text.trim());
       if (mounted) widget.onAuthenticated();
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) {
+        setState(() => _error =
+            localizedError(AppLocalizations.of(context)!, error.message));
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Cannot reach the Vaquita server.');
+      if (mounted)
+        setState(
+            () => _error = AppLocalizations.of(context)!.cannotReachServer);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -79,6 +86,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -92,14 +100,14 @@ class _AuthScreenState extends State<AuthScreen> {
                   Icon(Icons.account_balance_wallet_rounded,
                       size: 64, color: theme.colorScheme.primary),
                   const SizedBox(height: 20),
-                  Text('VAQUITA MX',
+                  Text(l10n.appTitle.toUpperCase(),
                       textAlign: TextAlign.center,
                       style: theme.textTheme.labelLarge?.copyWith(
                           letterSpacing: 2,
                           color: theme.colorScheme.primary,
                           fontWeight: FontWeight.w800)),
                   const SizedBox(height: 8),
-                  Text(_registering ? 'Create your account' : 'Welcome back',
+                  Text(_registering ? l10n.createYourAccount : l10n.welcomeBack,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w800)),
@@ -109,7 +117,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         key: const Key('auth-name-field'),
                         controller: _name,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Name')),
+                        decoration:
+                            InputDecoration(labelText: l10n.accountName)),
                     const SizedBox(height: 12),
                     TextField(
                         key: const Key('auth-salary-field'),
@@ -117,9 +126,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                            labelText:
-                                'Monthly salary (optional for proportional splits)',
+                        decoration: InputDecoration(
+                            labelText: l10n.monthlySalary,
                             prefixText: r'$ ',
                             suffixText: 'MXN')),
                     const SizedBox(height: 12),
@@ -129,7 +137,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Email')),
+                      decoration: InputDecoration(labelText: l10n.email)),
                   const SizedBox(height: 12),
                   if (_registering) ...[
                     TextField(
@@ -137,8 +145,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         controller: _phone,
                         keyboardType: TextInputType.phone,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                            labelText: 'Mexican mobile number',
+                        decoration: InputDecoration(
+                            labelText: l10n.mexicanMobileNumber,
                             hintText: '55 1234 5678')),
                     const SizedBox(height: 12),
                   ],
@@ -147,7 +155,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       controller: _password,
                       obscureText: true,
                       onSubmitted: (_) => _submitting ? null : _submit(),
-                      decoration: const InputDecoration(labelText: 'Password')),
+                      decoration: InputDecoration(labelText: l10n.password)),
                   if (_error != null)
                     Padding(
                         padding: const EdgeInsets.only(top: 12),
@@ -162,7 +170,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ? const SizedBox.square(
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(_registering ? 'Create account' : 'Sign in'),
+                        : Text(_registering ? l10n.createAccount : l10n.signIn),
                   ),
                   TextButton(
                     onPressed: _submitting
@@ -171,9 +179,8 @@ class _AuthScreenState extends State<AuthScreen> {
                               _registering = !_registering;
                               _error = null;
                             }),
-                    child: Text(_registering
-                        ? 'Already have an account? Sign in'
-                        : 'New here? Create an account'),
+                    child: Text(
+                        _registering ? l10n.alreadyHaveAccount : l10n.newHere),
                   ),
                 ],
               ),
