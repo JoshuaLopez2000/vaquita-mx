@@ -8,7 +8,7 @@ Vaquita MX is a portfolio-grade group expense application for Mexico. A group ca
 
 This is a portfolio demonstration with a working local vertical slice:
 
-- `apps/mobile`: Flutter application targeting Android.
+- `apps/mobile`: Flutter application targeting Android and web.
 - `services/api`: dependency-free Go HTTP API with health and simulated payment-request endpoints.
 - `docs`: product, architecture, CoDi, security, deployment, and delivery documentation.
 - `deploy`: deployment assets.
@@ -62,7 +62,7 @@ docker compose down
 
 ## Flutter application
 
-Requirements: Flutter stable with the Android SDK configured.
+Requirements: Flutter stable with the Android SDK configured for Android builds. A Chrome-based browser is sufficient for web development.
 
 ```bash
 cd apps/mobile
@@ -72,7 +72,13 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 
 `10.0.2.2` routes from the Android emulator to Docker on the host machine. Keep the Compose stack running while using the app. For a physical Android device, use the computer's reachable LAN address during development; production builds must use an HTTPS server.
 
-The standard Android runner is committed with the project. Product application code lives under `lib/`.
+To run the web version against the local API:
+
+```bash
+flutter run -d chrome --web-port=3000
+```
+
+On web, the app defaults to `http://localhost:8080`, rather than the Android-emulator-only `10.0.2.2`. The API permits cross-origin requests from local web development by default; set `ALLOWED_ORIGINS` to a comma-separated allowlist of HTTPS frontend origins when deploying. Product application code lives under `lib/`.
 
 ## Documentation
 

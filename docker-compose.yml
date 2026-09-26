@@ -5,6 +5,7 @@ services:
     environment:
       APP_ENV: development
       PORT: "8080"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       DATABASE_URL: postgres://vaquita:vaquita-local@postgres:5432/vaquita?sslmode=disable
       PAYMENT_PROVIDER: simulated
     ports:

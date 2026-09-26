@@ -83,7 +83,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:              ":" + port,
-		Handler:           requestLogger(mux),
+		Handler:           requestLogger(cors(mux, getenv("ALLOWED_ORIGINS", "*"))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -95,6 +95,39 @@ func main() {
 		slog.Error("api stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// cors permits the separately hosted Flutter web client to call the API. In
+// development the default accepts any origin; deployed environments should set
+// ALLOWED_ORIGINS to a comma-separated list of their HTTPS web origins.
+func cors(next http.Handler, allowedOrigins string) http.Handler {
+	allowed := make(map[string]struct{})
+	for _, origin := range strings.Split(allowedOrigins, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			allowed[origin] = struct{}{}
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			_, explicitlyAllowed := allowed[origin]
+			if _, allowAny := allowed["*"]; allowAny || explicitlyAllowed {
+				if allowAny {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Add("Vary", "Origin")
+				}
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+			}
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (app application) register(w http.ResponseWriter, r *http.Request) {

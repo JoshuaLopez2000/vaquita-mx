@@ -5,7 +5,7 @@
 The first production-like environment can run on a managed container host with a managed PostgreSQL database:
 
 ```text
-Android app -> HTTPS ingress -> Go API container -> managed PostgreSQL
+Android/web app -> HTTPS ingress -> Go API container -> managed PostgreSQL
                                       |
                                       `-> push/payment providers
 ```

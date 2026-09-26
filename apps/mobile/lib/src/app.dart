@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vaquita_mx/src/api_client.dart';
@@ -17,7 +18,9 @@ class VaquitaApp extends StatefulWidget {
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8080',
+    // Android emulators reach the host through 10.0.2.2; browsers run on
+    // the host itself, where that special emulator address is unreachable.
+    defaultValue: kIsWeb ? 'http://localhost:8080' : 'http://10.0.2.2:8080',
   );
 
   @override
