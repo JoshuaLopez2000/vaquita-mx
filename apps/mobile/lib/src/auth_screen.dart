@@ -75,9 +75,10 @@ class _AuthScreenState extends State<AuthScreen> {
             localizedError(AppLocalizations.of(context)!, error.message));
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
             () => _error = AppLocalizations.of(context)!.cannotReachServer);
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
