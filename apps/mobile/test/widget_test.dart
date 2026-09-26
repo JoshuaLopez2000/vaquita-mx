@@ -144,4 +144,21 @@ void main() {
     expect(find.text('Lucía'), findsOneWidget);
     expect(find.text('Invitation pending'), findsOneWidget);
   });
+
+  testWidgets('can dismiss group configuration while editing', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Group options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit group and add contacts'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'Updated weekend');
+
+    await tester.tapAt(const Offset(8, 8));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Weekend in CDMX'), findsOneWidget);
+  });
 }

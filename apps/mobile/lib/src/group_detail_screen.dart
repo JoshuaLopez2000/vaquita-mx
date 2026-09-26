@@ -149,10 +149,10 @@ class GroupDetailScreen extends StatelessWidget {
     );
   }
 
-  void _showGroupInfo(BuildContext context, ExpenseGroup group) {
-    showModalBottomSheet<void>(
+  Future<void> _showGroupInfo(BuildContext context, ExpenseGroup group) async {
+    final editGroup = await showModalBottomSheet<bool>(
       context: context,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -171,14 +171,13 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 20),
               OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.pop(context);
-                    _editGroup(context, group);
+                    Navigator.pop(sheetContext, true);
                   },
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('Edit group and add contacts')),
               const SizedBox(height: 8),
               OutlinedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(sheetContext, false),
                 child: const Text('Close'),
               ),
             ],
@@ -186,6 +185,9 @@ class GroupDetailScreen extends StatelessWidget {
         ),
       ),
     );
+    if (editGroup == true && context.mounted) {
+      await _editGroup(context, group);
+    }
   }
 
   Future<void> _editGroup(BuildContext context, ExpenseGroup group) async {
@@ -302,6 +304,9 @@ class GroupDetailScreen extends StatelessWidget {
                   },
                 ),
             ]))));
+    // The modal future resolves when dismissal begins, while a focused
+    // EditableText can still be attached during the reverse animation.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     name.dispose();
     emoji.dispose();
     member.dispose();
