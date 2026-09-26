@@ -1,3 +1,27 @@
+class AppUser {
+  const AppUser({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.salaryCents,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+  final String phone;
+  final int salaryCents;
+
+  factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        email: json['email'] as String,
+        phone: json['phone'] as String? ?? '',
+        salaryCents: json['salary_cents'] as int? ?? 0,
+      );
+}
+
 class Member {
   const Member(
       {required this.id,

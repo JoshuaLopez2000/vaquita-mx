@@ -39,6 +39,15 @@ void main() {
     expect(find.text('Tacos and drinks'), findsOneWidget);
   });
 
+  testWidgets('switches tabs when swiping', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.drag(find.byType(PageView), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Inbox'), findsWidgets);
+  });
+
   testWidgets('opens balance details from an inbox card', (tester) async {
     final store = DemoStore.seeded();
     store.contactStatus.add(const ContactStatus(

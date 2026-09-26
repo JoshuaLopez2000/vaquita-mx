@@ -21,7 +21,9 @@ class ApiClient {
   final http.Client _client;
   String? _token;
   String? _userId;
+  AppUser? _user;
   String? get userId => _userId;
+  AppUser? get user => _user;
 
   Future<void> login({required String email, required String password}) =>
       _authenticate(
@@ -206,7 +208,9 @@ class ApiClient {
         .timeout(const Duration(seconds: 8));
     final result = _decode(response);
     _token = result['token'] as String;
-    _userId = (result['user'] as Map<String, dynamic>?)?['id'] as String?;
+    final user = result['user'] as Map<String, dynamic>?;
+    _userId = user?['id'] as String?;
+    if (user != null && user['id'] != null) _user = AppUser.fromJson(user);
   }
 
   Map<String, String> _headers() => {

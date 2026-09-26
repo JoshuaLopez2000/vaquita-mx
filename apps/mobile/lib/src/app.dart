@@ -116,10 +116,30 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
+  late final PageController _pageController;
 
-  void _selectTab(int target) {
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _selectTab(int target, {bool animate = true}) {
     if (target == _selectedIndex) return;
     setState(() => _selectedIndex = target);
+    if (animate) {
+      _pageController.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
     if (target == 2) context.read<AppCubit>().loadGroups();
   }
 
@@ -151,8 +171,9 @@ class _AppShellState extends State<AppShell> {
       listener: (_, state) => _selectTab(state.navigationTarget!),
       child: Scaffold(
         body: SafeArea(
-          child: IndexedStack(
-            index: _selectedIndex,
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) => _selectTab(index, animate: false),
             children: [
               DashboardScreen(store: widget.store),
               StatusScreen(store: widget.store),
@@ -1095,100 +1116,106 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-      children: [
-        Text(
-          'Profile',
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-        ),
-        const SizedBox(height: 24),
-        const CircleAvatar(radius: 42, child: Text('YO')),
-        const SizedBox(height: 12),
-        Text(
-          'Demo user',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: 28),
-        Card(
-          child: Column(
-            children: [
-              const ListTile(
-                leading: Icon(Icons.language_rounded),
-                title: Text('Language'),
-                trailing: Text('English'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.cloud_outlined),
-                title: const Text('API environment'),
-                subtitle: const Text(VaquitaApp.apiBaseUrl),
-                trailing: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.tertiaryContainer,
-                    borderRadius: BorderRadius.circular(99),
+    return BlocBuilder<AppCubit, AppState>(
+      builder: (context, state) {
+        final user = state.user;
+        final name = user?.name ?? 'Your account';
+        final initials = name
+            .trim()
+            .split(RegExp(r'\s+'))
+            .map((part) => part.isEmpty ? '' : part[0])
+            .join()
+            .toUpperCase();
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+          children: [
+            Text(
+              'Profile',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
-                  child: const Text('DEMO'),
+            ),
+            const SizedBox(height: 24),
+            CircleAvatar(
+                radius: 42, child: Text(initials.isEmpty ? '?' : initials)),
+            const SizedBox(height: 12),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 28),
+            if (user != null)
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.email_outlined),
+                      title: const Text('Email'),
+                      trailing: Text(user.email),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.phone_outlined),
+                      title: const Text('Mobile number'),
+                      trailing: Text(user.phone),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text('Contacts',
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        Text(
-            'Find people already using Vaquita. Your contacts are matched only after you choose this.',
-            style: Theme.of(context).textTheme.bodyMedium),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-            onPressed: () => _findContacts(context),
-            icon: const Icon(Icons.contacts_outlined),
-            label: const Text('Find contacts on Vaquita')),
-        if (store.contacts.isNotEmpty)
-          Card(
-              child: Column(children: [
-            for (final contact in store.contacts)
-              ListTile(
-                  leading: CircleAvatar(
-                      child: Text(contact.name.substring(0, 1).toUpperCase())),
-                  title: Text(contact.name),
-                  subtitle: Text(contact.phone),
-                  trailing: const Icon(Icons.person_add_alt_1_rounded))
-          ])),
-        const SizedBox(height: 18),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.shield_outlined),
-            title: const Text('Payment provider'),
-            subtitle: const Text('Simulated — no real money moves'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () {
-              showAboutDialog(
-                context: context,
-                applicationName: 'Vaquita MX',
-                applicationVersion: '0.1.0',
-                children: const [
-                  Text(
-                    'This build demonstrates the future CoDi collection flow with a simulated provider.',
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+            const SizedBox(height: 18),
+            Text('Contacts',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(
+                'Find people already using Vaquita. Your contacts are matched only after you choose this.',
+                style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+                onPressed: () => _findContacts(context),
+                icon: const Icon(Icons.contacts_outlined),
+                label: const Text('Find contacts on Vaquita')),
+            if (state.contacts.isNotEmpty)
+              Card(
+                  child: Column(children: [
+                for (final contact in state.contacts)
+                  ListTile(
+                      leading: CircleAvatar(
+                          child:
+                              Text(contact.name.substring(0, 1).toUpperCase())),
+                      title: Text(contact.name),
+                      subtitle: Text(contact.phone),
+                      trailing: const Icon(Icons.person_add_alt_1_rounded))
+              ])),
+            const SizedBox(height: 18),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.shield_outlined),
+                title: const Text('Payment provider'),
+                subtitle: const Text('Simulated — no real money moves'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  showAboutDialog(
+                    context: context,
+                    applicationName: 'Vaquita MX',
+                    applicationVersion: '0.1.0',
+                    children: const [
+                      Text(
+                        'This build demonstrates the future CoDi collection flow with a simulated provider.',
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

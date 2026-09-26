@@ -11,6 +11,7 @@ class AppState {
     required this.invitations,
     required this.isLoading,
     required this.errorMessage,
+    required this.user,
     this.navigationTarget,
   });
 
@@ -21,6 +22,7 @@ class AppState {
         invitations: List.unmodifiable(store.invitations),
         isLoading: store.isLoading,
         errorMessage: store.errorMessage,
+        user: store.authenticatedUser,
         navigationTarget: store.takeRequestedTab(),
       );
 
@@ -30,5 +32,6 @@ class AppState {
   final List<GroupInvitation> invitations;
   final bool isLoading;
   final String? errorMessage;
+  final AppUser? user;
   final int? navigationTarget;
 }

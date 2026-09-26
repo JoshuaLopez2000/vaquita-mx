@@ -24,6 +24,7 @@ class DemoStore extends ChangeNotifier {
   ApiClient? get apiClient => _apiClient;
 
   String get currentUserId => _apiClient?.userId ?? seedUserId;
+  AppUser? get authenticatedUser => _apiClient?.user;
   Member get currentUser => Member(id: currentUserId, name: 'You');
 
   void showMovements() {
