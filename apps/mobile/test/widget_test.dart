@@ -146,6 +146,70 @@ void main() {
     expect(find.text(r'$240.00'), findsOneWidget);
   });
 
+  testWidgets('shows how an expense was split', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Tacos and drinks'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Tacos and drinks'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Detalles del gasto'), findsOneWidget);
+    expect(find.text('División igualitaria'), findsOneWidget);
+    expect(find.text('Parte de cada participante'), findsOneWidget);
+    expect(find.text(r'$320.00'), findsWidgets);
+  });
+
+  testWidgets('shows exact salary-based participant shares', (tester) async {
+    final store = DemoStore.seeded();
+    store.groupById('cdmx-weekend').expenses.insert(
+          0,
+          Expense(
+            id: 'salary-expense',
+            description: 'Salary dinner',
+            amountCents: 10000,
+            payerId: DemoStore.seedUserId,
+            participantIds: const [DemoStore.seedUserId, 'ana'],
+            createdAt: DateTime(2026),
+            splitMode: 'salary',
+            shares: const {DemoStore.seedUserId: 2500, 'ana': 7500},
+          ),
+        );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Salary dinner'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Salary dinner'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('División por salario'), findsOneWidget);
+    expect(find.text(r'$25.00'), findsOneWidget);
+    expect(find.text(r'$75.00'), findsOneWidget);
+  });
+
+  testWidgets('lists pending payments from the group balance', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('group-balance-card')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pagos pendientes'), findsOneWidget);
+    expect(find.text('Ana paga a Tú'), findsOneWidget);
+    expect(find.text(r'$80.00'), findsOneWidget);
+  });
+
   testWidgets('shows pending invitations in the group member list',
       (tester) async {
     final store = DemoStore.seeded();

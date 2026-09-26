@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"strings"
 	"time"
 )
@@ -35,13 +35,14 @@ type UnpaidBalance struct {
 }
 type ContactStatus = UnpaidBalance
 type Expense struct {
-	ID             string    `json:"id"`
-	Description    string    `json:"description"`
-	AmountCents    int64     `json:"amount_cents"`
-	PayerID        string    `json:"payer_id"`
-	ParticipantIDs []string  `json:"participant_ids"`
-	SplitMode      string    `json:"split_mode"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string           `json:"id"`
+	Description    string           `json:"description"`
+	AmountCents    int64            `json:"amount_cents"`
+	PayerID        string           `json:"payer_id"`
+	ParticipantIDs []string         `json:"participant_ids"`
+	SplitMode      string           `json:"split_mode"`
+	Shares         map[string]int64 `json:"shares"`
+	CreatedAt      time.Time        `json:"created_at"`
 }
 type Settlement struct {
 	ID           string    `json:"id"`
@@ -649,6 +650,7 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			x.ParticipantIDs = append(x.ParticipantIDs, id)
 		}
 		ps.Close()
+		x.Shares = split(x.AmountCents, x.ParticipantIDs, *g, x.SplitMode)
 		g.Expenses = append(g.Expenses, x)
 	}
 	es.Close()

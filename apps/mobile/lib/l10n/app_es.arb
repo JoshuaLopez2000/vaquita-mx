@@ -200,4 +200,23 @@
   ,"movementMetadata": "{emoji} {group} · {detail} · {date}"
   ,"@movementMetadata": {"placeholders":{"emoji":{"type":"String"},"group":{"type":"String"},"detail":{"type":"String"},"date":{"type":"String"}}}
   ,"memberNamesExample": "Ana, Diego, Sofía"
+  ,"expenseDetails": "Detalles del gasto"
+  ,"total": "Total"
+  ,"splitMethod": "Método de división"
+  ,"equalSplit": "División igualitaria"
+  ,"salaryBasedSplit": "División por salario"
+  ,"equalSplitExplanation": "El total se divide en partes iguales. Los centavos restantes se asignan en el orden de los participantes."
+  ,"salarySplitExplanation": "El total se distribuye proporcionalmente usando los salarios autorizados. Los valores de salario permanecen privados."
+  ,"participantShares": "Parte de cada participante"
+  ,"paidByName": "Pagado por {name}"
+  ,"@paidByName": {"placeholders":{"name":{"type":"String"}}}
+  ,"shareOfTotal": "{percent} del total"
+  ,"@shareOfTotal": {"placeholders":{"percent":{"type":"String"}}}
+  ,"shareUnavailable": "Parte no disponible"
+  ,"pendingPayments": "Pagos pendientes"
+  ,"pendingPaymentsDescription": "Pagos necesarios para liquidar los saldos del grupo."
+  ,"noPendingPayments": "No hay pagos pendientes. Todos están a mano."
+  ,"pendingPaymentFromTo": "{from} paga a {to}"
+  ,"@pendingPaymentFromTo": {"placeholders":{"from":{"type":"String"},"to":{"type":"String"}}}
+  ,"viewPendingPayments": "Ver pagos pendientes"
 }

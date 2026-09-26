@@ -97,6 +97,7 @@ class Expense {
     required this.participantIds,
     required this.createdAt,
     this.splitMode = 'equal',
+    this.shares = const {},
   });
 
   final String id;
@@ -106,6 +107,7 @@ class Expense {
   final List<String> participantIds;
   final DateTime createdAt;
   final String splitMode;
+  final Map<String, int> shares;
 
   factory Expense.fromJson(Map<String, dynamic> json) => Expense(
         id: json['id'] as String,
@@ -116,6 +118,8 @@ class Expense {
             (json['participant_ids'] as List<dynamic>).cast<String>(),
         createdAt: DateTime.parse(json['created_at'] as String),
         splitMode: json['split_mode'] as String? ?? 'equal',
+        shares: ((json['shares'] as Map<String, dynamic>?) ?? const {})
+            .map((key, value) => MapEntry(key, value as int)),
       );
 }
 

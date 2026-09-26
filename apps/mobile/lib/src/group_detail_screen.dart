@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
@@ -12,6 +13,8 @@ part 'group_detail/group_header.dart';
 part 'group_detail/section_header.dart';
 part 'group_detail/member_balance_tile.dart';
 part 'group_detail/expense_card.dart';
+part 'group_detail/expense_details_sheet.dart';
+part 'group_detail/pending_payments_sheet.dart';
 part 'group_detail/empty_expenses.dart';
 
 class GroupDetailScreen extends StatelessWidget {
@@ -77,7 +80,15 @@ class GroupDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
             children: [
               _GroupHeader(
-                  group: group, balance: store.currentUserBalance(group)),
+                group: group,
+                balance: store.currentUserBalance(group),
+                onTap: () => showPendingPaymentsSheet(
+                  context,
+                  group,
+                  balances,
+                  store.currentUserId,
+                ),
+              ),
               const SizedBox(height: 14),
               _SalarySplitCard(
                 group: group,

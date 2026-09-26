@@ -608,4 +608,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get memberNamesExample => 'Ana, Diego, Sofía';
+
+  @override
+  String get expenseDetails => 'Expense details';
+
+  @override
+  String get total => 'Total';
+
+  @override
+  String get splitMethod => 'Split method';
+
+  @override
+  String get equalSplit => 'Equal split';
+
+  @override
+  String get salaryBasedSplit => 'Salary-based split';
+
+  @override
+  String get equalSplitExplanation =>
+      'The total is divided equally. Remaining cents are assigned in participant order.';
+
+  @override
+  String get salarySplitExplanation =>
+      'The total is distributed proportionally using opted-in salaries. Salary values remain private.';
+
+  @override
+  String get participantShares => 'Participant shares';
+
+  @override
+  String paidByName(String name) {
+    return 'Paid by $name';
+  }
+
+  @override
+  String shareOfTotal(String percent) {
+    return '$percent of total';
+  }
+
+  @override
+  String get shareUnavailable => 'Share unavailable';
+
+  @override
+  String get pendingPayments => 'Pending payments';
+
+  @override
+  String get pendingPaymentsDescription =>
+      'Payments needed to settle the group balances.';
+
+  @override
+  String get noPendingPayments =>
+      'There are no pending payments. Everyone is settled up.';
+
+  @override
+  String pendingPaymentFromTo(String from, String to) {
+    return '$from pays $to';
+  }
+
+  @override
+  String get viewPendingPayments => 'View pending payments';
 }

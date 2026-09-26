@@ -14,6 +14,7 @@ class _ExpenseCard extends StatelessWidget {
     );
     return Card(
       child: ListTile(
+        onTap: () => showExpenseDetailsSheet(context, group, expense),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 46,

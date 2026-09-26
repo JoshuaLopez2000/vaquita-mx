@@ -1172,6 +1172,102 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Ana, Diego, Sofía'**
   String get memberNamesExample;
+
+  /// No description provided for @expenseDetails.
+  ///
+  /// In es, this message translates to:
+  /// **'Detalles del gasto'**
+  String get expenseDetails;
+
+  /// No description provided for @total.
+  ///
+  /// In es, this message translates to:
+  /// **'Total'**
+  String get total;
+
+  /// No description provided for @splitMethod.
+  ///
+  /// In es, this message translates to:
+  /// **'Método de división'**
+  String get splitMethod;
+
+  /// No description provided for @equalSplit.
+  ///
+  /// In es, this message translates to:
+  /// **'División igualitaria'**
+  String get equalSplit;
+
+  /// No description provided for @salaryBasedSplit.
+  ///
+  /// In es, this message translates to:
+  /// **'División por salario'**
+  String get salaryBasedSplit;
+
+  /// No description provided for @equalSplitExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'El total se divide en partes iguales. Los centavos restantes se asignan en el orden de los participantes.'**
+  String get equalSplitExplanation;
+
+  /// No description provided for @salarySplitExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'El total se distribuye proporcionalmente usando los salarios autorizados. Los valores de salario permanecen privados.'**
+  String get salarySplitExplanation;
+
+  /// No description provided for @participantShares.
+  ///
+  /// In es, this message translates to:
+  /// **'Parte de cada participante'**
+  String get participantShares;
+
+  /// No description provided for @paidByName.
+  ///
+  /// In es, this message translates to:
+  /// **'Pagado por {name}'**
+  String paidByName(String name);
+
+  /// No description provided for @shareOfTotal.
+  ///
+  /// In es, this message translates to:
+  /// **'{percent} del total'**
+  String shareOfTotal(String percent);
+
+  /// No description provided for @shareUnavailable.
+  ///
+  /// In es, this message translates to:
+  /// **'Parte no disponible'**
+  String get shareUnavailable;
+
+  /// No description provided for @pendingPayments.
+  ///
+  /// In es, this message translates to:
+  /// **'Pagos pendientes'**
+  String get pendingPayments;
+
+  /// No description provided for @pendingPaymentsDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Pagos necesarios para liquidar los saldos del grupo.'**
+  String get pendingPaymentsDescription;
+
+  /// No description provided for @noPendingPayments.
+  ///
+  /// In es, this message translates to:
+  /// **'No hay pagos pendientes. Todos están a mano.'**
+  String get noPendingPayments;
+
+  /// No description provided for @pendingPaymentFromTo.
+  ///
+  /// In es, this message translates to:
+  /// **'{from} paga a {to}'**
+  String pendingPaymentFromTo(String from, String to);
+
+  /// No description provided for @viewPendingPayments.
+  ///
+  /// In es, this message translates to:
+  /// **'Ver pagos pendientes'**
+  String get viewPendingPayments;
 }
 
 class _AppLocalizationsDelegate
