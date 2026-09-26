@@ -52,3 +52,29 @@ func TestBalancesSplitsBySalary(t *testing.T) {
 		t.Fatalf("expected 25/75 salary split, got %#v", balances)
 	}
 }
+
+func TestValidatePaymentRequestDataRequiresPayerAndExactShare(t *testing.T) {
+	group := Group{
+		Members: []Member{
+			{ID: "payer", UserID: "user-payer", Active: true, Accepted: true},
+			{ID: "debtor", UserID: "user-debtor", Active: true, Accepted: true},
+		},
+		Expenses: []Expense{{
+			ID:             "expense-1",
+			AmountCents:    101,
+			PayerID:        "payer",
+			ParticipantIDs: []string{"payer", "debtor"},
+			SplitMode:      "equal",
+		}},
+	}
+
+	if err := ValidatePaymentRequestData(group, "user-payer", "expense-1", "debtor", 50); err != nil {
+		t.Fatalf("payer's exact participant share was rejected: %v", err)
+	}
+	if err := ValidatePaymentRequestData(group, "user-debtor", "expense-1", "debtor", 50); err != ErrInvalid {
+		t.Fatalf("debtor creating request error = %v, want ErrInvalid", err)
+	}
+	if err := ValidatePaymentRequestData(group, "user-payer", "expense-1", "debtor", 51); err != ErrInvalid {
+		t.Fatalf("wrong amount error = %v, want ErrInvalid", err)
+	}
+}

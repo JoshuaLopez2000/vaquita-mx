@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:vaquita_mx/src/models.dart';
 
@@ -19,11 +20,54 @@ class ApiClient {
 
   final String _baseUrl;
   final http.Client _client;
+  static const _storage = FlutterSecureStorage();
+  static const _sessionTokenKey = 'session_token';
+  static const _sessionUserKey = 'session_user';
   String? _token;
   String? _userId;
   AppUser? _user;
   String? get userId => _userId;
   AppUser? get user => _user;
+
+  Future<bool> restoreSession() async {
+    final token = await _storage.read(key: _sessionTokenKey);
+    final encodedUser = await _storage.read(key: _sessionUserKey);
+    if (token == null || encodedUser == null) return false;
+    try {
+      final user = AppUser.fromJson(
+          jsonDecode(encodedUser) as Map<String, dynamic>);
+      _token = token;
+      _user = user;
+      _userId = user.id;
+      return true;
+    } catch (_) {
+      await clearSession();
+      return false;
+    }
+  }
+
+  Future<void> persistSession() async {
+    if (_token == null || _user == null) return;
+    await _storage.write(key: _sessionTokenKey, value: _token);
+    await _storage.write(
+      key: _sessionUserKey,
+      value: jsonEncode({
+        'id': _user!.id,
+        'name': _user!.name,
+        'email': _user!.email,
+        'phone': _user!.phone,
+        'salary_cents': _user!.salaryCents,
+      }),
+    );
+  }
+
+  Future<void> clearSession() async {
+    _token = null;
+    _user = null;
+    _userId = null;
+    await _storage.delete(key: _sessionTokenKey);
+    await _storage.delete(key: _sessionUserKey);
+  }
 
   Future<void> login({required String email, required String password}) =>
       _authenticate(

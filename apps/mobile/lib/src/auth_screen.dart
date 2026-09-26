@@ -64,6 +64,7 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         await widget.api.login(email: _email.text, password: _password.text);
       }
+      await widget.api.persistSession();
       await _storage.write(key: _lastEmailKey, value: _email.text.trim());
       if (mounted) widget.onAuthenticated();
     } on ApiException catch (error) {

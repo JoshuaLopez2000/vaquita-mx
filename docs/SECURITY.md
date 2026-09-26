@@ -6,7 +6,7 @@ This application handles financial metadata even though it does not hold funds. 
 
 - TLS only; redirect or reject plaintext traffic.
 - Authentication and authorization on every user or group resource.
-- Password hashing with Argon2id when passwords are supported.
+- Password hashing with a deliberately chosen, reviewed password KDF. The current demo uses bcrypt; production should choose and document its final KDF and parameters before launch.
 - Short-lived access tokens, rotated refresh tokens, and server-side revocation.
 - Rate limits on authentication, invitations, and payment operations.
 - Encrypted secrets supplied by the hosting platform, never the mobile app.
@@ -26,7 +26,7 @@ This application handles financial metadata even though it does not hold funds. 
 
 ## Mobile controls
 
-- Keep access tokens in Android-backed secure storage.
+- Keep access tokens in Android-backed secure storage. The client persists its opaque demo session there and restores it at launch.
 - Do not embed production secrets through `--dart-define`.
 - Use Android App Links or verified deep links in production.
 - Redact sensitive content from screenshots and push notifications.

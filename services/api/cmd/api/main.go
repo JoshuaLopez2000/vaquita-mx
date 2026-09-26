@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/your-user/vaquita-mx/services/api/internal/auth"
-	"github.com/your-user/vaquita-mx/services/api/internal/groups"
-	"github.com/your-user/vaquita-mx/services/api/internal/payments"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/payments"
 )
 
 type application struct {
@@ -77,7 +77,9 @@ func main() {
 	mux.HandleFunc("GET /api/v1/groups/{groupID}/unpaid", app.requireUser(app.unpaid))
 	mux.HandleFunc("GET /api/v1/status", app.requireUser(app.status))
 	mux.HandleFunc("GET /api/v1/payment-providers", app.providers)
-	mux.HandleFunc("POST /api/v1/payment-requests", app.createPaymentRequest)
+	// The simulator is protected and validates its input against the ledger. It
+	// remains a portfolio/demo boundary; it does not move money or settle debt.
+	mux.HandleFunc("POST /api/v1/payment-requests", app.requireUser(app.createPaymentRequest))
 
 	server := &http.Server{
 		Addr:              ":" + port,
@@ -451,6 +453,18 @@ func (app application) providers(w http.ResponseWriter, _ *http.Request) {
 func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Request) {
 	var input payments.CreateRequest
 	if !decodeJSON(w, r, &input) {
+		return
+	}
+	if err := app.groups.ValidatePaymentRequest(r.Context(), userID(r), input.GroupID, input.ExpenseID, input.DebtorID, input.AmountCents); err != nil {
+		if errors.Is(err, groups.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group or expense not found"})
+			return
+		}
+		if errors.Is(err, groups.ErrInvalid) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "payment request must match an unpaid participant share for an expense you paid"})
+			return
+		}
+		serverError(w, "validate payment request", err)
 		return
 	}
 	result, err := app.payments.CreateRequest(r.Context(), input)

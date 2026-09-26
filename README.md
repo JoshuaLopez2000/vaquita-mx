@@ -6,12 +6,19 @@ Vaquita MX is a portfolio-grade group expense application for Mexico. A group ca
 
 ## Repository status
 
-This is the initial working skeleton:
+This is a portfolio demonstration with a working local vertical slice:
 
 - `apps/mobile`: Flutter application targeting Android.
 - `services/api`: dependency-free Go HTTP API with health and simulated payment-request endpoints.
 - `docs`: product, architecture, CoDi, security, deployment, and delivery documentation.
 - `deploy`: deployment assets.
+
+## Portfolio scope and demo boundaries
+
+- The payment provider is a simulator. It creates a deep-link-shaped request only; it never initiates, verifies, or settles a real transfer.
+- A simulated settlement is a deliberate demo action. A production release must replace it with an authenticated, idempotent provider callback and reconciliation flow.
+- Payment requests require an authenticated payer and must match a participant's exact share of a recorded expense. They are not persisted payment instruments.
+- Release builds must be signed with `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, and `RELEASE_KEY_PASSWORD`. Those values are intentionally not committed.
 
 ## Local API
 
@@ -71,6 +78,7 @@ The standard Android runner is committed with the project. Product application c
 
 - [Product definition](docs/PRODUCT.md)
 - [Architecture](docs/ARCHITECTURE.md)
+- [API reference](docs/API.md)
 - [CoDi integration strategy](docs/CODI_INTEGRATION.md)
 - [Security](docs/SECURITY.md)
 - [Remote deployment](docs/DEPLOYMENT.md)

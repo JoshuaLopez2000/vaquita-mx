@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/your-user/vaquita-mx/services/api/internal/auth"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 	"strings"
 	"time"
 )
@@ -432,6 +432,52 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, e
 	}
 	return r.Get(c, u, g)
 }
+
+// ValidatePaymentRequest ties the simulated-provider boundary to the ledger.
+// Only the user who paid an expense can request one participant's exact share.
+func (r *Repository) ValidatePaymentRequest(c context.Context, userID, groupID, expenseID, debtorID string, amountCents int64) error {
+	g, err := r.Get(c, userID, groupID)
+	if err != nil {
+		return err
+	}
+	return ValidatePaymentRequestData(g, userID, expenseID, debtorID, amountCents)
+}
+
+// ValidatePaymentRequestData contains the ledger rule independently of
+// storage, so the financial authorization invariant has fast regression tests.
+func ValidatePaymentRequestData(g Group, userID, expenseID, debtorID string, amountCents int64) error {
+	var expense *Expense
+	for index := range g.Expenses {
+		if g.Expenses[index].ID == expenseID {
+			expense = &g.Expenses[index]
+			break
+		}
+	}
+	if expense == nil {
+		return ErrNotFound
+	}
+	var payer *Member
+	for index := range g.Members {
+		if g.Members[index].ID == expense.PayerID {
+			payer = &g.Members[index]
+			break
+		}
+	}
+	if payer == nil || payer.UserID != userID {
+		return ErrInvalid
+	}
+	share, participates := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)[debtorID]
+	if !participates || debtorID == expense.PayerID || amountCents != share {
+		return ErrInvalid
+	}
+	for _, member := range g.Members {
+		if member.ID == debtorID && member.Active && member.Accepted {
+			return nil
+		}
+	}
+	return ErrInvalid
+}
+
 func (r *Repository) RemoveMember(c context.Context, u, g, id string) error {
 	if id == u {
 		return ErrInvalid

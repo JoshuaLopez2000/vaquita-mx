@@ -29,6 +29,7 @@ class _VaquitaAppState extends State<VaquitaApp> {
   late final AppCubit appCubit;
   late final bool _ownsStore;
   var _authenticated = false;
+  var _restoringSession = true;
 
   @override
   void initState() {
@@ -38,6 +39,21 @@ class _VaquitaAppState extends State<VaquitaApp> {
         DemoStore.remote(ApiClient(baseUrl: VaquitaApp.apiBaseUrl));
     appCubit = AppCubit(store);
     _authenticated = !_ownsStore;
+    if (_ownsStore) {
+      _restoreSession();
+    } else {
+      _restoringSession = false;
+    }
+  }
+
+  Future<void> _restoreSession() async {
+    final restored = await store.apiClient!.restoreSession();
+    if (!mounted) return;
+    setState(() {
+      _authenticated = restored;
+      _restoringSession = false;
+    });
+    if (restored) appCubit.loadGroups();
   }
 
   @override
@@ -91,9 +107,11 @@ class _VaquitaAppState extends State<VaquitaApp> {
             ),
           ),
         ),
-        home: _authenticated
-            ? AppShell(store: store)
-            : AuthScreen(
+        home: _restoringSession
+            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+            : _authenticated
+                ? AppShell(store: store)
+                : AuthScreen(
                 api: store.apiClient!,
                 onAuthenticated: () {
                   setState(() => _authenticated = true);
