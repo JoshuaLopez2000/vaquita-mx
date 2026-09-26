@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
@@ -16,14 +18,14 @@ class GroupDetailScreen extends StatelessWidget {
   Future<void> _addExpense(BuildContext context, ExpenseGroup group) async {
     final input = await showAddExpenseSheet(context, group);
     if (input == null || !context.mounted) return;
-    final created = await store.addExpense(
-      groupId: group.id,
-      description: input.description,
-      amountCents: input.amountCents,
-      payerId: input.payerId,
-      participantIds: input.participantIds,
-      splitMode: input.splitMode,
-    );
+    final created = await context.read<AppCubit>().addExpense(
+          groupId: group.id,
+          description: input.description,
+          amountCents: input.amountCents,
+          payerId: input.payerId,
+          participantIds: input.participantIds,
+          splitMode: input.splitMode,
+        );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -212,7 +214,7 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               FilledButton(
                   onPressed: () async {
-                    await store.updateGroup(
+                    await context.read<AppCubit>().updateGroup(
                         group.id, {'name': name.text, 'emoji': emoji.text});
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
@@ -257,7 +259,8 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               OutlinedButton(
                   onPressed: () async {
-                    final added = await store.addMember(
+                    final appCubit = context.read<AppCubit>();
+                    final added = await appCubit.addMember(
                         group.id, member.text.trim(), phone.text.trim());
                     if (!added) {
                       if (sheet.mounted) {
@@ -268,8 +271,10 @@ class GroupDetailScreen extends StatelessWidget {
                       }
                       return;
                     }
-                    await store.load();
-                    if (sheet.mounted) Navigator.pop(sheet);
+                    await appCubit.loadGroups();
+                    if (sheet.mounted) {
+                      Navigator.pop(sheet);
+                    }
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -291,7 +296,7 @@ class GroupDetailScreen extends StatelessWidget {
                   subtitle: const Text(
                       'Your salary value stays private; only your proportional share is used.'),
                   onChanged: (value) async {
-                    await store.updateMember(
+                    await context.read<AppCubit>().updateMember(
                         group.id, self.single.id, {'salary_sharing': value});
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
@@ -308,76 +313,87 @@ class GroupDetailScreen extends StatelessWidget {
     ExpenseGroup group,
     Member member,
     int balance,
-  ) {
-    if (member.userId == store.currentUserId ||
-        member.id == store.currentUserId ||
-        balance == 0) return;
-    final memberOwes = balance < 0;
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Icon(
-                Icons.qr_code_2_rounded,
-                size: 54,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 14),
-              Text(
-                memberOwes
-                    ? 'Request from ${member.name}'
-                    : 'Pay ${member.name}',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+  ) =>
+      showSettlementSheet(context, store, group, member, balance);
+}
+
+void showSettlementSheet(
+  BuildContext context,
+  DemoStore store,
+  ExpenseGroup group,
+  Member member,
+  int balance, {
+  VoidCallback? onSettled,
+}) {
+  if (member.userId == store.currentUserId ||
+      member.id == store.currentUserId ||
+      balance == 0) {
+    return;
+  }
+  final memberOwes = balance < 0;
+  showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Icon(
+              Icons.qr_code_2_rounded,
+              size: 54,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              memberOwes ? 'Request from ${member.name}' : 'Pay ${member.name}',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${formatMoney(balance.abs())} MXN',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Demo mode: this simulates a confirmed provider callback. No real money moves.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              key: Key('settle-${member.id}'),
+              onPressed: () async {
+                final settled = await context.read<AppCubit>().settleBalance(
+                      groupId: group.id,
+                      memberId: member.id,
+                    );
+                if (!sheetContext.mounted || !context.mounted) return;
+                Navigator.pop(sheetContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      settled
+                          ? 'Simulated payment confirmed.'
+                          : 'Could not confirm the payment.',
                     ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${formatMoney(balance.abs())} MXN',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Demo mode: this simulates a confirmed provider callback. No real money moves.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 22),
-              FilledButton.icon(
-                key: Key('settle-${member.id}'),
-                onPressed: () async {
-                  final settled = await store.settleBalance(
-                    groupId: group.id,
-                    memberId: member.id,
-                  );
-                  if (!sheetContext.mounted || !context.mounted) return;
-                  Navigator.pop(sheetContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        settled
-                            ? 'Simulated payment confirmed.'
-                            : 'Could not confirm the payment.',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.check_circle_outline_rounded),
-                label: const Text('Simulate payment'),
-              ),
-            ],
-          ),
+                  ),
+                );
+                if (settled) onSettled?.call();
+              },
+              icon: const Icon(Icons.check_circle_outline_rounded),
+              label: const Text('Simulate payment'),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _SalarySplitCard extends StatelessWidget {

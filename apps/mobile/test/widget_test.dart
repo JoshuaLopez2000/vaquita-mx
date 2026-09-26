@@ -12,14 +12,15 @@ void main() {
     expect(find.text('Weekend in CDMX'), findsOneWidget);
     expect(find.text('Apartment'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('Inbox'), findsOneWidget);
+    expect(find.text('Movements'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
   });
 
-  testWidgets('shows an empty state on the activity tab', (tester) async {
+  testWidgets('shows an empty state in the inbox tab', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
-    await tester.tap(find.text('Activity'));
+    await tester.tap(find.text('Inbox'));
     await tester.pumpAndSettle();
 
     expect(find.text('You\'re all caught up'), findsOneWidget);
@@ -27,6 +28,45 @@ void main() {
       find.text('Invitations and contact balances will appear here.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('shows group expenses in the movements tab', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.text('Movements'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tacos and drinks'), findsOneWidget);
+  });
+
+  testWidgets('opens balance details from an inbox card', (tester) async {
+    final store = DemoStore.seeded();
+    store.contactStatus.add(const ContactStatus(
+      member: Member(id: 'ana', name: 'Ana'),
+      amountCents: 32000,
+    ));
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.text('Inbox'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ana'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Balance details'), findsOneWidget);
+    expect(find.text('Weekend in CDMX'), findsOneWidget);
+    expect(find.text('Tacos and drinks'), findsOneWidget);
+    expect(
+        find.byKey(const Key('request-payment-cdmx-weekend')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('request-payment-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    expect(find.text('Request from Ana'), findsOneWidget);
+    expect(find.text('Simulate payment'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('settle-ana')));
+    await tester.pumpAndSettle();
+    expect(find.text('Movements'), findsWidgets);
+    expect(find.text('Ana paid You'), findsOneWidget);
+    expect(find.byKey(const Key('request-payment-cdmx-weekend')), findsNothing);
+    expect(find.text('Ana'), findsNothing);
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {

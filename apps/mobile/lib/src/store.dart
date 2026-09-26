@@ -16,6 +16,7 @@ class DemoStore extends ChangeNotifier {
   final List<ContactStatus> contactStatus = [];
   final List<GroupInvitation> invitations = [];
   int _sequence = 100;
+  int? _requestedTab;
   bool isLoading = false;
   String? errorMessage;
 
@@ -24,6 +25,17 @@ class DemoStore extends ChangeNotifier {
 
   String get currentUserId => _apiClient?.userId ?? seedUserId;
   Member get currentUser => Member(id: currentUserId, name: 'You');
+
+  void showMovements() {
+    _requestedTab = 2;
+    notifyListeners();
+  }
+
+  int? takeRequestedTab() {
+    final tab = _requestedTab;
+    _requestedTab = null;
+    return tab;
+  }
 
   ExpenseGroup groupById(String id) =>
       groups.firstWhere((group) => group.id == id);
@@ -170,8 +182,9 @@ class DemoStore extends ChangeNotifier {
   }
 
   Future<bool> removeMember(String groupId, String memberId) async {
-    if (_apiClient != null)
+    if (_apiClient != null) {
       return _sync(() => _apiClient.removeMember(groupId, memberId));
+    }
     final group = groupById(groupId);
     final index = group.members.indexWhere((member) => member.id == memberId);
     if (index < 0) return false;
@@ -188,12 +201,14 @@ class DemoStore extends ChangeNotifier {
     required String memberId,
   }) async {
     if (_apiClient != null) {
-      return _sync(
+      final settled = await _sync(
         () => _apiClient.settleBalance(
           groupId: groupId,
           memberId: memberId,
         ),
       );
+      if (settled) await loadStatus();
+      return settled;
     }
     final group = groupById(groupId);
     final memberBalance = balances(group)[memberId] ?? 0;
@@ -208,8 +223,31 @@ class DemoStore extends ChangeNotifier {
         createdAt: DateTime.now(),
       ),
     );
+    _refreshLocalStatus();
     notifyListeners();
     return true;
+  }
+
+  void _refreshLocalStatus() {
+    final combined = <String, ContactStatus>{};
+    for (final group in groups) {
+      final groupBalances = balances(group);
+      for (final member in group.members) {
+        if (member.id == currentUserId || member.userId == currentUserId) {
+          continue;
+        }
+        final amount = groupBalances[member.id] ?? 0;
+        if (amount == 0) continue;
+        final previous = combined[member.id];
+        combined[member.id] = ContactStatus(
+          member: member,
+          amountCents: (previous?.amountCents ?? 0) + amount,
+        );
+      }
+    }
+    contactStatus
+      ..clear()
+      ..addAll(combined.values.where((status) => status.amountCents != 0));
   }
 
   Map<String, int> balances(ExpenseGroup group) {

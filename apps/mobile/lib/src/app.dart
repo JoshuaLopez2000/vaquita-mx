@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/auth_screen.dart';
+import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
+import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
@@ -23,6 +26,7 @@ class VaquitaApp extends StatefulWidget {
 
 class _VaquitaAppState extends State<VaquitaApp> {
   late final DemoStore store;
+  late final AppCubit appCubit;
   late final bool _ownsStore;
   var _authenticated = false;
 
@@ -32,11 +36,13 @@ class _VaquitaAppState extends State<VaquitaApp> {
     _ownsStore = widget.store == null;
     store = widget.store ??
         DemoStore.remote(ApiClient(baseUrl: VaquitaApp.apiBaseUrl));
+    appCubit = AppCubit(store);
     _authenticated = !_ownsStore;
   }
 
   @override
   void dispose() {
+    appCubit.close();
     if (_ownsStore) {
       store.dispose();
     }
@@ -51,47 +57,50 @@ class _VaquitaAppState extends State<VaquitaApp> {
       brightness: Brightness.light,
     );
 
-    return MaterialApp(
-      title: 'Vaquita MX',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF5F7F4),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: colorScheme.surfaceContainerLowest,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          color: colorScheme.surfaceContainerLowest,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 52),
-            shape: RoundedRectangleBorder(
+    return BlocProvider.value(
+      value: appCubit,
+      child: MaterialApp(
+        title: 'Vaquita MX',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          colorScheme: colorScheme,
+          useMaterial3: true,
+          scaffoldBackgroundColor: const Color(0xFFF5F7F4),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: colorScheme.surfaceContainerLowest,
+            border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          cardTheme: CardThemeData(
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            color: colorScheme.surfaceContainerLowest,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),
+        home: _authenticated
+            ? AppShell(store: store)
+            : AuthScreen(
+                api: store.apiClient!,
+                onAuthenticated: () {
+                  setState(() => _authenticated = true);
+                  appCubit.loadGroups();
+                },
+              ),
       ),
-      home: _authenticated
-          ? AppShell(store: store)
-          : AuthScreen(
-              api: store.apiClient!,
-              onAuthenticated: () {
-                setState(() => _authenticated = true);
-                store.load();
-              },
-            ),
     );
   }
 }
@@ -108,17 +117,23 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
 
+  void _selectTab(int target) {
+    if (target == _selectedIndex) return;
+    setState(() => _selectedIndex = target);
+    if (target == 2) context.read<AppCubit>().loadGroups();
+  }
+
   Future<void> _createGroup() async {
     final input = await showCreateGroupSheet(context);
     if (input == null || !mounted) return;
-    final created = await widget.store.createGroup(
-      name: input.name,
-      memberNames: input.memberNames,
-      members: input.members,
-      emoji: input.emoji,
-      visibility: input.visibility,
-      salarySplitEnabled: input.salarySplitEnabled,
-    );
+    final created = await context.read<AppCubit>().createGroup(
+          name: input.name,
+          memberNames: input.memberNames,
+          members: input.members,
+          emoji: input.emoji,
+          visibility: input.visibility,
+          salarySplitEnabled: input.salarySplitEnabled,
+        );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -131,51 +146,61 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            DashboardScreen(store: widget.store),
-            StatusScreen(store: widget.store),
-            ProfileScreen(store: widget.store),
+    return BlocListener<AppCubit, AppState>(
+      listenWhen: (_, state) => state.navigationTarget != null,
+      listener: (_, state) => _selectTab(state.navigationTarget!),
+      child: Scaffold(
+        body: SafeArea(
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              DashboardScreen(store: widget.store),
+              StatusScreen(store: widget.store),
+              MovementsScreen(store: widget.store),
+              ProfileScreen(store: widget.store),
+            ],
+          ),
+        ),
+        floatingActionButton: _selectedIndex == 0
+            ? FloatingActionButton.extended(
+                key: const Key('create-group-button'),
+                onPressed: _createGroup,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('New group'),
+              )
+            : null,
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            _selectTab(index);
+            if (index == 1) {
+              context.read<AppCubit>().loadInbox();
+            }
+            if (index == 2) context.read<AppCubit>().loadGroups();
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded),
+              label: 'Home',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long_rounded),
+              label: 'Inbox',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.swap_horiz_outlined),
+              selectedIcon: Icon(Icons.swap_horiz_rounded),
+              label: 'Movements',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline_rounded),
+              selectedIcon: Icon(Icons.person_rounded),
+              label: 'Profile',
+            ),
           ],
         ),
-      ),
-      floatingActionButton: _selectedIndex == 0
-          ? FloatingActionButton.extended(
-              key: const Key('create-group-button'),
-              onPressed: _createGroup,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('New group'),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
-          if (index == 1) {
-            widget.store.loadStatus();
-            widget.store.loadInvitations();
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long_rounded),
-            label: 'Activity',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
@@ -188,8 +213,7 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: store,
+    return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
         var owedToYou = 0;
         var youOwe = 0;
@@ -538,15 +562,15 @@ class _StatusScreenState extends State<StatusScreen> {
   @override
   void initState() {
     super.initState();
-    widget.store.loadStatus();
-    widget.store.loadInvitations();
+    context.read<AppCubit>().loadInbox();
   }
 
   Future<void> _respondToInvitation(
       GroupInvitation invitation, bool accept) async {
     setState(() => _respondingInvitationId = invitation.group.id);
-    final updated =
-        await widget.store.respondInvitation(invitation.group.id, accept);
+    final updated = await context
+        .read<AppCubit>()
+        .respondToInvitation(invitation.group.id, accept);
     if (!mounted) return;
     setState(() => _respondingInvitationId = null);
     if (updated) {
@@ -564,15 +588,14 @@ class _StatusScreenState extends State<StatusScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: widget.store,
+    return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
         final rows = widget.store.contactStatus;
 
         return CustomScrollView(
           slivers: [
             SliverAppBar.large(
-              title: const Text('Contact status'),
+              title: const Text('Inbox'),
               backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             ),
             if (rows.isEmpty && widget.store.invitations.isEmpty)
@@ -616,61 +639,71 @@ class _StatusScreenState extends State<StatusScreen> {
                       final responding =
                           _respondingInvitationId == invite.group.id;
                       return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                CircleAvatar(child: Text(invite.group.emoji)),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Join ${invite.group.name}?',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium),
-                                      const Text('Shared group invitation'),
-                                    ],
-                                  ),
-                                ),
-                              ]),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    key: Key(
-                                        'decline-invitation-${invite.group.id}'),
-                                    onPressed: responding
-                                        ? null
-                                        : () =>
-                                            _respondToInvitation(invite, false),
-                                    child: const Text('Decline'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton(
-                                    key: Key(
-                                        'accept-invitation-${invite.group.id}'),
-                                    onPressed: responding
-                                        ? null
-                                        : () =>
-                                            _respondToInvitation(invite, true),
-                                    child: responding
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          )
-                                        : const Text('Accept invitation'),
-                                  ),
-                                ],
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => InvitationDetailsScreen(
+                                invitation: invite,
                               ),
-                            ],
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  CircleAvatar(child: Text(invite.group.emoji)),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Join ${invite.group.name}?',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium),
+                                        const Text('Shared group invitation'),
+                                      ],
+                                    ),
+                                  ),
+                                ]),
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      key: Key(
+                                          'decline-invitation-${invite.group.id}'),
+                                      onPressed: responding
+                                          ? null
+                                          : () => _respondToInvitation(
+                                              invite, false),
+                                      child: const Text('Decline'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    FilledButton(
+                                      key: Key(
+                                          'accept-invitation-${invite.group.id}'),
+                                      onPressed: responding
+                                          ? null
+                                          : () => _respondToInvitation(
+                                              invite, true),
+                                      child: responding
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2),
+                                            )
+                                          : const Text('Accept invitation'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -691,6 +724,14 @@ class _StatusScreenState extends State<StatusScreen> {
                           formatMoney(row.amountCents.abs()),
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ContactBalanceDetailsScreen(
+                              store: widget.store,
+                              status: row,
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   },
@@ -703,6 +744,329 @@ class _StatusScreenState extends State<StatusScreen> {
   }
 }
 
+class InvitationDetailsScreen extends StatelessWidget {
+  const InvitationDetailsScreen({required this.invitation, super.key});
+
+  final GroupInvitation invitation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Invitation details')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          CircleAvatar(
+            radius: 32,
+            child: Text(invitation.group.emoji,
+                style: const TextStyle(fontSize: 28)),
+          ),
+          const SizedBox(height: 16),
+          Text(invitation.group.name,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          const Text('Shared group invitation', textAlign: TextAlign.center),
+          const SizedBox(height: 32),
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.info_outline),
+              title: Text('Response required'),
+              subtitle:
+                  Text('Return to Inbox to accept or decline this invitation.'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ContactBalanceDetailsScreen extends StatelessWidget {
+  const ContactBalanceDetailsScreen(
+      {required this.store, required this.status, super.key});
+
+  final DemoStore store;
+  final ContactStatus status;
+
+  List<_GroupBalance> _groupBalances() {
+    final balances = <_GroupBalance>[];
+    for (final group in store.groups) {
+      Member? member;
+      for (final candidate in group.members) {
+        if (candidate.id == status.member.id) {
+          member = candidate;
+          break;
+        }
+      }
+      if (member == null) continue;
+      final amount = store.balances(group)[member.id] ?? 0;
+      if (amount == 0) continue;
+      final contactMember = member;
+      final concepts = group.expenses
+          .where((expense) =>
+              expense.payerId == contactMember.id ||
+              expense.participantIds.contains(contactMember.id))
+          .toList();
+      balances.add(_GroupBalance(group, contactMember, amount, concepts));
+    }
+    return balances;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<AppCubit, AppState>(
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
+    final balances = _groupBalances();
+    final currentAmount =
+        balances.fold<int>(0, (total, balance) => total + balance.amount);
+    return Scaffold(
+      appBar: AppBar(title: Text(status.member.name)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
+          Text('Balance details',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(formatMoney(currentAmount.abs()),
+              style: Theme.of(context).textTheme.headlineMedium),
+          if (currentAmount == 0)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text('Settled up'),
+            ),
+          const SizedBox(height: 24),
+          Text('By group', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (balances.isEmpty)
+            const Text('No active group balances to show.')
+          else
+            for (final balance in balances)
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: CircleAvatar(child: Text(balance.group.emoji)),
+                      title: Text(balance.group.name),
+                      subtitle: Text(balance.amount < 0
+                          ? '${status.member.name} owes you'
+                          : 'You owe ${status.member.name}'),
+                      trailing: Text(formatMoney(balance.amount.abs()),
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => GroupDetailScreen(
+                            store: store,
+                            groupId: balance.group.id,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (balance.concepts.isNotEmpty) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('Concepts',
+                              style: Theme.of(context).textTheme.labelLarge),
+                        ),
+                      ),
+                      for (final expense in balance.concepts)
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.receipt_long_outlined),
+                          title: Text(expense.description),
+                          trailing: Text(formatMoney(expense.amountCents)),
+                        ),
+                    ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(
+                          key: Key('request-payment-${balance.group.id}'),
+                          onPressed: () => showSettlementSheet(
+                              context,
+                              store,
+                              balance.group,
+                              balance.member,
+                              balance.amount, onSettled: () {
+                            if (context.mounted) Navigator.of(context).pop();
+                            context.read<AppCubit>().showMovements();
+                          }),
+                          icon: const Icon(Icons.qr_code_2_rounded),
+                          label: Text(balance.amount < 0
+                              ? 'Request payment'
+                              : 'Pay ${status.member.name}'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupBalance {
+  const _GroupBalance(this.group, this.member, this.amount, this.concepts);
+
+  final ExpenseGroup group;
+  final Member member;
+  final int amount;
+  final List<Expense> concepts;
+}
+
+class MovementsScreen extends StatelessWidget {
+  const MovementsScreen({required this.store, super.key});
+
+  final DemoStore store;
+
+  List<_Movement> _items() {
+    final items = <_Movement>[];
+    for (final group in store.groups) {
+      final members = {for (final member in group.members) member.id: member};
+      for (final expense in group.expenses) {
+        items.add(_Movement(
+          group: group,
+          title: expense.description,
+          detail: '${members[expense.payerId]?.name ?? 'A member'} paid',
+          amountCents: expense.amountCents,
+          occurredAt: expense.createdAt,
+          isSettlement: false,
+        ));
+      }
+      for (final settlement in group.settlements) {
+        final from = members[settlement.fromMemberId]?.name ?? 'A member';
+        final to = members[settlement.toMemberId]?.name ?? 'a member';
+        items.add(_Movement(
+          group: group,
+          title: '$from paid $to',
+          detail: 'Settlement',
+          amountCents: settlement.amountCents,
+          occurredAt: settlement.createdAt,
+          isSettlement: true,
+        ));
+      }
+    }
+    items.sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+    return items;
+  }
+
+  String _relativeDate(DateTime value) {
+    final date = value.toLocal();
+    final today = DateUtils.dateOnly(DateTime.now());
+    final daysAgo = today.difference(DateUtils.dateOnly(date)).inDays;
+    if (daysAgo == 0) return 'Today';
+    if (daysAgo == 1) return 'Yesterday';
+    if (daysAgo < 7) return '$daysAgo days ago';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<AppCubit, AppState>(
+      builder: (context, _) {
+        final items = _items();
+        return CustomScrollView(
+          slivers: [
+            SliverAppBar.large(
+              title: const Text('Movements'),
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            ),
+            if (items.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.receipt_long_outlined,
+                            size: 48,
+                            color: Theme.of(context).colorScheme.secondary),
+                        const SizedBox(height: 16),
+                        Text('No movements yet',
+                            style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Expenses and settlements from your groups will appear here.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                sliver: SliverList.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 7),
+                        leading: CircleAvatar(
+                          child: Icon(item.isSettlement
+                              ? Icons.handshake_outlined
+                              : Icons.receipt_long_outlined),
+                        ),
+                        title: Text(item.title),
+                        subtitle: Text(
+                            '${item.group.emoji} ${item.group.name} · ${item.detail} · ${_relativeDate(item.occurredAt)}'),
+                        trailing: Text(formatMoney(item.amountCents),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => GroupDetailScreen(
+                              store: store,
+                              groupId: item.group.id,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _Movement {
+  const _Movement({
+    required this.group,
+    required this.title,
+    required this.detail,
+    required this.amountCents,
+    required this.occurredAt,
+    required this.isSettlement,
+  });
+
+  final ExpenseGroup group;
+  final String title;
+  final String detail;
+  final int amountCents;
+  final DateTime occurredAt;
+  final bool isSettlement;
+}
+
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({required this.store, super.key});
 
@@ -710,19 +1074,22 @@ class ProfileScreen extends StatelessWidget {
   static const _contacts = MethodChannel('mx.vaquita.vaquita_mx/contacts');
 
   Future<void> _findContacts(BuildContext context) async {
+    final appCubit = context.read<AppCubit>();
     try {
       final phones =
           await _contacts.invokeListMethod<String>('getPhoneNumbers');
-      await store.findContacts(phones ?? []);
+      await appCubit.findContacts(phones ?? []);
     } on PlatformException catch (error) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content:
                 Text(error.message ?? 'Contacts permission is required.')));
+      }
     } catch (_) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Could not match contacts.')));
+      }
     }
   }
 
