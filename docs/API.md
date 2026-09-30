@@ -7,6 +7,9 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | --- | --- | --- |
 | `POST` | `/auth/register` | Create an account and session. |
 | `POST` | `/auth/login` | Create a session for an existing account. |
+| `POST` | `/auth/refresh` | Rotate a one-time refresh token and return a new session. |
+| `POST` | `/auth/sign-out` | Revoke the authenticated device session. |
+| `POST` | `/auth/sign-out-all` | Revoke every session for the authenticated user. |
 | `GET` | `/groups` | List groups visible to the signed-in user. |
 | `POST` | `/groups` | Create a group. |
 | `PATCH` | `/groups/{groupID}` | Change owner-only group settings. |
@@ -33,3 +36,10 @@ returned deep link is a simulator artifact and does not settle a balance.
 Errors use JSON with an `error` string. The current demo uses `401` for a
 missing or invalid session, `404` when a group or resource is not visible to
 the user, and `422` for invalid financial input.
+
+Registration, login, and refresh return `access_token`, `refresh_token`,
+`access_expires_at`, `refresh_expires_at`, and `user`. Access tokens expire
+after 15 minutes. Refresh tokens belong to a 30-day device-session family and
+are replaced every time they are used. Reusing a consumed refresh token revokes
+the whole family. The deprecated `token` response field mirrors
+`access_token` during the bounded legacy-client transition.

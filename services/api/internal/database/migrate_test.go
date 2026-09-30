@@ -41,10 +41,10 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 2 || len(result.Applied) != 2 {
+	if result.CurrentVersion != 3 || len(result.Applied) != 3 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
-	for _, table := range []string{"users", "contacts", "sessions", "members", "expense_groups", "group_members", "expenses", "expense_participants", "settlements", "schema_migrations"} {
+	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_participants", "settlements", "schema_migrations"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("find table %s: %v", table, err)
@@ -54,7 +54,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 		}
 	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 2 {
+	if err != nil || version != 3 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -62,7 +62,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 2 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 3 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -117,7 +117,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 2 || len(result.Applied) != 2 {
+	if result.CurrentVersion != 3 || len(result.Applied) != 3 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
@@ -146,6 +146,13 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	}
 	if ownerRole != "owner" || memberRole != "member" {
 		t.Fatalf("roles were not preserved: owner=%q member=%q", ownerRole, memberRole)
+	}
+	var legacySessionBounded bool
+	if err := db.QueryRowContext(ctx, `SELECT family_id IS NULL AND revoked_at IS NULL AND expires_at <= now() + interval '16 minutes' FROM sessions WHERE token_hash='token-hash'`).Scan(&legacySessionBounded); err != nil {
+		t.Fatal(err)
+	}
+	if !legacySessionBounded {
+		t.Fatal("legacy bearer session did not receive a bounded compatibility lifetime")
 	}
 }
 

@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -312,6 +315,121 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 	}
 }
 
+func TestSessionLifecycleWithPostgreSQL(t *testing.T) {
+	t.Parallel()
+	test := newPostgreSQLApplication(t)
+	client := test.server.Client()
+	baseURL := test.server.URL
+
+	initial := registerUser(t, client, baseURL, "Session User", "sessions@example.test", "+525510000099")
+	if initial.RefreshToken == "" || initial.AccessExpiresAt.IsZero() || initial.RefreshExpiresAt.IsZero() {
+		t.Fatalf("registration returned incomplete rotating session: %#v", initial)
+	}
+	var rawTokenRows int
+	if err := test.db.QueryRow(`SELECT
+      (SELECT count(*) FROM sessions WHERE token_hash=$1) +
+      (SELECT count(*) FROM refresh_tokens WHERE token_hash=$2)`, initial.Token, initial.RefreshToken).Scan(&rawTokenRows); err != nil {
+		t.Fatalf("inspect stored token hashes: %v", err)
+	}
+	if rawTokenRows != 0 {
+		t.Fatal("a raw access or refresh token was persisted")
+	}
+	if lifetime := initial.AccessExpiresAt.Sub(time.Now()); lifetime <= 0 || lifetime > auth.AccessTokenLifetime+time.Minute {
+		t.Fatalf("access token lifetime = %v", lifetime)
+	}
+	if lifetime := initial.RefreshExpiresAt.Sub(time.Now()); lifetime <= 0 || lifetime > auth.RefreshTokenLifetime+time.Minute {
+		t.Fatalf("refresh token lifetime = %v", lifetime)
+	}
+
+	accessDigest := sha256.Sum256([]byte(initial.Token))
+	if _, err := test.db.Exec(`UPDATE sessions SET expires_at=now()-interval '1 second' WHERE token_hash=$1`, hex.EncodeToString(accessDigest[:])); err != nil {
+		t.Fatalf("expire access token: %v", err)
+	}
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", initial.Token, nil, http.StatusUnauthorized, nil)
+
+	var rotated auth.Session
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": initial.RefreshToken}, http.StatusOK, &rotated)
+	if rotated.Token == initial.Token || rotated.RefreshToken == initial.RefreshToken || rotated.User.ID != initial.User.ID {
+		t.Fatalf("refresh did not rotate the session: initial=%#v rotated=%#v", initial, rotated)
+	}
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", rotated.Token, nil, http.StatusOK, nil)
+
+	// Reusing the consumed token revokes the whole family, including tokens
+	// returned by the successful rotation.
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": initial.RefreshToken}, http.StatusUnauthorized, nil)
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", rotated.Token, nil, http.StatusUnauthorized, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": rotated.RefreshToken}, http.StatusUnauthorized, nil)
+
+	current := loginUser(t, client, baseURL, "sessions@example.test")
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/sign-out", current.Token, nil, http.StatusNoContent, nil)
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", current.Token, nil, http.StatusUnauthorized, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": current.RefreshToken}, http.StatusUnauthorized, nil)
+
+	deviceOne := loginUser(t, client, baseURL, "sessions@example.test")
+	deviceTwo := loginUser(t, client, baseURL, "sessions@example.test")
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/sign-out-all", deviceOne.Token, nil, http.StatusNoContent, nil)
+	for name, session := range map[string]auth.Session{"device_one": deviceOne, "device_two": deviceTwo} {
+		t.Run("all_devices_revoked_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", session.Token, nil, http.StatusUnauthorized, nil)
+			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": session.RefreshToken}, http.StatusUnauthorized, nil)
+		})
+	}
+
+	expiredRefresh := loginUser(t, client, baseURL, "sessions@example.test")
+	refreshDigest := sha256.Sum256([]byte(expiredRefresh.RefreshToken))
+	if _, err := test.db.Exec(`UPDATE refresh_tokens SET expires_at=now()-interval '1 second' WHERE token_hash=$1`, hex.EncodeToString(refreshDigest[:])); err != nil {
+		t.Fatalf("expire refresh token: %v", err)
+	}
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/auth/refresh", "", map[string]string{"refresh_token": expiredRefresh.RefreshToken}, http.StatusUnauthorized, nil)
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", expiredRefresh.Token, nil, http.StatusUnauthorized, nil)
+
+	concurrent := loginUser(t, client, baseURL, "sessions@example.test")
+	type refreshResult struct {
+		status  int
+		session auth.Session
+		err     error
+	}
+	start := make(chan struct{})
+	results := make(chan refreshResult, 2)
+	var requests sync.WaitGroup
+	for range 2 {
+		requests.Add(1)
+		go func() {
+			defer requests.Done()
+			<-start
+			body, _ := json.Marshal(map[string]string{"refresh_token": concurrent.RefreshToken})
+			response, err := client.Post(baseURL+"/api/v1/auth/refresh", "application/json", bytes.NewReader(body))
+			result := refreshResult{err: err}
+			if err == nil {
+				result.status = response.StatusCode
+				if response.StatusCode == http.StatusOK {
+					result.err = json.NewDecoder(response.Body).Decode(&result.session)
+				}
+				_ = response.Body.Close()
+			}
+			results <- result
+		}()
+	}
+	close(start)
+	requests.Wait()
+	close(results)
+	statuses := map[int]int{}
+	var winner auth.Session
+	for result := range results {
+		if result.err != nil {
+			t.Fatalf("concurrent refresh: %v", result.err)
+		}
+		statuses[result.status]++
+		if result.status == http.StatusOK {
+			winner = result.session
+		}
+	}
+	if statuses[http.StatusOK] != 1 || statuses[http.StatusUnauthorized] != 1 {
+		t.Fatalf("concurrent refresh statuses = %#v, want one 200 and one 401", statuses)
+	}
+	doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", winner.Token, nil, http.StatusUnauthorized, nil)
+}
+
 func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
 	t.Parallel()
 	test := newPostgreSQLApplication(t)
@@ -407,7 +525,7 @@ func registerUser(t *testing.T, client *http.Client, baseURL, name, email, phone
 		"password":     "password1",
 		"salary_cents": 100000,
 	}, http.StatusCreated, &session)
-	if session.Token == "" || session.User.ID == "" {
+	if session.Token == "" || session.RefreshToken == "" || session.User.ID == "" {
 		t.Fatalf("registration returned incomplete session: %#v", session)
 	}
 	return session
@@ -420,7 +538,7 @@ func loginUser(t *testing.T, client *http.Client, baseURL, email string) auth.Se
 		"email":    email,
 		"password": "password1",
 	}, http.StatusOK, &session)
-	if session.Token == "" || session.User.ID == "" {
+	if session.Token == "" || session.RefreshToken == "" || session.User.ID == "" {
 		t.Fatalf("login returned incomplete session: %#v", session)
 	}
 	return session

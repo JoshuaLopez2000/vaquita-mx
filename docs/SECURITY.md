@@ -7,7 +7,7 @@ This application handles financial metadata even though it does not hold funds. 
 - TLS only; redirect or reject plaintext traffic.
 - Authentication and authorization on every user or group resource.
 - Password hashing with a deliberately chosen, reviewed password KDF. The current demo uses bcrypt; production should choose and document its final KDF and parameters before launch.
-- Short-lived access tokens, rotated refresh tokens, and server-side revocation.
+- Fifteen-minute access tokens, one-time rotated refresh tokens, and server-side revocation. Refresh-token reuse revokes the full device-session family.
 - Rate limits on authentication, invitations, and payment operations.
 - Encrypted secrets supplied by the hosting platform, never the mobile app.
 - Database encryption at rest and encrypted backups.
@@ -49,7 +49,7 @@ only settle the authenticated member's relationship with another member.
 
 ## Mobile controls
 
-- Keep access tokens in Android-backed secure storage. The client persists its opaque demo session there and restores it at launch.
+- Keep access and refresh tokens in Android-backed secure storage. The client restores them at launch, shares one refresh attempt across concurrent requests, and clears rejected sessions.
 - Do not embed production secrets through `--dart-define`.
 - Use Android App Links or verified deep links in production.
 - Redact sensitive content from screenshots and push notifications.

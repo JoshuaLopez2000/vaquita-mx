@@ -43,6 +43,11 @@ TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/vaquita_test?sslmo
 
 The API listens on `http://localhost:8080` by default.
 
+Authentication returns a 15-minute access token and a rotating refresh token
+for a 30-day device session. Apply migrations before starting the API; migration
+`0003_rotating_sessions` bounds pre-existing bearer sessions to a 15-minute
+transition window.
+
 ```bash
 curl http://localhost:8080/healthz
 curl http://localhost:8080/api/v1/payment-providers
