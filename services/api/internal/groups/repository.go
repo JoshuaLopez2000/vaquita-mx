@@ -14,6 +14,11 @@ import (
 
 const CurrentUserID = "me"
 
+const (
+	RoleOwner  = "owner"
+	RoleMember = "member"
+)
+
 var (
 	ErrInvalid  = errors.New("invalid group data")
 	ErrNotFound = errors.New("group not found")
@@ -22,6 +27,7 @@ var (
 type Member struct {
 	ID            string `json:"id"`
 	UserID        string `json:"user_id,omitempty"`
+	Role          string `json:"role"`
 	Name          string `json:"name"`
 	Phone         string `json:"phone,omitempty"`
 	Active        bool   `json:"active"`
@@ -119,7 +125,7 @@ func Open(ctx context.Context, url string) (*Repository, error) {
 func (r *Repository) Close() error                 { return r.db.Close() }
 func (r *Repository) Ping(c context.Context) error { return r.db.PingContext(c) }
 func (r *Repository) List(c context.Context, u string) ([]Group, error) {
-	rows, e := r.db.QueryContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g LEFT JOIN group_members x ON x.group_id=g.id AND x.user_id=$1 WHERE g.owner_id=$1 OR(g.visibility='shared' AND x.user_id=$1 AND x.accepted AND x.declined_at IS NULL) ORDER BY g.created_at DESC`, u)
+	rows, e := r.db.QueryContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g WHERE EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$1 AND x.removed_at IS NULL AND x.accepted AND x.declined_at IS NULL AND (x.role='owner' OR g.visibility='shared')) ORDER BY g.created_at DESC`, u)
 	if e != nil {
 		return nil, e
 	}
@@ -139,7 +145,7 @@ func (r *Repository) List(c context.Context, u string) ([]Group, error) {
 }
 func (r *Repository) Get(c context.Context, u, id string) (Group, error) {
 	var g Group
-	e := r.db.QueryRowContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g WHERE g.id=$1 AND(g.owner_id=$2 OR(g.visibility='shared' AND EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$2 AND x.accepted AND x.declined_at IS NULL)))`, id, u).Scan(&g.ID, &g.Name, &g.Emoji, &g.Visibility, &g.SalarySplitEnabled)
+	e := r.db.QueryRowContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g WHERE g.id=$1 AND EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$2 AND x.removed_at IS NULL AND x.accepted AND x.declined_at IS NULL AND (x.role='owner' OR g.visibility='shared'))`, id, u).Scan(&g.ID, &g.Name, &g.Emoji, &g.Visibility, &g.SalarySplitEnabled)
 	if errors.Is(e, sql.ErrNoRows) {
 		return g, ErrNotFound
 	}
@@ -208,7 +214,7 @@ func (r *Repository) owner(c context.Context, t *sql.Tx, g, u string) error {
 	if e != nil {
 		return e
 	}
-	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id)VALUES($1,$2,0,$2)`, g, u)
+	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id,role)VALUES($1,$2,0,$2,$3)`, g, u, RoleOwner)
 	return e
 }
 func (r *Repository) member(c context.Context, t *sql.Tx, g string, p int, in MemberInput, shared bool) error {
@@ -242,10 +248,13 @@ func (r *Repository) member(c context.Context, t *sql.Tx, g string, p int, in Me
 	if e != nil {
 		return e
 	}
-	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id,accepted)VALUES($1,$2,$3,$4,$5)`, g, id, p, uid, !shared)
+	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id,accepted,role)VALUES($1,$2,$3,$4,$5,$6)`, g, id, p, uid, !shared, RoleMember)
 	return e
 }
 func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput) (Group, error) {
+	if e := r.requireRole(c, u, id, RoleOwner); e != nil {
+		return Group{}, e
+	}
 	g, e := r.Get(c, u, id)
 	if e != nil {
 		return g, e
@@ -271,7 +280,7 @@ func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput
 		}
 		g.SalarySplitEnabled = *in.SalarySplitEnabled
 	}
-	res, e := r.db.ExecContext(c, `UPDATE expense_groups SET name=$1,emoji=$2,visibility=$3,salary_split_enabled=$4 WHERE id=$5 AND owner_id=$6`, g.Name, g.Emoji, g.Visibility, g.SalarySplitEnabled, id, u)
+	res, e := r.db.ExecContext(c, `UPDATE expense_groups SET name=$1,emoji=$2,visibility=$3,salary_split_enabled=$4 WHERE id=$5`, g.Name, g.Emoji, g.Visibility, g.SalarySplitEnabled, id)
 	if e != nil {
 		return g, e
 	}
@@ -282,6 +291,9 @@ func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput
 	return r.Get(c, u, id)
 }
 func (r *Repository) AddMember(c context.Context, u, g string, in MemberInput) (Group, error) {
+	if e := r.requireRole(c, u, g, RoleOwner); e != nil {
+		return Group{}, e
+	}
 	group, e := r.Get(c, u, g)
 	if e != nil {
 		return Group{}, e
@@ -311,15 +323,22 @@ func (r *Repository) UpdateMember(c context.Context, u, g, id string, in UpdateM
 	}
 	var n, p string
 	var memberUserID sql.NullString
-	e = r.db.QueryRowContext(c, `SELECT m.name,COALESCE(m.phone,''),x.user_id FROM members m JOIN group_members x ON x.member_id=m.id WHERE x.group_id=$1 AND m.id=$2`, g, id).Scan(&n, &p, &memberUserID)
+	e = r.db.QueryRowContext(c, `SELECT m.name,COALESCE(m.phone,''),x.user_id FROM members m JOIN group_members x ON x.member_id=m.id WHERE x.group_id=$1 AND m.id=$2 AND x.removed_at IS NULL`, g, id).Scan(&n, &p, &memberUserID)
 	if errors.Is(e, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
 	}
 	if e != nil {
 		return Group{}, e
 	}
+	identityChange := in.Name != "" || in.Phone != ""
+	if identityChange {
+		requesterRole, roleErr := r.role(c, u, g)
+		if roleErr != nil || requesterRole != RoleOwner {
+			return Group{}, ErrNotFound
+		}
+	}
 	if in.SalarySharing != nil && (!memberUserID.Valid || memberUserID.String != u) {
-		return Group{}, ErrInvalid
+		return Group{}, ErrNotFound
 	}
 	if in.Name != "" {
 		n = strings.TrimSpace(in.Name)
@@ -334,9 +353,11 @@ func (r *Repository) UpdateMember(c context.Context, u, g, id string, in UpdateM
 	if n == "" {
 		return Group{}, ErrInvalid
 	}
-	_, e = r.db.ExecContext(c, `UPDATE members SET name=$1,phone=NULLIF($2,'') WHERE id=$3`, n, p, id)
-	if e != nil {
-		return Group{}, e
+	if identityChange {
+		_, e = r.db.ExecContext(c, `UPDATE members SET name=$1,phone=NULLIF($2,'') WHERE id=$3`, n, p, id)
+		if e != nil {
+			return Group{}, e
+		}
 	}
 	if in.SalarySharing != nil {
 		_, e = r.db.ExecContext(c, `UPDATE group_members SET salary_sharing=$1 WHERE group_id=$2 AND member_id=$3`, *in.SalarySharing, g, id)
@@ -407,7 +428,7 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, e
 		return x, e
 	}
 	var selfID string
-	if e = r.db.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
+	if e = r.db.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
 		return x, ErrNotFound
 	}
 	if id == selfID {
@@ -479,10 +500,21 @@ func ValidatePaymentRequestData(g Group, userID, expenseID, debtorID string, amo
 }
 
 func (r *Repository) RemoveMember(c context.Context, u, g, id string) error {
-	if id == u {
+	if e := r.requireRole(c, u, g, RoleOwner); e != nil {
+		return e
+	}
+	var targetRole string
+	e := r.db.QueryRowContext(c, `SELECT role FROM group_members WHERE group_id=$1 AND member_id=$2 AND removed_at IS NULL`, g, id).Scan(&targetRole)
+	if errors.Is(e, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if e != nil {
+		return e
+	}
+	if targetRole == RoleOwner {
 		return ErrInvalid
 	}
-	z, e := r.db.ExecContext(c, `UPDATE group_members SET removed_at=now() WHERE group_id=$1 AND member_id=$2 AND removed_at IS NULL AND EXISTS(SELECT 1 FROM expense_groups WHERE id=$1 AND owner_id=$3)`, g, id, u)
+	z, e := r.db.ExecContext(c, `UPDATE group_members SET removed_at=now() WHERE group_id=$1 AND member_id=$2 AND removed_at IS NULL AND role='member'`, g, id)
 	if e != nil {
 		return e
 	}
@@ -534,7 +566,7 @@ func (r *Repository) Status(c context.Context, u string) ([]ContactStatus, error
 }
 
 func (r *Repository) Invitations(c context.Context, u string) ([]Invitation, error) {
-	rows, e := r.db.QueryContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled,m.id,m.name,COALESCE(m.phone,'') FROM group_members x JOIN expense_groups g ON g.id=x.group_id JOIN members m ON m.id=x.member_id WHERE x.user_id=$1 AND g.visibility='shared' AND NOT x.accepted AND x.declined_at IS NULL ORDER BY g.created_at DESC`, u)
+	rows, e := r.db.QueryContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled,m.id,x.role,m.name,COALESCE(m.phone,'') FROM group_members x JOIN expense_groups g ON g.id=x.group_id JOIN members m ON m.id=x.member_id WHERE x.user_id=$1 AND g.visibility='shared' AND x.removed_at IS NULL AND NOT x.accepted AND x.declined_at IS NULL ORDER BY g.created_at DESC`, u)
 	if e != nil {
 		return nil, e
 	}
@@ -542,7 +574,7 @@ func (r *Repository) Invitations(c context.Context, u string) ([]Invitation, err
 	out := make([]Invitation, 0)
 	for rows.Next() {
 		var invite Invitation
-		if e = rows.Scan(&invite.Group.ID, &invite.Group.Name, &invite.Group.Emoji, &invite.Group.Visibility, &invite.Group.SalarySplitEnabled, &invite.Member.ID, &invite.Member.Name, &invite.Member.Phone); e != nil {
+		if e = rows.Scan(&invite.Group.ID, &invite.Group.Name, &invite.Group.Emoji, &invite.Group.Visibility, &invite.Group.SalarySplitEnabled, &invite.Member.ID, &invite.Member.Role, &invite.Member.Name, &invite.Member.Phone); e != nil {
 			return nil, e
 		}
 		out = append(out, invite)
@@ -551,7 +583,7 @@ func (r *Repository) Invitations(c context.Context, u string) ([]Invitation, err
 }
 
 func (r *Repository) RespondInvitation(c context.Context, u, groupID string, accept bool) error {
-	result, e := r.db.ExecContext(c, `UPDATE group_members SET accepted=$1,declined_at=CASE WHEN $1 THEN NULL ELSE now() END WHERE group_id=$2 AND user_id=$3 AND NOT accepted AND declined_at IS NULL`, accept, groupID, u)
+	result, e := r.db.ExecContext(c, `UPDATE group_members SET accepted=$1,declined_at=CASE WHEN $1 THEN NULL ELSE now() END WHERE group_id=$2 AND user_id=$3 AND removed_at IS NULL AND NOT accepted AND declined_at IS NULL`, accept, groupID, u)
 	if e != nil {
 		return e
 	}
@@ -618,13 +650,13 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	g.Members = make([]Member, 0)
 	g.Expenses = make([]Expense, 0)
 	g.Settlements = make([]Settlement, 0)
-	rows, e := r.db.QueryContext(c, `SELECT m.id,COALESCE(x.user_id,''),m.name,COALESCE(m.phone,''),x.removed_at IS NULL,x.salary_sharing,x.accepted,COALESCE(u.salary_cents,0) FROM group_members x JOIN members m ON m.id=x.member_id LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 ORDER BY x.position`, g.ID)
+	rows, e := r.db.QueryContext(c, `SELECT m.id,COALESCE(x.user_id,''),x.role,m.name,COALESCE(m.phone,''),x.removed_at IS NULL,x.salary_sharing,x.accepted,COALESCE(u.salary_cents,0) FROM group_members x JOIN members m ON m.id=x.member_id LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 ORDER BY x.position`, g.ID)
 	if e != nil {
 		return e
 	}
 	for rows.Next() {
 		var m Member
-		if e = rows.Scan(&m.ID, &m.UserID, &m.Name, &m.Phone, &m.Active, &m.SalarySharing, &m.Accepted, &m.SalaryCents); e != nil {
+		if e = rows.Scan(&m.ID, &m.UserID, &m.Role, &m.Name, &m.Phone, &m.Active, &m.SalarySharing, &m.Accepted, &m.SalaryCents); e != nil {
 			rows.Close()
 			return e
 		}
@@ -671,6 +703,27 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	g.Balances = Balances(*g)
 	return nil
 }
+
+func (r *Repository) role(c context.Context, userID, groupID string) (string, error) {
+	var role string
+	err := r.db.QueryRowContext(c, `SELECT role FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END LIMIT 1`, groupID, userID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return role, err
+}
+
+func (r *Repository) requireRole(c context.Context, userID, groupID, required string) error {
+	role, err := r.role(c, userID, groupID)
+	if err != nil {
+		return err
+	}
+	if role != required {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func newID(p string) (string, error) {
 	b := make([]byte, 12)
 	_, e := rand.Read(b)

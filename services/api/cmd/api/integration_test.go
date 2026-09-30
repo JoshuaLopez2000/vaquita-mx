@@ -56,6 +56,9 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	}
 	ownerMember := findMember(t, group, owner.User.ID)
 	invitedMember := findMember(t, group, member.User.ID)
+	if ownerMember.Role != groups.RoleOwner || invitedMember.Role != groups.RoleMember {
+		t.Fatalf("unexpected persisted roles: owner=%q member=%q", ownerMember.Role, invitedMember.Role)
+	}
 
 	// A pending invitee cannot read the group through a protected mutation.
 	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/expenses", memberLogin.Token, map[string]any{
@@ -137,6 +140,176 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	}
 	assertBalance(t, ownerGroups.Groups[0], ownerMember.ID, 0)
 	assertBalance(t, ownerGroups.Groups[0], invitedMember.ID, 0)
+}
+
+func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
+	t.Parallel()
+	test := newPostgreSQLApplication(t)
+	client := test.server.Client()
+	baseURL := test.server.URL
+
+	owner := registerUser(t, client, baseURL, "Owner", "owner@example.test", "+525510000001")
+	member := registerUser(t, client, baseURL, "Member", "member@example.test", "+525510000002")
+	pending := registerUser(t, client, baseURL, "Pending", "pending@example.test", "+525510000003")
+	removed := registerUser(t, client, baseURL, "Removed", "removed@example.test", "+525510000004")
+	declined := registerUser(t, client, baseURL, "Declined", "declined@example.test", "+525510000005")
+	candidate := registerUser(t, client, baseURL, "Candidate", "candidate@example.test", "+525510000006")
+
+	var group groups.Group
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups", owner.Token, map[string]any{
+		"name":       "Authorization matrix",
+		"visibility": "shared",
+		"members": []map[string]string{
+			{"name": "Member", "phone": "+525510000002"},
+			{"name": "Pending", "phone": "+525510000003"},
+			{"name": "Removed", "phone": "+525510000004"},
+			{"name": "Declined", "phone": "+525510000005"},
+		},
+	}, http.StatusCreated, &group)
+
+	ownerMember := findMember(t, group, owner.User.ID)
+	acceptedMember := findMember(t, group, member.User.ID)
+	pendingMember := findMember(t, group, pending.User.ID)
+	removedMember := findMember(t, group, removed.User.ID)
+	declinedMember := findMember(t, group, declined.User.ID)
+	for _, membership := range group.Members {
+		want := groups.RoleMember
+		if membership.ID == ownerMember.ID {
+			want = groups.RoleOwner
+		}
+		if membership.Role != want {
+			t.Fatalf("member %q role = %q, want %q", membership.ID, membership.Role, want)
+		}
+	}
+
+	acceptInvitation := func(session auth.Session) {
+		t.Helper()
+		doJSON(t, client, http.MethodPost, baseURL+"/api/v1/group-invitations/"+group.ID+"/response", session.Token, map[string]bool{"accept": true}, http.StatusNoContent, nil)
+	}
+	acceptInvitation(member)
+	acceptInvitation(removed)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/group-invitations/"+group.ID+"/response", declined.Token, map[string]bool{"accept": false}, http.StatusNoContent, nil)
+	doJSON(t, client, http.MethodDelete, baseURL+"/api/v1/groups/"+group.ID+"/members/"+removedMember.ID, owner.Token, nil, http.StatusNoContent, nil)
+
+	// Owner-only settings return the same response for a known-but-hidden group
+	// and an unknown group, preventing resource enumeration.
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID, owner.Token, map[string]string{"name": "Owner updated"}, http.StatusOK, &group)
+	var hiddenError, missingError map[string]string
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID, member.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, &hiddenError)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/group_missing", member.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, &missingError)
+	if hiddenError["error"] != missingError["error"] {
+		t.Fatalf("authorization response enumerates groups: hidden=%#v missing=%#v", hiddenError, missingError)
+	}
+	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
+		t.Run("settings_denied_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID, session.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, nil)
+		})
+	}
+
+	// Membership identity is owner-managed; salary consent belongs only to the
+	// affected authenticated user.
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/members", owner.Token, map[string]string{"name": "Candidate", "phone": "+525510000006"}, http.StatusCreated, &group)
+	candidateMember := findMember(t, group, candidate.User.ID)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+candidateMember.ID, owner.Token, map[string]string{"name": "Candidate edited"}, http.StatusOK, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/members", member.Token, map[string]string{"name": "Forbidden", "phone": "+525510000006"}, http.StatusNotFound, nil)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+acceptedMember.ID, member.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, nil)
+	doJSON(t, client, http.MethodDelete, baseURL+"/api/v1/groups/"+group.ID+"/members/"+candidateMember.ID, member.Token, nil, http.StatusNotFound, nil)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+acceptedMember.ID, owner.Token, map[string]bool{"salary_sharing": true}, http.StatusNotFound, nil)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+ownerMember.ID, owner.Token, map[string]bool{"salary_sharing": true}, http.StatusOK, nil)
+	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+acceptedMember.ID, member.Token, map[string]bool{"salary_sharing": true}, http.StatusOK, nil)
+	for name, denied := range map[string]struct {
+		session auth.Session
+		member  groups.Member
+	}{
+		"pending":  {pending, pendingMember},
+		"removed":  {removed, removedMember},
+		"declined": {declined, declinedMember},
+	} {
+		t.Run("membership_denied_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/members", denied.session.Token, map[string]string{"name": "Forbidden", "phone": "+525510000006"}, http.StatusNotFound, nil)
+			doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID+"/members/"+denied.member.ID, denied.session.Token, map[string]bool{"salary_sharing": true}, http.StatusNotFound, nil)
+			doJSON(t, client, http.MethodDelete, baseURL+"/api/v1/groups/"+group.ID+"/members/"+candidateMember.ID, denied.session.Token, nil, http.StatusNotFound, nil)
+		})
+	}
+	doJSON(t, client, http.MethodDelete, baseURL+"/api/v1/groups/"+group.ID+"/members/"+ownerMember.ID, owner.Token, nil, http.StatusUnprocessableEntity, nil)
+	doJSON(t, client, http.MethodDelete, baseURL+"/api/v1/groups/"+group.ID+"/members/"+candidateMember.ID, owner.Token, nil, http.StatusNoContent, nil)
+
+	createExpense := func(session auth.Session, payerID, description string, wantStatus int) groups.Group {
+		t.Helper()
+		var result groups.Group
+		doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/expenses", session.Token, map[string]any{
+			"description":     description,
+			"amount_cents":    100,
+			"payer_id":        payerID,
+			"participant_ids": []string{ownerMember.ID, acceptedMember.ID},
+			"split_mode":      "equal",
+		}, wantStatus, &result)
+		return result
+	}
+	ownerExpenseGroup := createExpense(owner, ownerMember.ID, "Owner expense", http.StatusCreated)
+	ownerExpense := ownerExpenseGroup.Expenses[0]
+	createExpense(member, acceptedMember.ID, "Member expense", http.StatusCreated)
+	for name, denied := range map[string]struct {
+		session auth.Session
+		payerID string
+	}{
+		"pending":  {pending, pendingMember.ID},
+		"removed":  {removed, removedMember.ID},
+		"declined": {declined, declinedMember.ID},
+	} {
+		t.Run("expense_denied_"+name, func(t *testing.T) {
+			createExpense(denied.session, denied.payerID, "Forbidden", http.StatusNotFound)
+		})
+	}
+
+	paymentRequest := map[string]any{
+		"group_id":     group.ID,
+		"expense_id":   ownerExpense.ID,
+		"debtor_id":    acceptedMember.ID,
+		"amount_cents": int64(50),
+		"currency":     "MXN",
+	}
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", owner.Token, paymentRequest, http.StatusCreated, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", member.Token, paymentRequest, http.StatusUnprocessableEntity, nil)
+	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
+		t.Run("payment_request_denied_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", session.Token, paymentRequest, http.StatusNotFound, nil)
+		})
+	}
+
+	// The two equal expenses cancel each other, so add one owner-paid expense
+	// before exercising member settlement and one member-paid expense before
+	// exercising owner settlement.
+	createExpense(owner, ownerMember.ID, "Member settles", http.StatusCreated)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", member.Token, map[string]string{"member_id": ownerMember.ID}, http.StatusCreated, nil)
+	createExpense(member, acceptedMember.ID, "Owner settles", http.StatusCreated)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", owner.Token, map[string]string{"member_id": acceptedMember.ID}, http.StatusCreated, nil)
+	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
+		t.Run("settlement_denied_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", session.Token, map[string]string{"member_id": ownerMember.ID}, http.StatusNotFound, nil)
+		})
+	}
+
+	// Only the still-pending invitee can respond. Accepted, removed, and
+	// declined users all receive the same not-found response.
+	for name, session := range map[string]auth.Session{"owner": owner, "member": member, "removed": removed, "declined": declined} {
+		t.Run("invitation_response_denied_"+name, func(t *testing.T) {
+			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/group-invitations/"+group.ID+"/response", session.Token, map[string]bool{"accept": true}, http.StatusNotFound, nil)
+		})
+	}
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/group-invitations/"+group.ID+"/response", pending.Token, map[string]bool{"accept": false}, http.StatusNoContent, nil)
+
+	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
+		t.Run("hidden_from_group_list_"+name, func(t *testing.T) {
+			var list struct {
+				Groups []groups.Group `json:"groups"`
+			}
+			doJSON(t, client, http.MethodGet, baseURL+"/api/v1/groups", session.Token, nil, http.StatusOK, &list)
+			if len(list.Groups) != 0 {
+				t.Fatalf("%s user can still list hidden group: %#v", name, list.Groups)
+			}
+		})
+	}
 }
 
 func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
