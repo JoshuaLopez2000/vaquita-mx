@@ -52,11 +52,6 @@ func Open(databaseURL string) (*Repository, error) {
 
 func (r *Repository) Close() error { return r.db.Close() }
 
-func (r *Repository) Migrate(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, schema)
-	return err
-}
-
 func (r *Repository) Register(ctx context.Context, name, email, phone, password string, salaryCents int64) (Session, error) {
 	name, email = strings.TrimSpace(name), strings.ToLower(strings.TrimSpace(email))
 	phone, validPhone := NormalizePhone(phone)
@@ -220,26 +215,3 @@ func newID(prefix string) (string, error) {
 	}
 	return prefix + "_" + hex.EncodeToString(bytes), nil
 }
-
-const schema = `
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL CHECK (length(trim(name)) > 1),
-  email TEXT NOT NULL UNIQUE,
-	phone TEXT UNIQUE,
-  password_hash TEXT NOT NULL,
-  salary_cents BIGINT NOT NULL DEFAULT 0 CHECK (salary_cents >= 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS salary_cents BIGINT NOT NULL DEFAULT 0;
-CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL;
-CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, phone TEXT NOT NULL, linked_user_id TEXT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(owner_id, phone));
-CREATE TABLE IF NOT EXISTS sessions (
-  token_hash TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
-`
