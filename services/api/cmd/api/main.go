@@ -64,6 +64,23 @@ func main() {
 		groups:   repository,
 	}
 
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           app.routes(getenv("ALLOWED_ORIGINS", "*")),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	slog.Info("api listening", "address", server.Addr, "payment_provider", app.payments.Name(), "schema_version", version)
+	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		slog.Error("api stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+func (app application) routes(allowedOrigins string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", app.health)
 	mux.HandleFunc("POST /api/v1/auth/register", app.register)
@@ -88,21 +105,7 @@ func main() {
 	// The simulator is protected and validates its input against the ledger. It
 	// remains a portfolio/demo boundary; it does not move money or settle debt.
 	mux.HandleFunc("POST /api/v1/payment-requests", app.requireUser(app.createPaymentRequest))
-
-	server := &http.Server{
-		Addr:              ":" + port,
-		Handler:           requestLogger(cors(mux, getenv("ALLOWED_ORIGINS", "*"))),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-
-	slog.Info("api listening", "address", server.Addr, "payment_provider", app.payments.Name(), "schema_version", version)
-	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("api stopped", "error", err)
-		os.Exit(1)
-	}
+	return requestLogger(cors(mux, allowedOrigins))
 }
 
 func runMigrations() {

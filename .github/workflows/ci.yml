@@ -35,7 +35,7 @@ jobs:
         with:
           go-version-file: services/api/go.mod
           cache: false
-      - run: go test ./...
+      - run: go test ./... -count=1
       - run: go vet ./...
 
   mobile:
