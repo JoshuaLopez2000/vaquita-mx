@@ -31,6 +31,16 @@ go run ./cmd/api migrate
 go run ./cmd/api
 ```
 
+PostgreSQL-backed API and migration tests run when `TEST_DATABASE_URL` points
+to a disposable database. Each test creates and removes its own schema, so the
+suite is repeatable and safe for parallel CI jobs. Never point it at a database
+containing data you need to preserve.
+
+```bash
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/vaquita_test?sslmode=disable \
+  go test ./... -count=1
+```
+
 The API listens on `http://localhost:8080` by default.
 
 ```bash
