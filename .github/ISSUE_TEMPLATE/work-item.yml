@@ -1,0 +1,84 @@
+name: Product work item
+description: Define an outcome, feature, risk reduction, or engineering task
+title: "[Work]: "
+labels: []
+body:
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      options:
+        - Outcome
+        - Feature
+        - Risk
+        - Chore
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Product
+        - Mobile
+        - API
+        - Payments
+        - Infrastructure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user or operational problem, not only the proposed implementation.
+      placeholder: What is difficult, unsafe, slow, or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: State what becomes observably possible after this work ships.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use independently verifiable checklist items.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ] Failure behavior is defined and tested where relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: Identify related work that is deliberately excluded.
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and risks
+      description: Note security, privacy, financial, API, data-migration, or architectural constraints.
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Describe automated tests, manual checks, staging evidence, and observability needed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Rollout and rollback
+      description: Explain how the change will be deployed, disabled, or reversed when relevant.

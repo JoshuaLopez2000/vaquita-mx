@@ -89,6 +89,7 @@ On web, the app defaults to `http://localhost:8080`, rather than the Android-emu
 - [Security](docs/SECURITY.md)
 - [Remote deployment](docs/DEPLOYMENT.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Delivery workflow](docs/WORKFLOW.md)
 
 ## Working agreements
 
