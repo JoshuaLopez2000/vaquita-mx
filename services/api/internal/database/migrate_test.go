@@ -41,7 +41,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 1 || len(result.Applied) != 1 {
+	if result.CurrentVersion != 2 || len(result.Applied) != 2 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
 	for _, table := range []string{"users", "contacts", "sessions", "members", "expense_groups", "group_members", "expenses", "expense_participants", "settlements", "schema_migrations"} {
@@ -54,7 +54,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 		}
 	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 1 {
+	if err != nil || version != 2 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -62,7 +62,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 1 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 2 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -117,7 +117,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 1 || len(result.Applied) != 1 {
+	if result.CurrentVersion != 2 || len(result.Applied) != 2 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
@@ -136,6 +136,16 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	}
 	if users != 1 || groups != 1 || contacts != 1 {
 		t.Fatalf("representative data was not preserved: users=%d groups=%d contacts=%d", users, groups, contacts)
+	}
+	var ownerRole, memberRole string
+	if err := db.QueryRowContext(ctx, `SELECT role FROM group_members WHERE group_id='group-1' AND member_id='user-1'`).Scan(&ownerRole); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT role FROM group_members WHERE group_id='group-1' AND member_id='member-2'`).Scan(&memberRole); err != nil {
+		t.Fatal(err)
+	}
+	if ownerRole != "owner" || memberRole != "member" {
+		t.Fatalf("roles were not preserved: owner=%q member=%q", ownerRole, memberRole)
 	}
 }
 

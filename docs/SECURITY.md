@@ -24,6 +24,29 @@ This application handles financial metadata even though it does not hold funds. 
 - Never accept a client-side `paid: true` value as proof of payment.
 - Use compensating ledger entries instead of destructive edits.
 
+## Group authorization matrix
+
+Group membership stores one of two roles: `owner` or `member`. A role grants
+permissions only while that membership is accepted, not declined, and not
+removed. Hidden groups and unauthorized mutations return the same not-found
+response so callers cannot enumerate group or member records.
+
+| Action | Owner | Accepted member | Pending, declined, or removed |
+| --- | --- | --- | --- |
+| Read a personal group | Allow | Deny | Deny |
+| Read a shared group | Allow | Allow | Deny |
+| Change group settings | Allow | Deny | Deny |
+| Invite, edit, or remove members | Allow | Deny | Deny |
+| Change salary-sharing consent | Own membership only | Own membership only | Deny |
+| Create an expense | Allow | Allow | Deny |
+| Create a payment request | Expense payer only | Expense payer only | Deny |
+| Record a settlement | Own accepted membership only | Own accepted membership only | Deny |
+| Accept or decline an invitation | Not applicable | Pending invitee only | Removed or declined: deny |
+
+The owner role cannot be removed. Payment requests must still match the exact
+MXN-centavo share for an active, accepted debtor, and settlement commands may
+only settle the authenticated member's relationship with another member.
+
 ## Mobile controls
 
 - Keep access tokens in Android-backed secure storage. The client persists its opaque demo session there and restores it at launch.
