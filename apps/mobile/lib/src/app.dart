@@ -59,6 +59,7 @@ class _VaquitaAppState extends State<VaquitaApp> {
     appCubit = AppCubit(store);
     _authenticated = !_ownsStore;
     if (_ownsStore) {
+      store.apiClient!.onSessionInvalidated = _handleInvalidSession;
       _restoreSession();
     } else {
       _restoringSession = false;
@@ -73,6 +74,17 @@ class _VaquitaAppState extends State<VaquitaApp> {
       _restoringSession = false;
     });
     if (restored) appCubit.loadGroups();
+  }
+
+  void _handleInvalidSession() {
+    if (!mounted) return;
+    setState(() => _authenticated = false);
+  }
+
+  Future<void> _signOut(bool allDevices) async {
+    await store.apiClient?.signOut(allDevices: allDevices);
+    if (!mounted) return;
+    setState(() => _authenticated = false);
   }
 
   @override
@@ -132,7 +144,11 @@ class _VaquitaAppState extends State<VaquitaApp> {
         home: _restoringSession
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : _authenticated
-                ? AppShell(store: store, onLocaleChanged: _setLocale)
+                ? AppShell(
+                    store: store,
+                    onLocaleChanged: _setLocale,
+                    onSignOut: _signOut,
+                  )
                 : AuthScreen(
                     api: store.apiClient!,
                     onAuthenticated: () {
@@ -149,11 +165,13 @@ class AppShell extends StatefulWidget {
   const AppShell({
     required this.store,
     required this.onLocaleChanged,
+    required this.onSignOut,
     super.key,
   });
 
   final DemoStore store;
   final ValueChanged<Locale> onLocaleChanged;
+  final Future<void> Function(bool allDevices) onSignOut;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -233,6 +251,7 @@ class _AppShellState extends State<AppShell> {
               ProfileScreen(
                 store: widget.store,
                 onLocaleChanged: widget.onLocaleChanged,
+                onSignOut: widget.onSignOut,
               ),
             ],
           ),

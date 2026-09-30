@@ -85,6 +85,9 @@ func (app application) routes(allowedOrigins string) http.Handler {
 	mux.HandleFunc("GET /healthz", app.health)
 	mux.HandleFunc("POST /api/v1/auth/register", app.register)
 	mux.HandleFunc("POST /api/v1/auth/login", app.login)
+	mux.HandleFunc("POST /api/v1/auth/refresh", app.refreshSession)
+	mux.HandleFunc("POST /api/v1/auth/sign-out", app.requireUser(app.signOut))
+	mux.HandleFunc("POST /api/v1/auth/sign-out-all", app.requireUser(app.signOutAll))
 	mux.HandleFunc("POST /api/v1/contacts/matches", app.requireUser(app.matchContacts))
 	mux.HandleFunc("GET /api/v1/contacts", app.requireUser(app.listContacts))
 	mux.HandleFunc("POST /api/v1/contacts", app.requireUser(app.saveContacts))
@@ -186,6 +189,7 @@ func (app application) register(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "register", err)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusCreated, session)
 }
 
@@ -269,7 +273,48 @@ func (app application) login(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "login", err)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, session)
+}
+
+func (app application) refreshSession(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	session, err := app.auth.Refresh(r.Context(), input.RefreshToken)
+	if errors.Is(err, auth.ErrUnauthorized) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or reused refresh token"})
+		return
+	}
+	if err != nil {
+		serverError(w, "refresh session", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, session)
+}
+
+func (app application) signOut(w http.ResponseWriter, r *http.Request) {
+	if err := app.auth.RevokeSession(r.Context(), accessToken(r)); err != nil {
+		if errors.Is(err, auth.ErrUnauthorized) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			return
+		}
+		serverError(w, "sign out", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (app application) signOutAll(w http.ResponseWriter, r *http.Request) {
+	if err := app.auth.RevokeAll(r.Context(), userID(r)); err != nil {
+		serverError(w, "sign out all", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func runHealthcheck() {
@@ -293,19 +338,30 @@ func (app application) health(w http.ResponseWriter, _ *http.Request) {
 
 func (app application) requireUser(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		header := r.Header.Get("Authorization")
+		token, found := strings.CutPrefix(header, "Bearer ")
+		if !found || token == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			return
+		}
 		user, err := app.auth.UserForToken(r.Context(), token)
 		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, user.ID)))
+		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
+		ctx = context.WithValue(ctx, accessTokenKey{}, token)
+		next(w, r.WithContext(ctx))
 	}
 }
 
 type userIDKey struct{}
+type accessTokenKey struct{}
 
 func userID(r *http.Request) string { return r.Context().Value(userIDKey{}).(string) }
+func accessToken(r *http.Request) string {
+	return r.Context().Value(accessTokenKey{}).(string)
+}
 
 func (app application) matchContacts(w http.ResponseWriter, r *http.Request) {
 	var input struct {

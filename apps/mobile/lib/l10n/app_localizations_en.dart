@@ -670,4 +670,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get viewPendingPayments => 'View pending payments';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get signOutDescription => 'Sign out on this device';
+
+  @override
+  String get signOutAll => 'Sign out everywhere';
+
+  @override
+  String get signOutAllDescription => 'Revoke every session for your account';
 }

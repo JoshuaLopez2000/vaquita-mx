@@ -220,4 +220,8 @@
   ,"pendingPaymentFromTo": "{from} paga a {to}"
   ,"@pendingPaymentFromTo": {"placeholders":{"from":{"type":"String"},"to":{"type":"String"}}}
   ,"viewPendingPayments": "Ver pagos pendientes"
+  ,"signOut": "Cerrar sesiÃ³n"
+  ,"signOutDescription": "Cerrar sesiÃ³n en este dispositivo"
+  ,"signOutAll": "Cerrar todas las sesiones"
+  ,"signOutAllDescription": "Revocar todas las sesiones de tu cuenta"
 }

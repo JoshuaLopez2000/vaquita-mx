@@ -4,11 +4,13 @@ class ProfileScreen extends StatelessWidget {
   const ProfileScreen({
     required this.store,
     required this.onLocaleChanged,
+    required this.onSignOut,
     super.key,
   });
 
   final DemoStore store;
   final ValueChanged<Locale> onLocaleChanged;
+  final Future<void> Function(bool allDevices) onSignOut;
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
@@ -160,6 +162,30 @@ class ProfileScreen extends StatelessWidget {
                 },
               ),
             ),
+            if (store.isRemote) ...[
+              const SizedBox(height: 18),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      key: const Key('sign-out-button'),
+                      leading: const Icon(Icons.logout_rounded),
+                      title: Text(l10n.signOut),
+                      subtitle: Text(l10n.signOutDescription),
+                      onTap: () => onSignOut(false),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      key: const Key('sign-out-all-button'),
+                      leading: const Icon(Icons.phonelink_erase_rounded),
+                      title: Text(l10n.signOutAll),
+                      subtitle: Text(l10n.signOutAllDescription),
+                      onTap: () => onSignOut(true),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         );
       },

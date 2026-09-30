@@ -220,4 +220,8 @@
   ,"pendingPaymentFromTo": "{from} pays {to}"
   ,"@pendingPaymentFromTo": {"placeholders":{"from":{"type":"String"},"to":{"type":"String"}}}
   ,"viewPendingPayments": "View pending payments"
+  ,"signOut": "Sign out"
+  ,"signOutDescription": "Sign out on this device"
+  ,"signOutAll": "Sign out everywhere"
+  ,"signOutAllDescription": "Revoke every session for your account"
 }

@@ -1274,6 +1274,30 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Ver pagos pendientes'**
   String get viewPendingPayments;
+
+  /// No description provided for @signOut.
+  ///
+  /// In es, this message translates to:
+  /// **'Cerrar sesiÃ³n'**
+  String get signOut;
+
+  /// No description provided for @signOutDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Cerrar sesiÃ³n en este dispositivo'**
+  String get signOutDescription;
+
+  /// No description provided for @signOutAll.
+  ///
+  /// In es, this message translates to:
+  /// **'Cerrar todas las sesiones'**
+  String get signOutAll;
+
+  /// No description provided for @signOutAllDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Revocar todas las sesiones de tu cuenta'**
+  String get signOutAllDescription;
 }
 
 class _AppLocalizationsDelegate
