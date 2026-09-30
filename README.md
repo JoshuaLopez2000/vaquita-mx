@@ -27,6 +27,7 @@ Requirements: Go 1.24 or newer.
 ```bash
 cd services/api
 go test ./...
+go run ./cmd/api migrate
 go run ./cmd/api
 ```
 
@@ -47,7 +48,8 @@ curl -X POST http://localhost:8080/api/v1/payment-requests \
 
 ## Local containers
 
-With Docker Desktop running:
+With Docker Desktop running, Compose waits for PostgreSQL, applies all pending
+versioned migrations in a one-off container, and only then starts the API:
 
 ```bash
 docker compose up --detach --build --wait

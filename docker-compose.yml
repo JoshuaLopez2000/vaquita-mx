@@ -11,6 +11,16 @@ services:
     ports:
       - "8080:8080"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build:
+      context: ./services/api
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: postgres://vaquita:vaquita-local@postgres:5432/vaquita?sslmode=disable
+    depends_on:
       postgres:
         condition: service_healthy
 

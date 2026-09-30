@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/database"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/payments"
 )
@@ -26,10 +27,25 @@ func main() {
 		runHealthcheck()
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "migrate" {
+		runMigrations()
+		return
+	}
 	port := getenv("PORT", "8080")
 	databaseURL := getenv("DATABASE_URL", "postgres://vaquita:vaquita-local@localhost:5432/vaquita?sslmode=disable")
 	startupContext, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	schemaDatabase, err := database.Open(databaseURL)
+	if err != nil {
+		slog.Error("open schema database", "error", err)
+		os.Exit(1)
+	}
+	version, err := database.Verify(startupContext, schemaDatabase)
+	_ = schemaDatabase.Close()
+	if err != nil {
+		slog.Error("verify database schema", "error", err)
+		os.Exit(1)
+	}
 	repository, err := groups.Open(startupContext, databaseURL)
 	if err != nil {
 		slog.Error("connect database", "error", err)
@@ -42,14 +58,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer authRepository.Close()
-	if err := authRepository.Migrate(startupContext); err != nil {
-		slog.Error("migrate auth database", "error", err)
-		os.Exit(1)
-	}
-	if err := repository.Migrate(startupContext); err != nil {
-		slog.Error("migrate database", "error", err)
-		os.Exit(1)
-	}
 	app := application{
 		auth:     authRepository,
 		payments: payments.SimulatedProvider{},
@@ -90,11 +98,32 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	slog.Info("api listening", "address", server.Addr, "payment_provider", app.payments.Name())
+	slog.Info("api listening", "address", server.Addr, "payment_provider", app.payments.Name(), "schema_version", version)
 	if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("api stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func runMigrations() {
+	databaseURL := getenv("DATABASE_URL", "postgres://vaquita:vaquita-local@localhost:5432/vaquita?sslmode=disable")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	db, err := database.Open(databaseURL)
+	if err != nil {
+		slog.Error("open migration database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	result, err := database.Migrate(ctx, db)
+	if err != nil {
+		slog.Error("migrate database", "error", err)
+		os.Exit(1)
+	}
+	for _, migration := range result.Applied {
+		slog.Info("applied database migration", "version", migration.Version, "name", migration.Name)
+	}
+	slog.Info("database migrations complete", "schema_version", result.CurrentVersion, "applied", len(result.Applied))
 }
 
 // cors permits the separately hosted Flutter web client to call the API. In
