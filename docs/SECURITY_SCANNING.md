@@ -55,9 +55,18 @@ reasonable. An exception must be reviewed in a pull request and record:
 Keep suppressions as narrow as possible. Expired exceptions must be removed or
 re-reviewed. Critical credential findings cannot be excepted.
 
+### Current baseline disposition
+
+`GO-2026-5932` reports that `golang.org/x/crypto/openpgp` is unmaintained and
+has no fixed version. Vaquita MX requires `x/crypto` for password hashing but
+does not import `openpgp`; Govulncheck reports no affected package or symbol.
+The compensating controls are the absence of that import and the blocking
+Govulncheck job. Repository maintainers own this disposition, which expires on
+2026-12-29 and must then be removed or re-reviewed.
+
 ## Local verification
 
-Run source and dependency checks with Go 1.25.8 or newer from `services/api`:
+Run source and dependency checks with Go 1.26 or newer from `services/api`:
 
 ```text
 go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -exclude-generated -severity high -confidence medium ./...
