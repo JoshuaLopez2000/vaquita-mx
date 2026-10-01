@@ -68,7 +68,7 @@ Govulncheck job. Repository maintainers own this disposition, which expires on
 
 ## Local verification
 
-Run source and dependency checks with Go 1.26 or newer from `services/api`:
+Run source and dependency checks with Go 1.26.6 or newer from `services/api`:
 
 ```text
 go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -exclude-generated -severity high -confidence medium ./...
