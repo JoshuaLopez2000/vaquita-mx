@@ -57,4 +57,15 @@ only settle the authenticated member's relationship with another member.
 
 ## Privacy
 
-Collect only data needed for group expenses and payment reconciliation. Define retention and deletion policies, publish a privacy notice, and assess applicable Mexican privacy requirements before a real launch.
+Collect only data needed for group expenses and payment reconciliation. The
+[privacy, retention, and deletion specification](PRIVACY.md) records the data
+inventory, target schedules, account-anonymization behavior, ARCO/support
+runbook, backup tombstones, legal baseline, and unresolved release blockers.
+The [Spanish](PRIVACY_NOTICE_ES.md) and
+[English](PRIVACY_NOTICE_EN.md) user-facing notices remain pre-release drafts
+until the controller identity, address, privacy channel, processors, and legal
+approval are recorded.
+
+Do not invite external beta users, enable salary collection, or add a new data
+purpose until the applicable privacy blocker is closed and the notice shown at
+collection matches deployed behavior.

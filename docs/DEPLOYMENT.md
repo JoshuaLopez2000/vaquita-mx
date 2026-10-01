@@ -102,3 +102,12 @@ only when a forward fix cannot safely recover the environment.
 - The API is authenticated before domain mutation endpoints become public.
 - No simulator UI or API claims a real transfer occurred.
 - A rollback image and a tested database restore procedure exist.
+- The [privacy specification](PRIVACY.md) matches deployed data flows; the
+  controller, privacy contact, processors, regions, transfer basis, retention
+  settings, and legal/security approvals are recorded.
+- The completed Spanish-first privacy notice is available before electronic
+  collection, with explicit consent where required. Draft placeholders are a
+  release blocker.
+- Logs have a verified 30-day default retention, encrypted backups expire
+  within 35 days, and deletion tombstones are replayed successfully in a
+  synthetic restore rehearsal.
