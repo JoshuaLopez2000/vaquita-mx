@@ -8,6 +8,8 @@ import (
 	"errors"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"math"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -434,7 +436,11 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, e
 	if id == selfID {
 		return x, ErrInvalid
 	}
-	b := Balances(x)[id]
+	balances, e := calculateBalances(x)
+	if e != nil {
+		return x, e
+	}
+	b := balances[id]
 	if b == 0 {
 		return x, ErrInvalid
 	}
@@ -487,7 +493,11 @@ func ValidatePaymentRequestData(g Group, userID, expenseID, debtorID string, amo
 	if payer == nil || payer.UserID != userID {
 		return ErrInvalid
 	}
-	share, participates := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)[debtorID]
+	shares, err := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)
+	if err != nil {
+		return ErrInvalid
+	}
+	share, participates := shares[debtorID]
 	if !participates || debtorID == expense.PayerID || amountCents != share {
 		return ErrInvalid
 	}
@@ -529,7 +539,10 @@ func (r *Repository) Unpaid(c context.Context, u, id string) ([]UnpaidBalance, e
 	if e != nil {
 		return nil, e
 	}
-	b := Balances(g)
+	b, e := calculateBalances(g)
+	if e != nil {
+		return nil, e
+	}
 	var o []UnpaidBalance
 	for _, m := range g.Members {
 		if b[m.ID] != 0 {
@@ -545,7 +558,10 @@ func (r *Repository) Status(c context.Context, u string) ([]ContactStatus, error
 	}
 	x := map[string]ContactStatus{}
 	for _, g := range gs {
-		b := Balances(g)
+		b, balanceErr := calculateBalances(g)
+		if balanceErr != nil {
+			return nil, balanceErr
+		}
 		for _, m := range g.Members {
 			if m.UserID == u || m.ID == u {
 				continue
@@ -600,42 +616,114 @@ func (r *Repository) salaryReady(c context.Context, groupID string) bool {
 	return e == nil && missing == 0
 }
 func Balances(g Group) map[string]int64 {
-	b := map[string]int64{}
-	for _, m := range g.Members {
-		b[m.ID] = 0
-	}
-	for _, e := range g.Expenses {
-		b[e.PayerID] += e.AmountCents
-		shares := split(e.AmountCents, e.ParticipantIDs, g, e.SplitMode)
-		for id, v := range shares {
-			b[id] -= v
-		}
-	}
-	for _, s := range g.Settlements {
-		b[s.FromMemberID] += s.AmountCents
-		b[s.ToMemberID] -= s.AmountCents
+	b, err := calculateBalances(g)
+	if err != nil {
+		return map[string]int64{}
 	}
 	return b
 }
-func split(a int64, ids []string, g Group, mode string) map[string]int64 {
+
+func calculateBalances(g Group) (map[string]int64, error) {
+	exact := map[string]*big.Int{}
+	for _, m := range g.Members {
+		if m.ID == "" {
+			return nil, ErrInvalid
+		}
+		if _, exists := exact[m.ID]; exists {
+			return nil, ErrInvalid
+		}
+		exact[m.ID] = new(big.Int)
+	}
+	for _, e := range g.Expenses {
+		if _, exists := exact[e.PayerID]; !exists || e.AmountCents <= 0 {
+			return nil, ErrInvalid
+		}
+		exact[e.PayerID].Add(exact[e.PayerID], big.NewInt(e.AmountCents))
+		shares, err := split(e.AmountCents, e.ParticipantIDs, g, e.SplitMode)
+		if err != nil {
+			return nil, err
+		}
+		for id, v := range shares {
+			exact[id].Sub(exact[id], big.NewInt(v))
+		}
+	}
+	for _, s := range g.Settlements {
+		if s.AmountCents <= 0 || s.FromMemberID == s.ToMemberID {
+			return nil, ErrInvalid
+		}
+		if _, exists := exact[s.FromMemberID]; !exists {
+			return nil, ErrInvalid
+		}
+		if _, exists := exact[s.ToMemberID]; !exists {
+			return nil, ErrInvalid
+		}
+		exact[s.FromMemberID].Add(exact[s.FromMemberID], big.NewInt(s.AmountCents))
+		exact[s.ToMemberID].Sub(exact[s.ToMemberID], big.NewInt(s.AmountCents))
+	}
+
+	b := make(map[string]int64, len(exact))
+	for id, balance := range exact {
+		if !balance.IsInt64() {
+			return nil, ErrInvalid
+		}
+		b[id] = balance.Int64()
+	}
+	return b, nil
+}
+
+func split(a int64, ids []string, g Group, mode string) (map[string]int64, error) {
+	if a <= 0 || len(ids) == 0 || mode != "" && mode != "equal" && mode != "salary" {
+		return nil, ErrInvalid
+	}
+	if mode == "" {
+		mode = "equal"
+	}
+
 	o := map[string]int64{}
 	m := map[string]Member{}
 	for _, x := range g.Members {
+		if x.ID == "" {
+			return nil, ErrInvalid
+		}
+		if _, duplicate := m[x.ID]; duplicate {
+			return nil, ErrInvalid
+		}
 		m[x.ID] = x
 	}
-	var total int64
-	w := map[string]int64{}
+	total := new(big.Int)
+	w := map[string]*big.Int{}
 	for _, id := range ids {
-		w[id] = 1
-		if mode == "salary" && m[id].SalaryCents > 0 {
-			w[id] = m[id].SalaryCents
+		member, exists := m[id]
+		if !exists {
+			return nil, ErrInvalid
 		}
-		total += w[id]
+		if _, duplicate := w[id]; duplicate {
+			return nil, ErrInvalid
+		}
+		weight := int64(1)
+		if mode == "salary" {
+			if member.SalaryCents <= 0 {
+				return nil, ErrInvalid
+			}
+			weight = member.SalaryCents
+		}
+		w[id] = big.NewInt(weight)
+		total.Add(total, w[id])
 	}
+
 	var used int64
 	for _, id := range ids {
-		o[id] = a * w[id] / total
-		used += o[id]
+		product := new(big.Int).Mul(big.NewInt(a), w[id])
+		share := new(big.Int).Quo(product, total)
+		if !share.IsInt64() {
+			return nil, ErrInvalid
+		}
+		o[id] = share.Int64()
+		var err error
+		used, err = addCentavos(used, o[id])
+		if err != nil {
+			return nil, err
+		}
 	}
 	for _, id := range ids {
 		if used == a {
@@ -644,7 +732,14 @@ func split(a int64, ids []string, g Group, mode string) map[string]int64 {
 		o[id]++
 		used++
 	}
-	return o
+	return o, nil
+}
+
+func addCentavos(current, delta int64) (int64, error) {
+	if (delta > 0 && current > math.MaxInt64-delta) || (delta < 0 && current < math.MinInt64-delta) {
+		return 0, ErrInvalid
+	}
+	return current + delta, nil
 }
 func (r *Repository) load(c context.Context, g *Group) error {
 	g.Members = make([]Member, 0)
@@ -681,7 +776,11 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			x.ParticipantIDs = append(x.ParticipantIDs, id)
 		}
 		ps.Close()
-		x.Shares = split(x.AmountCents, x.ParticipantIDs, *g, x.SplitMode)
+		x.Shares, e = split(x.AmountCents, x.ParticipantIDs, *g, x.SplitMode)
+		if e != nil {
+			es.Close()
+			return e
+		}
 		g.Expenses = append(g.Expenses, x)
 	}
 	es.Close()
@@ -700,7 +799,10 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	if err := ss.Err(); err != nil {
 		return err
 	}
-	g.Balances = Balances(*g)
+	g.Balances, e = calculateBalances(*g)
+	if e != nil {
+		return e
+	}
 	return nil
 }
 
