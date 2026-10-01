@@ -52,7 +52,7 @@ class DemoStore extends ChangeNotifier {
         ..clear()
         ..addAll(loaded);
     } on ApiException catch (error) {
-      errorMessage = error.message;
+      errorMessage = error.code;
     } catch (_) {
       errorMessage = 'server_unavailable';
     } finally {
@@ -111,7 +111,7 @@ class DemoStore extends ChangeNotifier {
       await loadContacts();
       return true;
     } on ApiException catch (error) {
-      errorMessage = error.message;
+      errorMessage = error.code;
       return false;
     } catch (_) {
       errorMessage = 'server_request_failed';
@@ -362,7 +362,7 @@ class DemoStore extends ChangeNotifier {
         ..addAll(loaded);
       return true;
     } on ApiException catch (error) {
-      errorMessage = error.message;
+      errorMessage = error.code;
       return false;
     } catch (_) {
       errorMessage = 'server_request_failed';

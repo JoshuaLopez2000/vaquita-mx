@@ -71,8 +71,9 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) widget.onAuthenticated();
     } on ApiException catch (error) {
       if (mounted) {
-        setState(() => _error =
-            localizedError(AppLocalizations.of(context)!, error.message));
+        setState(() => _error = localizedError(
+            AppLocalizations.of(context)!, error.code,
+            fallback: error.message));
       }
     } catch (_) {
       if (mounted) {

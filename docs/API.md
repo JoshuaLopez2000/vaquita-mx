@@ -33,9 +33,49 @@ requires a valid session, group access, an expense paid by that user, an active
 participant debtor, and the exact centavo share computed by the ledger. The
 returned deep link is a simulator artifact and does not settle a balance.
 
-Errors use JSON with an `error` string. The current demo uses `401` for a
-missing or invalid session, `404` when a group or resource is not visible to
-the user, and `422` for invalid financial input.
+## Correlation IDs and errors
+
+Every response includes `X-Correlation-ID`. A caller may send that header with
+1 to 64 ASCII letters, digits, hyphens, underscores, periods, or colons. The
+API echoes a valid value; otherwise it generates a new opaque ID. Include the
+response ID when reporting a failed request. Logs contain the same ID but do
+not contain authorization tokens, phone numbers, request bodies, or financial
+descriptions.
+
+Failures use this version 1 envelope:
+
+```json
+{
+  "version": "1",
+  "code": "validation_failed",
+  "message": "invalid group settings",
+  "fields": {
+    "name": "required"
+  },
+  "error": "invalid group settings"
+}
+```
+
+`code` is the stable value clients branch on. `message` is safe for display but
+may be reworded or localized. `fields` is optional and its values are stable
+machine-readable reasons. The deprecated `error` string mirrors `message` for
+one beta-version compatibility window; new clients must not branch on it.
+
+| Code | Typical status | Meaning |
+| --- | --- | --- |
+| `invalid_json` | 400 | The JSON body is malformed, too large, or contains unsupported fields. |
+| `request_limit_exceeded` | 400 | A bounded collection exceeds its allowed size. |
+| `authentication_required` | 401 | The access token is missing, invalid, expired, or revoked. |
+| `invalid_credentials` | 401 | Login credentials were rejected. |
+| `invalid_refresh_token` | 401 | A refresh token is invalid, expired, reused, or revoked. |
+| `resource_not_found` | 404 | The resource is missing or intentionally hidden from this user. |
+| `email_already_registered` | 409 | Registration conflicts with an existing account. |
+| `validation_failed` | 422 | Domain or financial input is invalid. |
+| `internal_error` | 500 | An unexpected server failure occurred; details are logged only server-side. |
+| `service_unavailable` | 503 | A required service is temporarily unavailable. |
+
+Hidden and missing resources deliberately return the same status, code, and
+safe message so authorization checks do not reveal their existence.
 
 Registration, login, and refresh return `access_token`, `refresh_token`,
 `access_expires_at`, `refresh_expires_at`, and `user`. Access tokens expire

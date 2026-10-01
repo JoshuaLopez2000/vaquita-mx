@@ -57,6 +57,33 @@ void main() {
     await client.createGroup(name: 'Roommates', memberNames: ['Ana']);
   });
 
+  test('parses stable API error codes, fields, and correlation IDs', () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async => http.Response(
+            jsonEncode({
+              'version': '1',
+              'code': 'validation_failed',
+              'message': 'The wording may change.',
+              'fields': {'name': 'required'},
+              'error': 'The wording may change.',
+            }),
+            422,
+            headers: const {'x-correlation-id': 'mobile-test-123'},
+          )),
+    );
+
+    try {
+      await client.createGroup(name: '', memberNames: const []);
+      fail('expected ApiException');
+    } on ApiException catch (error) {
+      expect(error.code, 'validation_failed');
+      expect(error.message, 'The wording may change.');
+      expect(error.fields, {'name': 'required'});
+      expect(error.correlationId, 'mobile-test-123');
+    }
+  });
+
   test('sends login credentials and keeps the rotating session', () async {
     final client = ApiClient(
       baseUrl: 'http://example.test',
@@ -101,7 +128,14 @@ void main() {
         }
         if (request.url.path == '/api/v1/groups') {
           if (request.headers['authorization'] == 'Bearer access-old') {
-            return http.Response(jsonEncode({'error': 'expired'}), 401);
+            return http.Response(
+                jsonEncode({
+                  'version': '1',
+                  'code': 'authentication_required',
+                  'message': 'Changed wording',
+                  'error': 'Changed wording',
+                }),
+                401);
           }
           expect(request.headers['authorization'], 'Bearer access-new');
           return http.Response(jsonEncode({'groups': <Object>[]}), 200);
@@ -139,10 +173,24 @@ void main() {
       client: MockClient((request) async {
         if (request.url.path == '/api/v1/groups') {
           expect(request.headers['authorization'], 'Bearer expired-access');
-          return http.Response(jsonEncode({'error': 'expired'}), 401);
+          return http.Response(
+              jsonEncode({
+                'version': '1',
+                'code': 'authentication_required',
+                'message': 'Changed wording',
+                'error': 'Changed wording',
+              }),
+              401);
         }
         expect(request.url.path, '/api/v1/auth/refresh');
-        return http.Response(jsonEncode({'error': 'invalid refresh'}), 401);
+        return http.Response(
+            jsonEncode({
+              'version': '1',
+              'code': 'invalid_refresh_token',
+              'message': 'Changed refresh wording',
+              'error': 'Changed refresh wording',
+            }),
+            401);
       }),
     );
 
