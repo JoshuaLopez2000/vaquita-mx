@@ -22,7 +22,7 @@ This is a portfolio demonstration with a working local vertical slice:
 
 ## Local API
 
-Requirements: Go 1.24 or newer.
+Requirements: Go 1.25 or newer.
 
 ```bash
 cd services/api

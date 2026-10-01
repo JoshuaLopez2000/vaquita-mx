@@ -14,6 +14,9 @@ This application handles financial metadata even though it does not hold funds. 
 - Structured audit events without bank data, tokens, or secrets in logs.
 - Dependency, static-analysis, and container scanning in CI.
 
+Scanner coverage, blocking thresholds, remediation deadlines, and exception
+requirements are defined in [Security scanning](SECURITY_SCANNING.md).
+
 ## Payment controls
 
 - Generate provider calls only from the server.
