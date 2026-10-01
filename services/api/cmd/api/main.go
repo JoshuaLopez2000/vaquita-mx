@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -21,6 +24,21 @@ type application struct {
 	payments payments.Provider
 	groups   *groups.Repository
 }
+
+const (
+	correlationHeader = "X-Correlation-ID"
+	errorVersion      = "1"
+)
+
+type apiError struct {
+	Version string            `json:"version"`
+	Code    string            `json:"code"`
+	Message string            `json:"message"`
+	Fields  map[string]string `json:"fields,omitempty"`
+	Error   string            `json:"error"` // Deprecated beta compatibility field.
+}
+
+type correlationIDKey struct{}
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
@@ -108,7 +126,10 @@ func (app application) routes(allowedOrigins string) http.Handler {
 	// The simulator is protected and validates its input against the ledger. It
 	// remains a portfolio/demo boundary; it does not move money or settle debt.
 	mux.HandleFunc("POST /api/v1/payment-requests", app.requireUser(app.createPaymentRequest))
-	return requestLogger(cors(mux, allowedOrigins))
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "resource not found", nil)
+	})
+	return correlationIDs(requestLogger(cors(mux, allowedOrigins)))
 }
 
 func runMigrations() {
@@ -153,7 +174,8 @@ func cors(next http.Handler, allowedOrigins string) http.Handler {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Add("Vary", "Origin")
 				}
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Correlation-ID")
+				w.Header().Set("Access-Control-Expose-Headers", "X-Correlation-ID")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			}
 		}
@@ -178,11 +200,11 @@ func (app application) register(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := app.auth.Register(r.Context(), input.Name, input.Email, input.Phone, input.Password, input.SalaryCents)
 	if errors.Is(err, auth.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "name, valid email, Mexican mobile number, non-negative monthly salary, and an 8-character password are required"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "name, valid email, Mexican mobile number, non-negative monthly salary, and an 8-character password are required", nil)
 		return
 	}
 	if errors.Is(err, auth.ErrEmailInUse) {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "email is already registered"})
+		writeAPIError(w, http.StatusConflict, "email_already_registered", "email is already registered", map[string]string{"email": "already_registered"})
 		return
 	}
 	if err != nil {
@@ -200,11 +222,11 @@ func (app application) updateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.Update(r.Context(), userID(r), r.PathValue("groupID"), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "invalid group settings"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid group settings", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 		return
 	}
 	if err != nil {
@@ -221,11 +243,11 @@ func (app application) addMember(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.AddMember(r.Context(), userID(r), r.PathValue("groupID"), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a member needs a name or Mexican mobile number"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a member needs a name or Mexican mobile number", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 		return
 	}
 	if err != nil {
@@ -242,11 +264,11 @@ func (app application) updateMember(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.UpdateMember(r.Context(), userID(r), r.PathValue("groupID"), r.PathValue("memberID"), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "invalid member update or salary consent"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid member update or salary consent", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group or member not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or member not found", nil)
 		return
 	}
 	if err != nil {
@@ -266,7 +288,7 @@ func (app application) login(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := app.auth.Login(r.Context(), input.Email, input.Password)
 	if errors.Is(err, auth.ErrInvalid) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid email or password"})
+		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "invalid email or password", nil)
 		return
 	}
 	if err != nil {
@@ -286,7 +308,7 @@ func (app application) refreshSession(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := app.auth.Refresh(r.Context(), input.RefreshToken)
 	if errors.Is(err, auth.ErrUnauthorized) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or reused refresh token"})
+		writeAPIError(w, http.StatusUnauthorized, "invalid_refresh_token", "invalid or reused refresh token", nil)
 		return
 	}
 	if err != nil {
@@ -300,7 +322,7 @@ func (app application) refreshSession(w http.ResponseWriter, r *http.Request) {
 func (app application) signOut(w http.ResponseWriter, r *http.Request) {
 	if err := app.auth.RevokeSession(r.Context(), accessToken(r)); err != nil {
 		if errors.Is(err, auth.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			writeAPIError(w, http.StatusUnauthorized, "authentication_required", "authentication required", nil)
 			return
 		}
 		serverError(w, "sign out", err)
@@ -330,7 +352,7 @@ func (app application) health(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if err := app.groups.Ping(ctx); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "service": "vaquita-api"})
+		writeAPIError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "vaquita-api"})
@@ -341,12 +363,12 @@ func (app application) requireUser(next http.HandlerFunc) http.HandlerFunc {
 		header := r.Header.Get("Authorization")
 		token, found := strings.CutPrefix(header, "Bearer ")
 		if !found || token == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			writeAPIError(w, http.StatusUnauthorized, "authentication_required", "authentication required", nil)
 			return
 		}
 		user, err := app.auth.UserForToken(r.Context(), token)
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			writeAPIError(w, http.StatusUnauthorized, "authentication_required", "authentication required", nil)
 			return
 		}
 		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
@@ -371,7 +393,7 @@ func (app application) matchContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(input.Phones) > 500 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at most 500 contacts can be matched at once"})
+		writeAPIError(w, http.StatusBadRequest, "request_limit_exceeded", "at most 500 contacts can be matched at once", map[string]string{"phones": "too_many"})
 		return
 	}
 	phones := make([]string, 0, len(input.Phones))
@@ -415,7 +437,7 @@ func (app application) saveContacts(w http.ResponseWriter, r *http.Request) {
 func (app application) removeContact(w http.ResponseWriter, r *http.Request) {
 	err := app.auth.RemoveContact(r.Context(), userID(r), r.PathValue("contactID"))
 	if errors.Is(err, auth.ErrInvalid) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "contact not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "contact not found", nil)
 		return
 	}
 	if err != nil {
@@ -452,7 +474,7 @@ func (app application) respondInvitation(w http.ResponseWriter, r *http.Request)
 	}
 	err := app.groups.RespondInvitation(r.Context(), userID(r), r.PathValue("groupID"), input.Accept)
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "invitation not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "invitation not found", nil)
 		return
 	}
 	if err != nil {
@@ -469,7 +491,7 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.Create(r.Context(), userID(r), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "a name and at least one member are required"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a name and at least one member are required", nil)
 		return
 	}
 	if err != nil {
@@ -486,11 +508,11 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.AddExpense(r.Context(), userID(r), r.PathValue("groupID"), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "invalid expense or group member"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid expense or group member", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 		return
 	}
 	if err != nil {
@@ -509,11 +531,11 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.AddSettlement(r.Context(), userID(r), r.PathValue("groupID"), input.MemberID)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "member has no balance to settle"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "member has no balance to settle", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 		return
 	}
 	if err != nil {
@@ -526,11 +548,11 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 func (app application) removeMember(w http.ResponseWriter, r *http.Request) {
 	err := app.groups.RemoveMember(r.Context(), userID(r), r.PathValue("groupID"), r.PathValue("memberID"))
 	if errors.Is(err, groups.ErrInvalid) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "you cannot remove yourself"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "you cannot remove yourself", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "member not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "member not found", nil)
 		return
 	}
 	if err != nil {
@@ -543,7 +565,7 @@ func (app application) removeMember(w http.ResponseWriter, r *http.Request) {
 func (app application) unpaid(w http.ResponseWriter, r *http.Request) {
 	result, err := app.groups.Unpaid(r.Context(), userID(r), r.PathValue("groupID"))
 	if errors.Is(err, groups.ErrNotFound) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 		return
 	}
 	if err != nil {
@@ -578,11 +600,11 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	}
 	if err := app.groups.ValidatePaymentRequest(r.Context(), userID(r), input.GroupID, input.ExpenseID, input.DebtorID, input.AmountCents); err != nil {
 		if errors.Is(err, groups.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group or expense not found"})
+			writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or expense not found", nil)
 			return
 		}
 		if errors.Is(err, groups.ErrInvalid) {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "payment request must match an unpaid participant share for an expense you paid"})
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "payment request must match an unpaid participant share for an expense you paid", nil)
 			return
 		}
 		serverError(w, "validate payment request", err)
@@ -590,12 +612,11 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	}
 	result, err := app.payments.CreateRequest(r.Context(), input)
 	if errors.Is(err, payments.ErrInvalidRequest) {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "group_id, expense_id, debtor_id, a positive amount_cents, and currency MXN are required"})
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "group_id, expense_id, debtor_id, a positive amount_cents, and currency MXN are required", nil)
 		return
 	}
 	if err != nil {
-		slog.Error("create payment request", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		serverError(w, "create payment request", err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, result)
@@ -606,22 +627,98 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body", map[string]string{"body": "invalid"})
 		return false
 	}
 	return true
 }
 
 func serverError(w http.ResponseWriter, operation string, err error) {
-	slog.Error(operation, "error", err)
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+	slog.Error(operation, "error", err, "correlation_id", w.Header().Get(correlationHeader))
+	writeAPIError(w, http.StatusInternalServerError, "internal_error", "internal error", nil)
+}
+
+func correlationIDs(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimSpace(r.Header.Get(correlationHeader))
+		if !validCorrelationID(id) {
+			id = newCorrelationID()
+		}
+		w.Header().Set(correlationHeader, id)
+		ctx := context.WithValue(r.Context(), correlationIDKey{}, id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func validCorrelationID(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' ||
+			character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' ||
+			strings.ContainsRune("-_.:", character) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func newCorrelationID() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err == nil {
+		return hex.EncodeToString(value[:])
+	}
+	return fmt.Sprintf("fallback-%x", time.Now().UnixNano())
+}
+
+func correlationID(r *http.Request) string {
+	value, _ := r.Context().Value(correlationIDKey{}).(string)
+	return value
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *statusResponseWriter) Write(contents []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(contents)
 }
 
 func requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		next.ServeHTTP(w, r)
-		slog.Info("request", "method", r.Method, "path", r.URL.Path, "duration_ms", time.Since(started).Milliseconds())
+		response := &statusResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(response, r)
+		status := response.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		slog.Info("request", "correlation_id", correlationID(r), "method", r.Method, "path", r.URL.Path, "status", status, "duration_ms", time.Since(started).Milliseconds())
+	})
+}
+
+func writeAPIError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	writeJSON(w, status, apiError{
+		Version: errorVersion,
+		Code:    code,
+		Message: message,
+		Fields:  fields,
+		Error:   message,
 	})
 }
 
@@ -629,7 +726,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(value); err != nil {
-		slog.Error("encode response", "error", err)
+		slog.Error("encode response", "error", err, "correlation_id", w.Header().Get(correlationHeader))
 	}
 }
 

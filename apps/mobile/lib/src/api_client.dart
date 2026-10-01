@@ -5,9 +5,17 @@ import 'package:http/http.dart' as http;
 import 'package:vaquita_mx/src/models.dart';
 
 class ApiException implements Exception {
-  const ApiException(this.message);
+  const ApiException({
+    required this.code,
+    required this.message,
+    this.correlationId,
+    this.fields = const <String, String>{},
+  });
 
+  final String code;
   final String message;
+  final String? correlationId;
+  final Map<String, String> fields;
 
   @override
   String toString() => message;
@@ -298,9 +306,17 @@ class ApiClient {
   }
 
   Map<String, dynamic> _decode(http.Response response) {
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    late final Map<String, dynamic> decoded;
+    try {
+      decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _apiException(response);
+      }
+      rethrow;
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException(decoded['error'] as String? ?? 'request_failed');
+      throw _apiException(response, decoded);
     }
     return decoded;
   }
@@ -320,7 +336,10 @@ class ApiClient {
     bool retryAfterRefresh = true,
   }) async {
     final response = await _send(method, path, body: body);
-    if (response.statusCode != 401 || !authenticated || _token == null) {
+    if (response.statusCode != 401 ||
+        !authenticated ||
+        _token == null ||
+        !_isAuthenticationFailure(response)) {
       return response;
     }
     if (retryAfterRefresh && _refreshToken != null) {
@@ -374,7 +393,12 @@ class ApiClient {
         body: {'refresh_token': refreshToken},
       );
       if (response.statusCode != 200) {
-        await _invalidateSession();
+        final error = _apiException(response);
+        if (error.code == 'invalid_refresh_token' ||
+            error.code == 'authentication_required' ||
+            (error.code == 'request_failed' && response.statusCode == 401)) {
+          await _invalidateSession();
+        }
         return false;
       }
       _applySession(_decode(response));
@@ -393,6 +417,37 @@ class ApiClient {
     final user = result['user'] as Map<String, dynamic>?;
     _userId = user?['id'] as String?;
     if (user != null && user['id'] != null) _user = AppUser.fromJson(user);
+  }
+
+  bool _isAuthenticationFailure(http.Response response) {
+    final code = _apiException(response).code;
+    return code == 'authentication_required' || code == 'request_failed';
+  }
+
+  ApiException _apiException(
+    http.Response response, [
+    Map<String, dynamic>? decoded,
+  ]) {
+    Map<String, dynamic> body = decoded ?? const <String, dynamic>{};
+    if (decoded == null) {
+      try {
+        body = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        // Non-JSON gateway responses still become a stable client error.
+      }
+    }
+    final rawFields = body['fields'];
+    final fields = rawFields is Map
+        ? rawFields.map((key, value) => MapEntry('$key', '$value'))
+        : const <String, String>{};
+    final legacyMessage = body['error'] as String?;
+    final code = body['code'] as String? ?? 'request_failed';
+    return ApiException(
+      code: code,
+      message: body['message'] as String? ?? legacyMessage ?? 'request failed',
+      correlationId: response.headers['x-correlation-id'],
+      fields: fields,
+    );
   }
 
   Future<void> _invalidateSession() async {

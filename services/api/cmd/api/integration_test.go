@@ -32,12 +32,30 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	test := newPostgreSQLApplication(t)
 	client := test.server.Client()
 
+	var authenticationError apiError
 	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups", "", map[string]any{
 		"name":         "Sin sesion",
 		"member_names": []string{"Invitado"},
-	}, http.StatusUnauthorized, nil)
+	}, http.StatusUnauthorized, &authenticationError)
+	if authenticationError.Code != "authentication_required" {
+		t.Fatalf("authentication error = %#v", authenticationError)
+	}
 
 	owner := registerUser(t, client, test.server.URL, "Ana", "ana@example.test", "+525511112222")
+	var conflictError apiError
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/auth/register", "", map[string]any{
+		"name": "Ana", "email": "ana@example.test", "phone": "+525511112222", "password": "password1", "salary_cents": 100,
+	}, http.StatusConflict, &conflictError)
+	if conflictError.Code != "email_already_registered" || conflictError.Fields["email"] != "already_registered" {
+		t.Fatalf("conflict error = %#v", conflictError)
+	}
+	var validationError apiError
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/auth/register", "", map[string]any{
+		"name": "", "email": "not-an-email", "phone": "invalid", "password": "short", "salary_cents": -1,
+	}, http.StatusUnprocessableEntity, &validationError)
+	if validationError.Code != "validation_failed" {
+		t.Fatalf("validation error = %#v", validationError)
+	}
 	member := registerUser(t, client, test.server.URL, "Beto", "beto@example.test", "+525522223333")
 	ownerLogin := loginUser(t, client, test.server.URL, "ana@example.test")
 	memberLogin := loginUser(t, client, test.server.URL, "beto@example.test")
@@ -197,10 +215,10 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 	// Owner-only settings return the same response for a known-but-hidden group
 	// and an unknown group, preventing resource enumeration.
 	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID, owner.Token, map[string]string{"name": "Owner updated"}, http.StatusOK, &group)
-	var hiddenError, missingError map[string]string
+	var hiddenError, missingError apiError
 	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/"+group.ID, member.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, &hiddenError)
 	doJSON(t, client, http.MethodPatch, baseURL+"/api/v1/groups/group_missing", member.Token, map[string]string{"name": "Forbidden"}, http.StatusNotFound, &missingError)
-	if hiddenError["error"] != missingError["error"] {
+	if hiddenError.Code != "resource_not_found" || hiddenError.Code != missingError.Code || hiddenError.Message != missingError.Message {
 		t.Fatalf("authorization response enumerates groups: hidden=%#v missing=%#v", hiddenError, missingError)
 	}
 	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
@@ -436,7 +454,7 @@ func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
 	if _, err := test.db.Exec(`DROP TABLE users CASCADE`); err != nil {
 		t.Fatalf("force representative SQL failure: %v", err)
 	}
-	var response map[string]string
+	var response apiError
 	doJSON(t, test.server.Client(), http.MethodPost, test.server.URL+"/api/v1/auth/register", "", map[string]any{
 		"name":         "Ana",
 		"email":        "ana@example.test",
@@ -444,7 +462,7 @@ func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
 		"password":     "password1",
 		"salary_cents": 100,
 	}, http.StatusInternalServerError, &response)
-	if response["error"] != "internal error" {
+	if response.Code != "internal_error" || response.Message != "internal error" || response.Error != response.Message {
 		t.Fatalf("database failure response = %#v", response)
 	}
 }
@@ -593,6 +611,10 @@ func doJSON(t *testing.T, client *http.Client, method, endpoint, token string, i
 	}
 	if response.StatusCode != wantStatus {
 		t.Fatalf("%s %s status = %d, want %d; body=%s", method, endpoint, response.StatusCode, wantStatus, strings.TrimSpace(string(contents)))
+	}
+	correlationID := response.Header.Get(correlationHeader)
+	if !validCorrelationID(correlationID) {
+		t.Fatalf("%s %s returned invalid correlation ID %q", method, endpoint, correlationID)
 	}
 	if output != nil && len(bytes.TrimSpace(contents)) > 0 {
 		if err := json.Unmarshal(contents, output); err != nil {
