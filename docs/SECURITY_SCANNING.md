@@ -19,9 +19,11 @@ available for this private repository on its current plan. Gosec and Gitleaks
 are the CI fallbacks. Re-evaluate the native features if the repository becomes
 public or GitHub Code Security and GitHub Secret Protection become available.
 
-Repository workflows have read-only `contents` permission. External actions
-are pinned to full commit SHAs, with the reviewed release recorded in a comment.
-Dependabot proposes updates to those pins for review.
+Repository workflows have read-only `contents` permission; the security
+workflow also has read-only pull-request metadata so Gitleaks can determine the
+commits to scan. External actions are pinned to full commit SHAs, with the
+reviewed release recorded in a comment. Dependabot proposes updates to those
+pins for review.
 
 ## Triage and remediation
 
