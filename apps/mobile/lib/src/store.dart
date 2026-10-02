@@ -333,10 +333,12 @@ class DemoStore extends ChangeNotifier {
     final selfID = self.first.id;
     final relations = paymentRelations(group);
     for (final relation in relations) {
-      if (relation.fromMemberId == contact.id && relation.toMemberId == selfID) {
+      if (relation.fromMemberId == contact.id &&
+          relation.toMemberId == selfID) {
         return relation.amountCents;
       }
-      if (relation.fromMemberId == selfID && relation.toMemberId == contact.id) {
+      if (relation.fromMemberId == selfID &&
+          relation.toMemberId == contact.id) {
         return -relation.amountCents;
       }
     }
@@ -344,7 +346,9 @@ class DemoStore extends ChangeNotifier {
   }
 
   List<PaymentRelation> paymentRelations(ExpenseGroup group) =>
-      _apiClient != null ? group.paymentRelations : _localPaymentRelations(group);
+      _apiClient != null
+          ? group.paymentRelations
+          : _localPaymentRelations(group);
 
   List<PaymentRelation> _localPaymentRelations(ExpenseGroup group) {
     final edges = <String, Map<String, int>>{};
@@ -353,6 +357,7 @@ class DemoStore extends ChangeNotifier {
       final outgoing = edges.putIfAbsent(from, () => <String, int>{});
       outgoing[to] = (outgoing[to] ?? 0) + amount;
     }
+
     for (final expense in group.expenses) {
       for (final share in _equalShares(
         expense.amountCents,
@@ -375,8 +380,8 @@ class DemoStore extends ChangeNotifier {
     for (var fromIndex = 0; fromIndex < members.length; fromIndex++) {
       final from = members[fromIndex];
       for (final to in members.skip(fromIndex + 1)) {
-        final amount = (edges[from.id]?[to.id] ?? 0) -
-            (edges[to.id]?[from.id] ?? 0);
+        final amount =
+            (edges[from.id]?[to.id] ?? 0) - (edges[to.id]?[from.id] ?? 0);
         if (amount > 0) {
           relations.add(PaymentRelation(
             fromMemberId: from.id,

@@ -48,7 +48,8 @@ class _MemberBalanceTile extends StatelessWidget {
               ? Icon(Icons.check_circle_rounded, color: colors.primary)
               : TextButton(
                   onPressed: onSettle,
-                  child: Text(relationshipBalance < 0 ? l10n.pay : l10n.request),
+                  child:
+                      Text(relationshipBalance < 0 ? l10n.pay : l10n.request),
                 ),
     );
   }

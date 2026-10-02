@@ -83,7 +83,8 @@ void showSettlementSheet(
                 if (settled) onSettled?.call();
               },
               icon: const Icon(Icons.check_circle_outline_rounded),
-              label: Text(memberOwes ? l10n.requestPayment : l10n.simulatePayment),
+              label:
+                  Text(memberOwes ? l10n.requestPayment : l10n.simulatePayment),
             ),
           ],
         ),

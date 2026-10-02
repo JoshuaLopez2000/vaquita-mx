@@ -196,7 +196,8 @@ void main() {
     expect(find.text(r'$75.00'), findsOneWidget);
   });
 
-  testWidgets('lists pending bilateral payments from the group', (tester) async {
+  testWidgets('lists pending bilateral payments from the group',
+      (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
     await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
