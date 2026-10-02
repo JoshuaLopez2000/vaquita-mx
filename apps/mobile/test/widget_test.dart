@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vaquita_mx/src/app.dart';
 import 'package:vaquita_mx/src/models.dart';
@@ -102,6 +103,10 @@ void main() {
       find.byKey(const Key('group-name-field')),
       'Birthday dinner',
     );
+    await tester.tap(find.byKey(const Key('group-emoji-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('😀').first);
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('group-members-field')),
       'Laura',
@@ -113,6 +118,33 @@ void main() {
 
     expect(find.text('Birthday dinner'), findsOneWidget);
     expect(find.text('2 miembros · 0 gastos'), findsOneWidget);
+  });
+
+  testWidgets('requires an emoji before creating a group', (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('create-group-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('group-name-field')),
+      'Birthday dinner',
+    );
+    await tester.tap(find.byKey(const Key('create-group-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ícono del grupo'), findsAtLeastNWidgets(2));
+  });
+
+  testWidgets('opens the emoji picker when choosing a group icon',
+      (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('create-group-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('group-emoji-picker')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EmojiPicker), findsOneWidget);
   });
 
   testWidgets('opens a group and adds an expense', (tester) async {

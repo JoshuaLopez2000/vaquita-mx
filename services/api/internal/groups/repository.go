@@ -167,7 +167,8 @@ func (r *Repository) Get(c context.Context, u, id string) (Group, error) {
 }
 func (r *Repository) Create(c context.Context, u string, in CreateGroupInput) (Group, error) {
 	in.Name = strings.TrimSpace(in.Name)
-	if len(in.Name) < 2 {
+	in.Emoji = strings.TrimSpace(in.Emoji)
+	if len(in.Name) < 2 || in.Emoji == "" {
 		return Group{}, ErrInvalid
 	}
 	if in.Visibility == "" {
@@ -175,9 +176,6 @@ func (r *Repository) Create(c context.Context, u string, in CreateGroupInput) (G
 	}
 	if in.Visibility != "personal" && in.Visibility != "shared" {
 		return Group{}, ErrInvalid
-	}
-	if in.Emoji == "" {
-		in.Emoji = emojiFor(in.Name)
 	}
 	// Shared invitations and salary consent are completed after creation.
 	in.SalarySplitEnabled = false

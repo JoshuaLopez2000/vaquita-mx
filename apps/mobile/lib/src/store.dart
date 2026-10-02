@@ -153,7 +153,7 @@ class DemoStore extends ChangeNotifier {
       ExpenseGroup(
         id: id,
         name: name.trim(),
-        emoji: _emojiFor(groups.length),
+        emoji: emoji.trim(),
         members: localMembers,
       ),
     );
@@ -471,11 +471,6 @@ class DemoStore extends ChangeNotifier {
   }
 
   String _nextId(String prefix) => '${prefix}_${_sequence++}';
-
-  static String _emojiFor(int index) {
-    const choices = ['🍜', '🏠', '🎁', '🏖️', '🎮', '🚗'];
-    return choices[index % choices.length];
-  }
 
   static List<ExpenseGroup> _seedGroups() {
     const you = Member(id: seedUserId, name: 'You');

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
+import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
 
 part 'sheets/create_group_sheet.dart';
 part 'sheets/add_expense_sheet.dart';

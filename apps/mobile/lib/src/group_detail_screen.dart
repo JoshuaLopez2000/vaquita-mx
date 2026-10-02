@@ -7,6 +7,7 @@ import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
+import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
 
 part 'group_detail/settlement_sheet.dart';
 part 'group_detail/salary_split_card.dart';
@@ -244,7 +245,17 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               TextField(
                   controller: emoji,
-                  decoration: InputDecoration(labelText: l10n.groupIcon)),
+                  readOnly: true,
+                  onTap: () async {
+                    final selected = await showGroupEmojiPicker(
+                      sheet,
+                    );
+                    if (selected != null) emoji.text = selected;
+                  },
+                  decoration: InputDecoration(
+                    labelText: l10n.groupIcon,
+                    suffixIcon: const Icon(Icons.expand_more_rounded),
+                  )),
               const SizedBox(height: 8),
               FilledButton(
                   onPressed: () async {

@@ -491,7 +491,7 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := app.groups.Create(r.Context(), userID(r), input)
 	if errors.Is(err, groups.ErrInvalid) {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a name and at least one member are required", nil)
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a name, emoji, and at least one member are required", nil)
 		return
 	}
 	if err != nil {

@@ -62,10 +62,15 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	if ownerLogin.User.ID != owner.User.ID || memberLogin.User.ID != member.User.ID {
 		t.Fatalf("login returned different users: owner=%q member=%q", ownerLogin.User.ID, memberLogin.User.ID)
 	}
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups", ownerLogin.Token, map[string]any{
+		"name":       "Without icon",
+		"visibility": "personal",
+	}, http.StatusUnprocessableEntity, nil)
 
 	var group groups.Group
 	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups", ownerLogin.Token, map[string]any{
 		"name":       "Viaje",
+		"emoji":      "✈️",
 		"visibility": "shared",
 		"members": []map[string]string{{
 			"name":  "Beto",
@@ -179,6 +184,7 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 	var group groups.Group
 	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups", owner.Token, map[string]any{
 		"name":       "Authorization matrix",
+		"emoji":      "🔐",
 		"visibility": "shared",
 		"members": []map[string]string{
 			{"name": "Member", "phone": "+525510000002"},

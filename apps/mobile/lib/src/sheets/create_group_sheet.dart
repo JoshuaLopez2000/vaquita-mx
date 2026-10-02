@@ -15,7 +15,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   final _memberNameController = TextEditingController();
   final _memberPhoneController = TextEditingController();
   final _members = <GroupMemberDraft>[];
-  final _emojiController = TextEditingController(text: 'ðŸ‘¥');
+  final _emojiController = TextEditingController();
   var _visibility = 'personal';
   var _salarySplits = false;
 
@@ -139,10 +139,23 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
             ),
             const SizedBox(height: 14),
             TextFormField(
-                controller: _emojiController,
-                decoration: InputDecoration(
-                    labelText: l10n.groupIcon,
-                    prefixIcon: const Icon(Icons.emoji_emotions_outlined))),
+              key: const Key('group-emoji-picker'),
+              controller: _emojiController,
+              readOnly: true,
+              onTap: () async {
+                final selected = await showGroupEmojiPicker(
+                  context,
+                );
+                if (selected != null) _emojiController.text = selected;
+              },
+              decoration: InputDecoration(
+                labelText: l10n.groupIcon,
+                prefixIcon: const Icon(Icons.emoji_emotions_outlined),
+                suffixIcon: const Icon(Icons.expand_more_rounded),
+              ),
+              validator: (value) =>
+                  value == null || value.trim().isEmpty ? l10n.groupIcon : null,
+            ),
             const SizedBox(height: 10),
             SegmentedButton<String>(
                 segments: [
