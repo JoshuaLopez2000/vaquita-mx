@@ -86,7 +86,7 @@ void main() {
     await tester.tap(find.byKey(const Key('request-payment-cdmx-weekend')));
     await tester.pumpAndSettle();
     expect(find.text('Solicitar a Ana'), findsOneWidget);
-    expect(find.text('Solicitar pago'), findsOneWidget);
+    expect(find.byKey(const Key('settle-ana')), findsOneWidget);
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {
