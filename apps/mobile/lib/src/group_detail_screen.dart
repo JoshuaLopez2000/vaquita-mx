@@ -86,7 +86,7 @@ class GroupDetailScreen extends StatelessWidget {
                 onTap: () => showPendingPaymentsSheet(
                   context,
                   group,
-                  balances,
+                  store.paymentRelations(group),
                   store.currentUserId,
                 ),
               ),

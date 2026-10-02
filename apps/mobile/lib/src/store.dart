@@ -285,12 +285,13 @@ class DemoStore extends ChangeNotifier {
   void _refreshLocalStatus() {
     final combined = <String, ContactStatus>{};
     for (final group in groups) {
-      final groupBalances = balances(group);
       for (final member in group.members) {
         if (member.id == currentUserId || member.userId == currentUserId) {
           continue;
         }
-        final amount = groupBalances[member.id] ?? 0;
+        // ContactStatus is expressed from the signed-in user's perspective:
+        // positive means the user owes the contact.
+        final amount = -balanceWith(group, member);
         if (amount == 0) continue;
         final previous = combined[member.id];
         combined[member.id] = ContactStatus(
@@ -330,9 +331,7 @@ class DemoStore extends ChangeNotifier {
     );
     if (self.isEmpty) return 0;
     final selfID = self.first.id;
-    final relations = _apiClient != null
-        ? group.paymentRelations
-        : _localPaymentRelations(group);
+    final relations = paymentRelations(group);
     for (final relation in relations) {
       if (relation.fromMemberId == contact.id && relation.toMemberId == selfID) {
         return relation.amountCents;
@@ -344,25 +343,54 @@ class DemoStore extends ChangeNotifier {
     return 0;
   }
 
+  List<PaymentRelation> paymentRelations(ExpenseGroup group) =>
+      _apiClient != null ? group.paymentRelations : _localPaymentRelations(group);
+
   List<PaymentRelation> _localPaymentRelations(ExpenseGroup group) {
-    final debtors = <MapEntry<String, int>>[];
-    final creditors = <MapEntry<String, int>>[];
-    for (final member in group.members.where((member) => member.active && member.accepted)) {
-      final balance = balances(group)[member.id] ?? 0;
-      if (balance < 0) debtors.add(MapEntry(member.id, -balance));
-      if (balance > 0) creditors.add(MapEntry(member.id, balance));
+    final edges = <String, Map<String, int>>{};
+    void add(String from, String to, int amount) {
+      if (from == to || amount == 0) return;
+      final outgoing = edges.putIfAbsent(from, () => <String, int>{});
+      outgoing[to] = (outgoing[to] ?? 0) + amount;
+    }
+    for (final expense in group.expenses) {
+      for (final share in _equalShares(
+        expense.amountCents,
+        expense.participantIds,
+      ).entries) {
+        add(share.key, expense.payerId, share.value);
+      }
+    }
+    for (final settlement in group.settlements) {
+      add(
+        settlement.fromMemberId,
+        settlement.toMemberId,
+        -settlement.amountCents,
+      );
     }
     final relations = <PaymentRelation>[];
-    var debtorIndex = 0, creditorIndex = 0;
-    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
-      final amount = debtors[debtorIndex].value < creditors[creditorIndex].value
-          ? debtors[debtorIndex].value
-          : creditors[creditorIndex].value;
-      relations.add(PaymentRelation(fromMemberId: debtors[debtorIndex].key, toMemberId: creditors[creditorIndex].key, amountCents: amount));
-      debtors[debtorIndex] = MapEntry(debtors[debtorIndex].key, debtors[debtorIndex].value - amount);
-      creditors[creditorIndex] = MapEntry(creditors[creditorIndex].key, creditors[creditorIndex].value - amount);
-      if (debtors[debtorIndex].value == 0) debtorIndex++;
-      if (creditors[creditorIndex].value == 0) creditorIndex++;
+    final members = group.members
+        .where((member) => member.active && member.accepted)
+        .toList();
+    for (var fromIndex = 0; fromIndex < members.length; fromIndex++) {
+      final from = members[fromIndex];
+      for (final to in members.skip(fromIndex + 1)) {
+        final amount = (edges[from.id]?[to.id] ?? 0) -
+            (edges[to.id]?[from.id] ?? 0);
+        if (amount > 0) {
+          relations.add(PaymentRelation(
+            fromMemberId: from.id,
+            toMemberId: to.id,
+            amountCents: amount,
+          ));
+        } else if (amount < 0) {
+          relations.add(PaymentRelation(
+            fromMemberId: to.id,
+            toMemberId: from.id,
+            amountCents: -amount,
+          ));
+        }
+      }
     }
     return relations;
   }

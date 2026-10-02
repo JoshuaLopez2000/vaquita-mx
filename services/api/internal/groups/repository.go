@@ -549,20 +549,39 @@ func (r *Repository) Status(c context.Context, u string) ([]ContactStatus, error
 	if e != nil {
 		return nil, e
 	}
+	return ContactStatuses(gs, u), nil
+}
+
+// ContactStatuses projects only the balances between the signed-in member and
+// each contact. A positive amount means the signed-in member owes the contact.
+func ContactStatuses(gs []Group, u string) []ContactStatus {
 	x := map[string]ContactStatus{}
 	for _, g := range gs {
-		b, balanceErr := calculateBalances(g)
-		if balanceErr != nil {
-			return nil, balanceErr
+		members := map[string]Member{}
+		var selfID string
+		for _, member := range g.Members {
+			members[member.ID] = member
+			if member.UserID == u && member.Active && member.Accepted {
+				selfID = member.ID
+			}
 		}
-		for _, m := range g.Members {
-			if m.UserID == u || m.ID == u {
+		if selfID == "" {
+			continue
+		}
+		for _, relation := range g.PaymentRelations {
+			contactID, amount := "", int64(0)
+			if relation.FromMemberID == selfID {
+				contactID, amount = relation.ToMemberID, relation.AmountCents
+			} else if relation.ToMemberID == selfID {
+				contactID, amount = relation.FromMemberID, -relation.AmountCents
+			}
+			if contactID == "" {
 				continue
 			}
-			s := x[m.ID]
-			s.Member = m
-			s.AmountCents += b[m.ID]
-			x[m.ID] = s
+			s := x[contactID]
+			s.Member = members[contactID]
+			s.AmountCents += amount
+			x[contactID] = s
 		}
 	}
 	o := []ContactStatus{}
@@ -571,7 +590,7 @@ func (r *Repository) Status(c context.Context, u string) ([]ContactStatus, error
 			o = append(o, s)
 		}
 	}
-	return o, nil
+	return o
 }
 
 func (r *Repository) Invitations(c context.Context, u string) ([]Invitation, error) {
@@ -616,48 +635,104 @@ func Balances(g Group) map[string]int64 {
 	return b
 }
 
-// PaymentRelations deterministically matches debtors to creditors in member
-// order. It always allocates every centavo represented by the group balances.
+// PaymentRelations is the bilateral debt projection. Expenses create direct
+// participant-to-payer obligations; settlements reduce only the recorded
+// payer/debtor pair. Unlike a global netting plan, a payment by one member
+// cannot reroute or erase another member's debt.
 func PaymentRelations(g Group) []PaymentRelation {
-	balances, err := calculateBalances(g)
+	relations, err := bilateralRelations(g)
 	if err != nil {
 		return []PaymentRelation{}
 	}
-	type pending struct {
-		memberID string
-		amount   int64
-	}
-	debtors, creditors := []pending{}, []pending{}
+	return relations
+}
+
+func bilateralRelations(g Group) ([]PaymentRelation, error) {
+	members := map[string]Member{}
 	for _, member := range g.Members {
-		if !member.Active || !member.Accepted {
-			continue
+		if member.ID == "" {
+			return nil, ErrInvalid
 		}
-		if balance := balances[member.ID]; balance < 0 {
-			debtors = append(debtors, pending{member.ID, -balance})
-		} else if balance > 0 {
-			creditors = append(creditors, pending{member.ID, balance})
+		if _, exists := members[member.ID]; exists {
+			return nil, ErrInvalid
+		}
+		members[member.ID] = member
+	}
+	type edge struct{ from, to string }
+	edges := map[edge]*big.Int{}
+	add := func(from, to string, amount int64) error {
+		if from == to || amount == 0 {
+			return nil
+		}
+		if _, exists := members[from]; !exists {
+			return ErrInvalid
+		}
+		if _, exists := members[to]; !exists {
+			return ErrInvalid
+		}
+		key := edge{from, to}
+		if edges[key] == nil {
+			edges[key] = new(big.Int)
+		}
+		edges[key].Add(edges[key], big.NewInt(amount))
+		return nil
+	}
+	for _, expense := range g.Expenses {
+		if expense.AmountCents <= 0 {
+			return nil, ErrInvalid
+		}
+		shares, err := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)
+		if err != nil {
+			return nil, err
+		}
+		for participantID, share := range shares {
+			if err := add(participantID, expense.PayerID, share); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, settlement := range g.Settlements {
+		if settlement.AmountCents <= 0 {
+			return nil, ErrInvalid
+		}
+		if err := add(settlement.FromMemberID, settlement.ToMemberID, -settlement.AmountCents); err != nil {
+			return nil, err
 		}
 	}
 	relations := []PaymentRelation{}
-	for debtorIndex, creditorIndex := 0, 0; debtorIndex < len(debtors) && creditorIndex < len(creditors); {
-		amount := debtors[debtorIndex].amount
-		if creditors[creditorIndex].amount < amount {
-			amount = creditors[creditorIndex].amount
+	for fromIndex, from := range g.Members {
+		if !from.Active || !from.Accepted {
+			continue
 		}
-		if amount <= 0 {
-			return []PaymentRelation{}
-		}
-		relations = append(relations, PaymentRelation{FromMemberID: debtors[debtorIndex].memberID, ToMemberID: creditors[creditorIndex].memberID, AmountCents: amount})
-		debtors[debtorIndex].amount -= amount
-		creditors[creditorIndex].amount -= amount
-		if debtors[debtorIndex].amount == 0 {
-			debtorIndex++
-		}
-		if creditors[creditorIndex].amount == 0 {
-			creditorIndex++
+		for _, to := range g.Members[fromIndex+1:] {
+			if !to.Active || !to.Accepted {
+				continue
+			}
+			amount := new(big.Int)
+			if forward := edges[edge{from.ID, to.ID}]; forward != nil {
+				amount.Set(forward)
+			}
+			if reverse := edges[edge{to.ID, from.ID}]; reverse != nil {
+				amount.Sub(amount, reverse)
+			}
+			if amount.Sign() == 0 {
+				continue
+			}
+			if !amount.IsInt64() {
+				return nil, ErrInvalid
+			}
+			if amount.Sign() > 0 {
+				relations = append(relations, PaymentRelation{FromMemberID: from.ID, ToMemberID: to.ID, AmountCents: amount.Int64()})
+			} else {
+				amount.Neg(amount)
+				if !amount.IsInt64() {
+					return nil, ErrInvalid
+				}
+				relations = append(relations, PaymentRelation{FromMemberID: to.ID, ToMemberID: from.ID, AmountCents: amount.Int64()})
+			}
 		}
 	}
-	return relations
+	return relations, nil
 }
 
 func calculateBalances(g Group) (map[string]int64, error) {

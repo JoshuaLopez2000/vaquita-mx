@@ -10,62 +10,29 @@ class _PendingPayment {
 
 List<_PendingPayment> _pendingPayments(
   ExpenseGroup group,
-  Map<String, int> balances,
+  List<PaymentRelation> relations,
 ) {
-  final debtors = [
-    for (final member in group.members.where((member) => member.active))
-      if ((balances[member.id] ?? 0) < 0)
-        MapEntry(member, -(balances[member.id] ?? 0)),
+  final members = {for (final member in group.members) member.id: member};
+  return [
+    for (final relation in relations)
+      if (members[relation.fromMemberId] != null &&
+          members[relation.toMemberId] != null)
+        _PendingPayment(
+          members[relation.fromMemberId]!,
+          members[relation.toMemberId]!,
+          relation.amountCents,
+        ),
   ];
-  final creditors = [
-    for (final member in group.members.where((member) => member.active))
-      if ((balances[member.id] ?? 0) > 0)
-        MapEntry(member, balances[member.id] ?? 0),
-  ];
-
-  final payments = <_PendingPayment>[];
-  var debtorIndex = 0;
-  var creditorIndex = 0;
-  var debtorRemaining = debtors.isEmpty ? 0 : debtors.first.value;
-  var creditorRemaining = creditors.isEmpty ? 0 : creditors.first.value;
-
-  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
-    final amount = debtorRemaining < creditorRemaining
-        ? debtorRemaining
-        : creditorRemaining;
-    if (amount > 0) {
-      payments.add(_PendingPayment(
-        debtors[debtorIndex].key,
-        creditors[creditorIndex].key,
-        amount,
-      ));
-    }
-    debtorRemaining -= amount;
-    creditorRemaining -= amount;
-    if (debtorRemaining == 0) {
-      debtorIndex++;
-      if (debtorIndex < debtors.length) {
-        debtorRemaining = debtors[debtorIndex].value;
-      }
-    }
-    if (creditorRemaining == 0) {
-      creditorIndex++;
-      if (creditorIndex < creditors.length) {
-        creditorRemaining = creditors[creditorIndex].value;
-      }
-    }
-  }
-  return payments;
 }
 
 void showPendingPaymentsSheet(
   BuildContext context,
   ExpenseGroup group,
-  Map<String, int> balances,
+  List<PaymentRelation> relations,
   String currentUserId,
 ) {
   final l10n = AppLocalizations.of(context)!;
-  final payments = _pendingPayments(group, balances);
+  final payments = _pendingPayments(group, relations);
   String displayName(Member member) =>
       member.id == currentUserId || member.userId == currentUserId
           ? l10n.you

@@ -89,3 +89,39 @@ func TestPaymentRelationsAllocateEveryCentDeterministically(t *testing.T) {
 		t.Fatalf("relations = %#v", relations)
 	}
 }
+
+func TestPaymentRelationsKeepOtherMembersDebtAfterDirectSettlement(t *testing.T) {
+	group := Group{
+		Members: []Member{
+			{ID: "ana", Active: true, Accepted: true},
+			{ID: "diego", Active: true, Accepted: true},
+			{ID: "marco", Active: true, Accepted: true},
+		},
+		Expenses: []Expense{
+			{AmountCents: 1332, PayerID: "ana", ParticipantIDs: []string{"ana", "marco"}},
+			{AmountCents: 100000, PayerID: "ana", ParticipantIDs: []string{"ana", "diego"}},
+		},
+		Settlements: []Settlement{{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 50000}},
+	}
+	relations := PaymentRelations(group)
+	if len(relations) != 1 || relations[0] != (PaymentRelation{FromMemberID: "marco", ToMemberID: "ana", AmountCents: 666}) {
+		t.Fatalf("relations after Diego pays Ana = %#v", relations)
+	}
+}
+
+func TestContactStatusesUseOnlyPairwiseBalances(t *testing.T) {
+	statuses := ContactStatuses([]Group{{
+		Members: []Member{
+			{ID: "me", UserID: "user-me", Active: true, Accepted: true},
+			{ID: "ana", UserID: "user-ana", Name: "Ana", Active: true, Accepted: true},
+			{ID: "diego", UserID: "user-diego", Name: "Diego", Active: true, Accepted: true},
+		},
+		PaymentRelations: []PaymentRelation{
+			{FromMemberID: "me", ToMemberID: "ana", AmountCents: 250},
+			{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 9999},
+		},
+	}}, "user-me")
+	if len(statuses) != 1 || statuses[0].Member.ID != "ana" || statuses[0].AmountCents != 250 {
+		t.Fatalf("statuses = %#v, want only the 250-centavo balance with Ana", statuses)
+	}
+}

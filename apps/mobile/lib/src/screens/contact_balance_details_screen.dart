@@ -18,7 +18,7 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
         }
       }
       if (member == null) continue;
-      final amount = store.balances(group)[member.id] ?? 0;
+      final amount = store.balanceWith(group, member);
       if (amount == 0) continue;
       final contactMember = member;
       final concepts = group.expenses
@@ -71,7 +71,7 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                     ListTile(
                       leading: CircleAvatar(child: Text(balance.group.emoji)),
                       title: Text(balance.group.name),
-                      subtitle: Text(balance.amount < 0
+                      subtitle: Text(balance.amount > 0
                           ? l10n.memberOwesYou(status.member.name)
                           : l10n.youOweMember(status.member.name)),
                       trailing: Text(formatMoney(balance.amount.abs()),
@@ -119,7 +119,7 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                             context.read<AppCubit>().showMovements();
                           }),
                           icon: const Icon(Icons.qr_code_2_rounded),
-                          label: Text(balance.amount < 0
+                          label: Text(balance.amount > 0
                               ? l10n.requestPayment
                               : l10n.payContact(status.member.name)),
                         ),
