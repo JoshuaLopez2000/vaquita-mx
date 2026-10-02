@@ -268,7 +268,17 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 		return result
 	}
 	ownerExpenseGroup := createExpense(owner, ownerMember.ID, "Owner expense", http.StatusCreated)
-	ownerExpense := ownerExpenseGroup.Expenses[0]
+	if len(ownerExpenseGroup.Expenses) != 1 {
+		t.Fatalf("owner expense was not created: %#v", ownerExpenseGroup)
+	}
+	paymentRequest := map[string]any{
+		"group_id":     group.ID,
+		"debtor_id":    acceptedMember.ID,
+		"amount_cents": int64(50),
+		"currency":     "MXN",
+	}
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", owner.Token, paymentRequest, http.StatusCreated, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", member.Token, paymentRequest, http.StatusUnprocessableEntity, nil)
 	createExpense(member, acceptedMember.ID, "Member expense", http.StatusCreated)
 	for name, denied := range map[string]struct {
 		session auth.Session
@@ -283,15 +293,6 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 		})
 	}
 
-	paymentRequest := map[string]any{
-		"group_id":     group.ID,
-		"expense_id":   ownerExpense.ID,
-		"debtor_id":    acceptedMember.ID,
-		"amount_cents": int64(50),
-		"currency":     "MXN",
-	}
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", owner.Token, paymentRequest, http.StatusCreated, nil)
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", member.Token, paymentRequest, http.StatusUnprocessableEntity, nil)
 	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
 		t.Run("payment_request_denied_"+name, func(t *testing.T) {
 			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", session.Token, paymentRequest, http.StatusNotFound, nil)

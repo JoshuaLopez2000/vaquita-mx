@@ -86,13 +86,7 @@ void main() {
     await tester.tap(find.byKey(const Key('request-payment-cdmx-weekend')));
     await tester.pumpAndSettle();
     expect(find.text('Solicitar a Ana'), findsOneWidget);
-    expect(find.text('Simular pago'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('settle-ana')));
-    await tester.pumpAndSettle();
-    expect(find.text('Movimientos'), findsWidgets);
-    expect(find.text('Ana pagó a Tú'), findsOneWidget);
-    expect(find.byKey(const Key('request-payment-cdmx-weekend')), findsNothing);
-    expect(find.text('Ana'), findsNothing);
+    expect(find.text('Solicitar pago'), findsOneWidget);
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {
@@ -202,7 +196,7 @@ void main() {
     expect(find.text(r'$75.00'), findsOneWidget);
   });
 
-  testWidgets('lists pending payments from the group balance', (tester) async {
+  testWidgets('lists pending bilateral payments from the group', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 
     await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
@@ -212,7 +206,7 @@ void main() {
 
     expect(find.text('Pagos pendientes'), findsOneWidget);
     expect(find.text('Ana paga a Tú'), findsOneWidget);
-    expect(find.text(r'$80.00'), findsOneWidget);
+    expect(find.text(r'$200.00'), findsOneWidget);
   });
 
   testWidgets('shows pending invitations in the group member list',

@@ -1296,13 +1296,13 @@ abstract class AppLocalizations {
   /// No description provided for @signOut.
   ///
   /// In es, this message translates to:
-  /// **'Cerrar sesiÃ³n'**
+  /// **'Cerrar sesión'**
   String get signOut;
 
   /// No description provided for @signOutDescription.
   ///
   /// In es, this message translates to:
-  /// **'Cerrar sesiÃ³n en este dispositivo'**
+  /// **'Cerrar sesión en este dispositivo'**
   String get signOutDescription;
 
   /// No description provided for @signOutAll.

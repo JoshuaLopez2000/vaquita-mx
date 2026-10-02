@@ -687,10 +687,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get viewPendingPayments => 'Ver pagos pendientes';
 
   @override
-  String get signOut => 'Cerrar sesiÃ³n';
+  String get signOut => 'Cerrar sesión';
 
   @override
-  String get signOutDescription => 'Cerrar sesiÃ³n en este dispositivo';
+  String get signOutDescription => 'Cerrar sesión en este dispositivo';
 
   @override
   String get signOutAll => 'Cerrar todas las sesiones';
