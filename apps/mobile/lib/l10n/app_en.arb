@@ -73,6 +73,10 @@
   "groupBalanceOwed": "you are owed",
   "groupBalanceYouOwe": "you owe",
   "groupBalanceSettled": "settled up",
+  "groupBalanceSummary": "Group: {summary}",
+  "@groupBalanceSummary": {"placeholders":{"summary":{"type":"String"}}},
+  "withYouBalanceSummary": "With you: {summary}",
+  "@withYouBalanceSummary": {"placeholders":{"summary":{"type":"String"}}},
   "noGroupsDescription": "Create a group and select contacts to get started."
   ,"inboxEmptyTitle": "You're all caught up"
   ,"inboxEmptyDescription": "Invitations and contact balances will appear here."
@@ -174,6 +178,7 @@
   ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
   ,"demoPaymentDescription": "Demo mode: this simulates a confirmed provider callback. No real money moves."
   ,"paymentConfirmed": "Simulated payment confirmed."
+  ,"paymentRequestCreated": "Payment request created."
   ,"couldNotConfirmPayment": "Could not confirm the payment."
   ,"salarySplitsEnabled": "Salary-based splits enabled"
   ,"salarySplits": "Salary-based splits"

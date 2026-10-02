@@ -53,28 +53,39 @@ func TestBalancesSplitsBySalary(t *testing.T) {
 	}
 }
 
-func TestValidatePaymentRequestDataRequiresPayerAndExactShare(t *testing.T) {
+func TestValidatePaymentRequestDataRequiresExactCreditorDebtorRelation(t *testing.T) {
 	group := Group{
 		Members: []Member{
-			{ID: "payer", UserID: "user-payer", Active: true, Accepted: true},
-			{ID: "debtor", UserID: "user-debtor", Active: true, Accepted: true},
+			{ID: "ana", UserID: "user-ana", Active: true, Accepted: true},
+			{ID: "diego", UserID: "user-diego", Active: true, Accepted: true},
+			{ID: "sofia", UserID: "user-sofia", Active: true, Accepted: true},
 		},
-		Expenses: []Expense{{
-			ID:             "expense-1",
-			AmountCents:    101,
-			PayerID:        "payer",
-			ParticipantIDs: []string{"payer", "debtor"},
-			SplitMode:      "equal",
-		}},
+		Expenses: []Expense{
+			{AmountCents: 300, PayerID: "ana", ParticipantIDs: []string{"ana", "diego", "sofia"}},
+			{AmountCents: 300, PayerID: "diego", ParticipantIDs: []string{"ana", "diego", "sofia"}},
+		},
 	}
 
-	if err := ValidatePaymentRequestData(group, "user-payer", "expense-1", "debtor", 50); err != nil {
-		t.Fatalf("payer's exact participant share was rejected: %v", err)
+	// Diego is the creditor for 100 centavos even though he did not pay every
+	// expense in the group; Sofia's net debt is routed to him deterministically.
+	if err := ValidatePaymentRequestData(group, "user-diego", "sofia", 100); err != nil {
+		t.Fatalf("creditor's pairwise request was rejected: %v", err)
 	}
-	if err := ValidatePaymentRequestData(group, "user-debtor", "expense-1", "debtor", 50); err != ErrInvalid {
-		t.Fatalf("debtor creating request error = %v, want ErrInvalid", err)
+	if err := ValidatePaymentRequestData(group, "user-ana", "diego", 100); err != ErrInvalid {
+		t.Fatalf("unrelated creditor request error = %v, want ErrInvalid", err)
 	}
-	if err := ValidatePaymentRequestData(group, "user-payer", "expense-1", "debtor", 51); err != ErrInvalid {
+	if err := ValidatePaymentRequestData(group, "user-diego", "sofia", 99); err != ErrInvalid {
 		t.Fatalf("wrong amount error = %v, want ErrInvalid", err)
+	}
+}
+
+func TestPaymentRelationsAllocateEveryCentDeterministically(t *testing.T) {
+	group := Group{
+		Members:  []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}, {ID: "sofia", Active: true, Accepted: true}},
+		Expenses: []Expense{{AmountCents: 100, PayerID: "ana", ParticipantIDs: []string{"ana", "diego", "sofia"}}},
+	}
+	relations := PaymentRelations(group)
+	if len(relations) != 2 || relations[0] != (PaymentRelation{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 33}) || relations[1] != (PaymentRelation{FromMemberID: "sofia", ToMemberID: "ana", AmountCents: 33}) {
+		t.Fatalf("relations = %#v", relations)
 	}
 }

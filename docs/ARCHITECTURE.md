@@ -48,6 +48,9 @@ Recommended database rules:
 - Monetary columns use `BIGINT` centavos and currency is `CHAR(3)`.
 - IDs are UUIDv7 or ULID values generated on the server.
 - Expense shares must sum exactly to the expense total.
+- Group responses include a deterministic debtor-to-creditor settlement
+  projection derived from net balances. It is a read model, never a financial
+  record; settlements remain the authoritative immutable history.
 - Provider event IDs and idempotency keys have unique constraints.
 - Financial rows are reversed with compensating entries rather than deleted.
 - All records use UTC timestamps; presentation uses the user's time zone.

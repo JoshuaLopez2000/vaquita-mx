@@ -119,6 +119,12 @@ class GroupDetailScreen extends StatelessWidget {
                                 .elementAt(index)
                                 .id] ??
                             0,
+                        relationshipBalance: store.balanceWith(
+                          group,
+                          group.members
+                              .where((member) => member.active)
+                              .elementAt(index),
+                        ),
                         isCurrentUser: group.members
                                     .where((member) => member.active)
                                     .elementAt(index)
@@ -135,11 +141,12 @@ class GroupDetailScreen extends StatelessWidget {
                           group.members
                               .where((member) => member.active)
                               .elementAt(index),
-                          balances[group.members
-                                  .where((member) => member.active)
-                                  .elementAt(index)
-                                  .id] ??
-                              0,
+                          store.balanceWith(
+                            group,
+                            group.members
+                                .where((member) => member.active)
+                                .elementAt(index),
+                          ),
                         ),
                       ),
                       if (index !=

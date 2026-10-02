@@ -14,7 +14,8 @@ void showSettlementSheet(
       balance == 0) {
     return;
   }
-  final memberOwes = balance < 0;
+  // Positive means this contact owes the signed-in user.
+  final memberOwes = balance > 0;
   showModalBottomSheet<void>(
     context: context,
     builder: (sheetContext) => SafeArea(
@@ -55,17 +56,26 @@ void showSettlementSheet(
             FilledButton.icon(
               key: Key('settle-${member.id}'),
               onPressed: () async {
-                final settled = await context.read<AppCubit>().settleBalance(
-                      groupId: group.id,
-                      memberId: member.id,
-                    );
+                final cubit = context.read<AppCubit>();
+                final settled = memberOwes
+                    ? await cubit.requestPayment(
+                        groupId: group.id,
+                        debtorId: member.id,
+                        amountCents: balance,
+                      )
+                    : await cubit.settleBalance(
+                        groupId: group.id,
+                        memberId: member.id,
+                      );
                 if (!sheetContext.mounted || !context.mounted) return;
                 Navigator.pop(sheetContext);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       settled
-                          ? l10n.paymentConfirmed
+                          ? (memberOwes
+                              ? l10n.paymentRequestCreated
+                              : l10n.paymentConfirmed)
                           : l10n.couldNotConfirmPayment,
                     ),
                   ),
@@ -73,7 +83,7 @@ void showSettlementSheet(
                 if (settled) onSettled?.call();
               },
               icon: const Icon(Icons.check_circle_outline_rounded),
-              label: Text(l10n.simulatePayment),
+              label: Text(memberOwes ? l10n.requestPayment : l10n.simulatePayment),
             ),
           ],
         ),

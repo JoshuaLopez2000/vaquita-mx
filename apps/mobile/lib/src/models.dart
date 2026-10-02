@@ -147,6 +147,25 @@ class Settlement {
       );
 }
 
+class PaymentRelation {
+  const PaymentRelation({
+    required this.fromMemberId,
+    required this.toMemberId,
+    required this.amountCents,
+  });
+
+  final String fromMemberId;
+  final String toMemberId;
+  final int amountCents;
+
+  factory PaymentRelation.fromJson(Map<String, dynamic> json) =>
+      PaymentRelation(
+        fromMemberId: json['from_member_id'] as String,
+        toMemberId: json['to_member_id'] as String,
+        amountCents: json['amount_cents'] as int,
+      );
+}
+
 class ExpenseGroup {
   ExpenseGroup({
     required this.id,
@@ -159,8 +178,10 @@ class ExpenseGroup {
     Map<String, int>? balances,
     List<Expense>? expenses,
     List<Settlement>? settlements,
+    List<PaymentRelation>? paymentRelations,
   })  : expenses = expenses ?? [],
         settlements = settlements ?? [],
+        paymentRelations = paymentRelations ?? [],
         balances = balances ?? {};
 
   final String id;
@@ -172,6 +193,7 @@ class ExpenseGroup {
   final bool salarySplitAvailable;
   final List<Expense> expenses;
   final List<Settlement> settlements;
+  final List<PaymentRelation> paymentRelations;
   final Map<String, int> balances;
 
   factory ExpenseGroup.fromJson(Map<String, dynamic> json) => ExpenseGroup(
@@ -192,6 +214,11 @@ class ExpenseGroup {
         settlements: ((json['settlements'] as List<dynamic>?) ?? const [])
             .map((value) => Settlement.fromJson(value as Map<String, dynamic>))
             .toList(),
+        paymentRelations:
+            ((json['payment_relations'] as List<dynamic>?) ?? const [])
+                .map((value) =>
+                    PaymentRelation.fromJson(value as Map<String, dynamic>))
+                .toList(),
       );
 
   int get totalSpentCents => expenses.fold(

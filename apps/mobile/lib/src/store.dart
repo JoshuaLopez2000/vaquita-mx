@@ -309,6 +309,64 @@ class DemoStore extends ChangeNotifier {
     return _localBalances(group);
   }
 
+  Future<bool> requestPayment({
+    required String groupId,
+    required String debtorId,
+    required int amountCents,
+  }) {
+    if (_apiClient == null) return Future.value(false);
+    return _sync(() => _apiClient.requestPayment(
+          groupId: groupId,
+          debtorId: debtorId,
+          amountCents: amountCents,
+        ));
+  }
+
+  // Positive means the contact owes the signed-in user; negative means the
+  // signed-in user owes the contact. Remote relations are server-authoritative.
+  int balanceWith(ExpenseGroup group, Member contact) {
+    final self = group.members.where(
+      (member) => member.userId == currentUserId || member.id == currentUserId,
+    );
+    if (self.isEmpty) return 0;
+    final selfID = self.first.id;
+    final relations = _apiClient != null
+        ? group.paymentRelations
+        : _localPaymentRelations(group);
+    for (final relation in relations) {
+      if (relation.fromMemberId == contact.id && relation.toMemberId == selfID) {
+        return relation.amountCents;
+      }
+      if (relation.fromMemberId == selfID && relation.toMemberId == contact.id) {
+        return -relation.amountCents;
+      }
+    }
+    return 0;
+  }
+
+  List<PaymentRelation> _localPaymentRelations(ExpenseGroup group) {
+    final debtors = <MapEntry<String, int>>[];
+    final creditors = <MapEntry<String, int>>[];
+    for (final member in group.members.where((member) => member.active && member.accepted)) {
+      final balance = balances(group)[member.id] ?? 0;
+      if (balance < 0) debtors.add(MapEntry(member.id, -balance));
+      if (balance > 0) creditors.add(MapEntry(member.id, balance));
+    }
+    final relations = <PaymentRelation>[];
+    var debtorIndex = 0, creditorIndex = 0;
+    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+      final amount = debtors[debtorIndex].value < creditors[creditorIndex].value
+          ? debtors[debtorIndex].value
+          : creditors[creditorIndex].value;
+      relations.add(PaymentRelation(fromMemberId: debtors[debtorIndex].key, toMemberId: creditors[creditorIndex].key, amountCents: amount));
+      debtors[debtorIndex] = MapEntry(debtors[debtorIndex].key, debtors[debtorIndex].value - amount);
+      creditors[creditorIndex] = MapEntry(creditors[creditorIndex].key, creditors[creditorIndex].value - amount);
+      if (debtors[debtorIndex].value == 0) debtorIndex++;
+      if (creditors[creditorIndex].value == 0) creditorIndex++;
+    }
+    return relations;
+  }
+
   Map<String, int> _localBalances(ExpenseGroup group) {
     final result = {for (final member in group.members) member.id: 0};
     for (final expense in group.expenses) {

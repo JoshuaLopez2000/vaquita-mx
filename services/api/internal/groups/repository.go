@@ -41,6 +41,14 @@ type UnpaidBalance struct {
 	Member      Member `json:"member"`
 	AmountCents int64  `json:"amount_cents"`
 }
+
+// PaymentRelation is a deterministic, derived instruction for settling a
+// group's current net balances. It is not a ledger entry.
+type PaymentRelation struct {
+	FromMemberID string `json:"from_member_id"`
+	ToMemberID   string `json:"to_member_id"`
+	AmountCents  int64  `json:"amount_cents"`
+}
 type ContactStatus = UnpaidBalance
 type Expense struct {
 	ID             string           `json:"id"`
@@ -60,16 +68,17 @@ type Settlement struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 type Group struct {
-	ID                   string           `json:"id"`
-	Name                 string           `json:"name"`
-	Emoji                string           `json:"emoji"`
-	Visibility           string           `json:"visibility"`
-	SalarySplitEnabled   bool             `json:"salary_split_enabled"`
-	SalarySplitAvailable bool             `json:"salary_split_available"`
-	Members              []Member         `json:"members"`
-	Expenses             []Expense        `json:"expenses"`
-	Settlements          []Settlement     `json:"settlements"`
-	Balances             map[string]int64 `json:"balances"`
+	ID                   string            `json:"id"`
+	Name                 string            `json:"name"`
+	Emoji                string            `json:"emoji"`
+	Visibility           string            `json:"visibility"`
+	SalarySplitEnabled   bool              `json:"salary_split_enabled"`
+	SalarySplitAvailable bool              `json:"salary_split_available"`
+	Members              []Member          `json:"members"`
+	Expenses             []Expense         `json:"expenses"`
+	Settlements          []Settlement      `json:"settlements"`
+	Balances             map[string]int64  `json:"balances"`
+	PaymentRelations     []PaymentRelation `json:"payment_relations"`
 }
 type MemberInput struct {
 	Name  string `json:"name"`
@@ -436,24 +445,21 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, e
 	if id == selfID {
 		return x, ErrInvalid
 	}
-	balances, e := calculateBalances(x)
-	if e != nil {
-		return x, e
+	var amount int64
+	for _, relation := range x.PaymentRelations {
+		if relation.FromMemberID == selfID && relation.ToMemberID == id {
+			amount = relation.AmountCents
+			break
+		}
 	}
-	b := balances[id]
-	if b == 0 {
+	if amount == 0 {
 		return x, ErrInvalid
-	}
-	from, to := selfID, id
-	if b < 0 {
-		from, to = id, selfID
-		b = -b
 	}
 	sid, e := newID("settlement")
 	if e != nil {
 		return x, e
 	}
-	_, e = r.db.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, from, to, b)
+	_, e = r.db.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, selfID, id, amount)
 	if e != nil {
 		return x, e
 	}
@@ -461,48 +467,35 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, e
 }
 
 // ValidatePaymentRequest ties the simulated-provider boundary to the ledger.
-// Only the user who paid an expense can request one participant's exact share.
-func (r *Repository) ValidatePaymentRequest(c context.Context, userID, groupID, expenseID, debtorID string, amountCents int64) error {
+// A creditor can request only the exact amount a debtor owes them in the
+// group's deterministic settlement projection.
+func (r *Repository) ValidatePaymentRequest(c context.Context, userID, groupID, debtorID string, amountCents int64) error {
 	g, err := r.Get(c, userID, groupID)
 	if err != nil {
 		return err
 	}
-	return ValidatePaymentRequestData(g, userID, expenseID, debtorID, amountCents)
+	return ValidatePaymentRequestData(g, userID, debtorID, amountCents)
 }
 
 // ValidatePaymentRequestData contains the ledger rule independently of
 // storage, so the financial authorization invariant has fast regression tests.
-func ValidatePaymentRequestData(g Group, userID, expenseID, debtorID string, amountCents int64) error {
-	var expense *Expense
-	for index := range g.Expenses {
-		if g.Expenses[index].ID == expenseID {
-			expense = &g.Expenses[index]
-			break
-		}
-	}
-	if expense == nil {
-		return ErrNotFound
-	}
-	var payer *Member
-	for index := range g.Members {
-		if g.Members[index].ID == expense.PayerID {
-			payer = &g.Members[index]
-			break
-		}
-	}
-	if payer == nil || payer.UserID != userID {
+
+func ValidatePaymentRequestData(g Group, userID, debtorID string, amountCents int64) error {
+	if amountCents <= 0 {
 		return ErrInvalid
 	}
-	shares, err := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)
-	if err != nil {
-		return ErrInvalid
-	}
-	share, participates := shares[debtorID]
-	if !participates || debtorID == expense.PayerID || amountCents != share {
-		return ErrInvalid
-	}
+	var requesterID string
 	for _, member := range g.Members {
-		if member.ID == debtorID && member.Active && member.Accepted {
+		if member.UserID == userID && member.Active && member.Accepted {
+			requesterID = member.ID
+			break
+		}
+	}
+	if requesterID == "" {
+		return ErrInvalid
+	}
+	for _, relation := range PaymentRelations(g) {
+		if relation.FromMemberID == debtorID && relation.ToMemberID == requesterID && relation.AmountCents == amountCents {
 			return nil
 		}
 	}
@@ -621,6 +614,50 @@ func Balances(g Group) map[string]int64 {
 		return map[string]int64{}
 	}
 	return b
+}
+
+// PaymentRelations deterministically matches debtors to creditors in member
+// order. It always allocates every centavo represented by the group balances.
+func PaymentRelations(g Group) []PaymentRelation {
+	balances, err := calculateBalances(g)
+	if err != nil {
+		return []PaymentRelation{}
+	}
+	type pending struct {
+		memberID string
+		amount   int64
+	}
+	debtors, creditors := []pending{}, []pending{}
+	for _, member := range g.Members {
+		if !member.Active || !member.Accepted {
+			continue
+		}
+		if balance := balances[member.ID]; balance < 0 {
+			debtors = append(debtors, pending{member.ID, -balance})
+		} else if balance > 0 {
+			creditors = append(creditors, pending{member.ID, balance})
+		}
+	}
+	relations := []PaymentRelation{}
+	for debtorIndex, creditorIndex := 0, 0; debtorIndex < len(debtors) && creditorIndex < len(creditors); {
+		amount := debtors[debtorIndex].amount
+		if creditors[creditorIndex].amount < amount {
+			amount = creditors[creditorIndex].amount
+		}
+		if amount <= 0 {
+			return []PaymentRelation{}
+		}
+		relations = append(relations, PaymentRelation{FromMemberID: debtors[debtorIndex].memberID, ToMemberID: creditors[creditorIndex].memberID, AmountCents: amount})
+		debtors[debtorIndex].amount -= amount
+		creditors[creditorIndex].amount -= amount
+		if debtors[debtorIndex].amount == 0 {
+			debtorIndex++
+		}
+		if creditors[creditorIndex].amount == 0 {
+			creditorIndex++
+		}
+	}
+	return relations
 }
 
 func calculateBalances(g Group) (map[string]int64, error) {
@@ -803,6 +840,7 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	if e != nil {
 		return e
 	}
+	g.PaymentRelations = PaymentRelations(*g)
 	return nil
 }
 

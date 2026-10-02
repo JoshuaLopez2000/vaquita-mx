@@ -598,13 +598,13 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if err := app.groups.ValidatePaymentRequest(r.Context(), userID(r), input.GroupID, input.ExpenseID, input.DebtorID, input.AmountCents); err != nil {
+	if err := app.groups.ValidatePaymentRequest(r.Context(), userID(r), input.GroupID, input.DebtorID, input.AmountCents); err != nil {
 		if errors.Is(err, groups.ErrNotFound) {
-			writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or expense not found", nil)
+			writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
 			return
 		}
 		if errors.Is(err, groups.ErrInvalid) {
-			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "payment request must match an unpaid participant share for an expense you paid", nil)
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "payment request must match the debtor's current balance with you", nil)
 			return
 		}
 		serverError(w, "validate payment request", err)
@@ -612,7 +612,7 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	}
 	result, err := app.payments.CreateRequest(r.Context(), input)
 	if errors.Is(err, payments.ErrInvalidRequest) {
-		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "group_id, expense_id, debtor_id, a positive amount_cents, and currency MXN are required", nil)
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "group_id, debtor_id, a positive amount_cents, and currency MXN are required", nil)
 		return
 	}
 	if err != nil {

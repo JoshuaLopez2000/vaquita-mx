@@ -230,6 +230,16 @@ class AppLocalizationsEs extends AppLocalizations {
   String get groupBalanceSettled => 'saldado';
 
   @override
+  String groupBalanceSummary(String summary) {
+    return 'Grupo: $summary';
+  }
+
+  @override
+  String withYouBalanceSummary(String summary) {
+    return 'Contigo: $summary';
+  }
+
+  @override
   String get noGroupsDescription =>
       'Crea un grupo y selecciona contactos para comenzar.';
 
@@ -530,6 +540,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get paymentConfirmed => 'Pago simulado confirmado.';
+
+  @override
+  String get paymentRequestCreated => 'Solicitud de pago creada.';
 
   @override
   String get couldNotConfirmPayment => 'No se pudo confirmar el pago.';

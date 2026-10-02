@@ -42,13 +42,14 @@ response so callers cannot enumerate group or member records.
 | Invite, edit, or remove members | Allow | Deny | Deny |
 | Change salary-sharing consent | Own membership only | Own membership only | Deny |
 | Create an expense | Allow | Allow | Deny |
-| Create a payment request | Expense payer only | Expense payer only | Deny |
+| Create a payment request | Exact creditor/debtor relation only | Exact creditor/debtor relation only | Deny |
 | Record a settlement | Own accepted membership only | Own accepted membership only | Deny |
 | Accept or decline an invitation | Not applicable | Pending invitee only | Removed or declined: deny |
 
-The owner role cannot be removed. Payment requests must still match the exact
-MXN-centavo share for an active, accepted debtor, and settlement commands may
-only settle the authenticated member's relationship with another member.
+The owner role cannot be removed. Payment requests must match the exact
+MXN-centavo amount in the server-derived creditor/debtor relation for active,
+accepted members. Settlement commands may only settle the authenticated
+member's relationship with another member.
 
 ## Mobile controls
 

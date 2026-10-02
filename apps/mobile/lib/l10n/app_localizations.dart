@@ -518,6 +518,18 @@ abstract class AppLocalizations {
   /// **'saldado'**
   String get groupBalanceSettled;
 
+  /// No description provided for @groupBalanceSummary.
+  ///
+  /// In es, this message translates to:
+  /// **'Grupo: {summary}'**
+  String groupBalanceSummary(String summary);
+
+  /// No description provided for @withYouBalanceSummary.
+  ///
+  /// In es, this message translates to:
+  /// **'Contigo: {summary}'**
+  String withYouBalanceSummary(String summary);
+
   /// No description provided for @noGroupsDescription.
   ///
   /// In es, this message translates to:
@@ -1039,6 +1051,12 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Pago simulado confirmado.'**
   String get paymentConfirmed;
+
+  /// No description provided for @paymentRequestCreated.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicitud de pago creada.'**
+  String get paymentRequestCreated;
 
   /// No description provided for @couldNotConfirmPayment.
   ///

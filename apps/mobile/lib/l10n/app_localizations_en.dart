@@ -229,6 +229,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get groupBalanceSettled => 'settled up';
 
   @override
+  String groupBalanceSummary(String summary) {
+    return 'Group: $summary';
+  }
+
+  @override
+  String withYouBalanceSummary(String summary) {
+    return 'With you: $summary';
+  }
+
+  @override
   String get noGroupsDescription =>
       'Create a group and select contacts to get started.';
 
@@ -528,6 +538,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get paymentConfirmed => 'Simulated payment confirmed.';
+
+  @override
+  String get paymentRequestCreated => 'Payment request created.';
 
   @override
   String get couldNotConfirmPayment => 'Could not confirm the payment.';

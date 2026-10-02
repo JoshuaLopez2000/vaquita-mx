@@ -20,7 +20,6 @@ const (
 
 type CreateRequest struct {
 	GroupID     string `json:"group_id"`
-	ExpenseID   string `json:"expense_id"`
 	DebtorID    string `json:"debtor_id"`
 	AmountCents int64  `json:"amount_cents"`
 	Currency    string `json:"currency"`
@@ -28,7 +27,7 @@ type CreateRequest struct {
 }
 
 func (r CreateRequest) Validate() error {
-	if strings.TrimSpace(r.GroupID) == "" || strings.TrimSpace(r.ExpenseID) == "" || strings.TrimSpace(r.DebtorID) == "" {
+	if strings.TrimSpace(r.GroupID) == "" || strings.TrimSpace(r.DebtorID) == "" {
 		return ErrInvalidRequest
 	}
 	if r.AmountCents <= 0 || r.Currency != "MXN" {

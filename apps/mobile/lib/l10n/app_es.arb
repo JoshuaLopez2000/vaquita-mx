@@ -73,6 +73,10 @@
   "groupBalanceOwed": "te deben",
   "groupBalanceYouOwe": "debes",
   "groupBalanceSettled": "saldado",
+  "groupBalanceSummary": "Grupo: {summary}",
+  "@groupBalanceSummary": {"placeholders":{"summary":{"type":"String"}}},
+  "withYouBalanceSummary": "Contigo: {summary}",
+  "@withYouBalanceSummary": {"placeholders":{"summary":{"type":"String"}}},
   "noGroupsDescription": "Crea un grupo y selecciona contactos para comenzar."
   ,"inboxEmptyTitle": "Estás al día"
   ,"inboxEmptyDescription": "Las invitaciones y los saldos de contactos aparecerán aquí."
@@ -174,6 +178,7 @@
   ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
   ,"demoPaymentDescription": "Modo demo: simula una confirmación del proveedor. No se mueve dinero real."
   ,"paymentConfirmed": "Pago simulado confirmado."
+  ,"paymentRequestCreated": "Solicitud de pago creada."
   ,"couldNotConfirmPayment": "No se pudo confirmar el pago."
   ,"salarySplitsEnabled": "Divisiones por salario activadas"
   ,"salarySplits": "Divisiones por salario"

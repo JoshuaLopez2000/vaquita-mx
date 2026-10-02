@@ -36,7 +36,7 @@ func (p SimulatedProvider) CreateRequest(_ context.Context, input CreateRequest)
 		Currency:      input.Currency,
 		PaymentURL:    "vaquitamx://payment-requests/" + id,
 		ExpiresAt:     now.Add(24 * time.Hour),
-		CorrelationID: input.ExpenseID + ":" + input.DebtorID,
+		CorrelationID: input.GroupID + ":" + input.DebtorID,
 	}, nil
 }
 

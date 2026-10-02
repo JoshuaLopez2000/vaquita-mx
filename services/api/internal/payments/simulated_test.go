@@ -13,7 +13,6 @@ func TestSimulatedProviderCreatesMXNRequest(t *testing.T) {
 
 	result, err := provider.CreateRequest(context.Background(), CreateRequest{
 		GroupID:     "group-1",
-		ExpenseID:   "expense-1",
 		DebtorID:    "user-2",
 		AmountCents: 25050,
 		Currency:    "MXN",
@@ -32,7 +31,7 @@ func TestSimulatedProviderCreatesMXNRequest(t *testing.T) {
 func TestSimulatedProviderRejectsNonMXNRequest(t *testing.T) {
 	provider := SimulatedProvider{}
 	_, err := provider.CreateRequest(context.Background(), CreateRequest{
-		GroupID: "group-1", ExpenseID: "expense-1", DebtorID: "user-2", AmountCents: 100, Currency: "USD",
+		GroupID: "group-1", DebtorID: "user-2", AmountCents: 100, Currency: "USD",
 	})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("error = %v, want ErrInvalidRequest", err)

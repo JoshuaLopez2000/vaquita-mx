@@ -297,6 +297,21 @@ class ApiClient {
     _decode(response);
   }
 
+  Future<void> requestPayment({
+    required String groupId,
+    required String debtorId,
+    required int amountCents,
+  }) async {
+    final response = await _request('POST', '/api/v1/payment-requests', body: {
+      'group_id': groupId,
+      'debtor_id': debtorId,
+      'amount_cents': amountCents,
+      'currency': 'MXN',
+      'description': 'Group balance settlement',
+    });
+    _decode(response);
+  }
+
   Future<void> removeMember(String groupId, String memberId) async {
     final response = await _request(
       'DELETE',
