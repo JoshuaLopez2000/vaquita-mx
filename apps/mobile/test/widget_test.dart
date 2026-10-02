@@ -105,7 +105,11 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('group-emoji-picker')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('😀').first);
+    final picker = tester.widget<EmojiPicker>(find.byType(EmojiPicker));
+    picker.onEmojiSelected!(
+      Category.SMILEYS,
+      const Emoji('😀', 'Grinning face'),
+    );
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('group-members-field')),
