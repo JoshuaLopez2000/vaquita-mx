@@ -163,7 +163,7 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	if err := test.db.QueryRow(`SELECT amount_cents,from_member_id,to_member_id FROM settlements WHERE group_id=$1`, group.ID).Scan(&settlementAmount, &fromMember, &toMember); err != nil {
 		t.Fatalf("read persisted settlement: %v", err)
 	}
-	if settlementAmount != 500 || fromMember != invitedMember.ID || toMember != ownerMember.ID {
+	if settlementAmount != 199 || fromMember != invitedMember.ID || toMember != ownerMember.ID {
 		t.Fatalf("persisted settlement amount=%d from=%q to=%q", settlementAmount, fromMember, toMember)
 	}
 

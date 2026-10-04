@@ -54,8 +54,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     if (pesos == null) return null;
     final decimals = (match.group(2) ?? '').padRight(2, '0');
     final centavos = int.tryParse(decimals);
-    if (centavos == null || pesos > (_maxSafeCentavos - centavos) ~/ 100)
+    if (centavos == null || pesos > (_maxSafeCentavos - centavos) ~/ 100) {
       return null;
+    }
     final value = pesos * 100 + centavos;
     return value > 0 ? value : null;
   }
