@@ -372,7 +372,7 @@ class DemoStore extends ChangeNotifier {
         for (final payer in payers) payer.memberId: payer.amountCents
       };
       for (final share in _equalShares(
-        expense.amountCents,
+        _allocatedExpenseAmount(expense),
         expense.participantIds,
       ).entries) {
         var owed = share.value;
@@ -433,7 +433,10 @@ class DemoStore extends ChangeNotifier {
         result[payer.memberId] =
             (result[payer.memberId] ?? 0) + payer.amountCents;
       }
-      final shares = _equalShares(expense.amountCents, expense.participantIds);
+      final shares = _equalShares(
+        _allocatedExpenseAmount(expense),
+        expense.participantIds,
+      );
       for (final entry in shares.entries) {
         final participantId = entry.key;
         final share = entry.value;
@@ -447,6 +450,16 @@ class DemoStore extends ChangeNotifier {
           (result[settlement.toMemberId] ?? 0) - settlement.amountCents;
     }
     return result;
+  }
+
+  int _allocatedExpenseAmount(Expense expense) {
+    final paid = expense.payers.isEmpty
+        ? expense.amountCents
+        : expense.payers.fold<int>(
+            0,
+            (sum, payer) => sum + payer.amountCents,
+          );
+    return paid > expense.amountCents ? paid : expense.amountCents;
   }
 
   Map<String, int> _equalShares(int amountCents, List<String> participantIds) {

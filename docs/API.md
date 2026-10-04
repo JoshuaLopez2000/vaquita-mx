@@ -29,8 +29,9 @@ Every member object returned in a group or invitation includes a persisted
 membership-state requirements applied to these routes.
 
 Expense creation accepts ordered `payers`, each with `member_id` and positive
-integer `amount_cents`. Their total must exactly match `amount_cents`, and all
-payers must be active group members. The legacy `payer_id` remains readable
+integer `amount_cents`. Their total must be at least `amount_cents`, and all
+payers must be active group members. When it is greater, contributions are the
+amount allocated among participants for balance calculations. The legacy `payer_id` remains readable
 for historical single-payer expenses; new clients should send and display
 `payers`.
 

@@ -421,7 +421,7 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 		}
 		payerSeen[payer.MemberID] = true
 	}
-	if paid != in.AmountCents {
+	if paid < in.AmountCents {
 		return g, ErrInvalid
 	}
 	// Retain a meaningful legacy field for older readers.
@@ -713,7 +713,11 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if _, err := normalizedPayers(expense); err != nil {
 			return nil, err
 		}
-		shares, err := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)
+		allocatedAmount, err := expenseAllocatedAmount(expense)
+		if err != nil {
+			return nil, err
+		}
+		shares, err := split(allocatedAmount, expense.ParticipantIDs, g, expense.SplitMode)
 		if err != nil {
 			return nil, err
 		}
@@ -792,7 +796,11 @@ func calculateBalances(g Group) (map[string]int64, error) {
 			}
 			exact[payer.MemberID].Add(exact[payer.MemberID], big.NewInt(payer.AmountCents))
 		}
-		shares, err := split(e.AmountCents, e.ParticipantIDs, g, e.SplitMode)
+		allocatedAmount, err := expenseAllocatedAmount(e)
+		if err != nil {
+			return nil, err
+		}
+		shares, err := split(allocatedAmount, e.ParticipantIDs, g, e.SplitMode)
 		if err != nil {
 			return nil, err
 		}
@@ -877,10 +885,27 @@ func normalizedPayers(e Expense) ([]ExpensePayer, error) {
 		}
 		seen[payer.MemberID] = true
 	}
-	if total != e.AmountCents {
+	if total < e.AmountCents {
 		return nil, ErrInvalid
 	}
 	return payers, nil
+}
+
+// expenseAllocatedAmount is the amount participants share. Contributions above
+// the entered expense total are additional group spending, never lost cents.
+func expenseAllocatedAmount(e Expense) (int64, error) {
+	payers, err := normalizedPayers(e)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, payer := range payers {
+		total, err = addCentavos(total, payer.AmountCents)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return total, nil
 }
 
 func split(a int64, ids []string, g Group, mode string) (map[string]int64, error) {
@@ -1011,7 +1036,12 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		if len(x.Payers) == 0 {
 			x.Payers = []ExpensePayer{{MemberID: x.PayerID, AmountCents: x.AmountCents}}
 		}
-		x.Shares, e = split(x.AmountCents, x.ParticipantIDs, *g, x.SplitMode)
+		allocatedAmount, allocationErr := expenseAllocatedAmount(x)
+		if allocationErr != nil {
+			es.Close()
+			return allocationErr
+		}
+		x.Shares, e = split(allocatedAmount, x.ParticipantIDs, *g, x.SplitMode)
 		if e != nil {
 			es.Close()
 			return e

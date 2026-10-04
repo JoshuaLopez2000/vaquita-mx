@@ -7,8 +7,13 @@ Map<String, int> _expenseShares(Expense expense) {
   }
 
   final result = <String, int>{};
-  final baseShare = expense.amountCents ~/ expense.participantIds.length;
-  var remainder = expense.amountCents % expense.participantIds.length;
+  final paid = expense.payers.isEmpty
+      ? expense.amountCents
+      : expense.payers.fold<int>(0, (sum, payer) => sum + payer.amountCents);
+  final allocatedAmount =
+      paid > expense.amountCents ? paid : expense.amountCents;
+  final baseShare = allocatedAmount ~/ expense.participantIds.length;
+  var remainder = allocatedAmount % expense.participantIds.length;
   for (final participantId in expense.participantIds) {
     result[participantId] = baseShare + (remainder > 0 ? 1 : 0);
     if (remainder > 0) remainder--;

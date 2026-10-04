@@ -32,6 +32,21 @@ func TestBalancesCreditsMultiplePayersExactly(t *testing.T) {
 	}
 }
 
+func TestBalancesAllocateOverpaymentAcrossParticipants(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}}, Expenses: []Expense{{
+		AmountCents: 100, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 80}, {MemberID: "diego", AmountCents: 40}},
+		ParticipantIDs: []string{"ana", "diego"},
+	}}}
+	balances := Balances(group)
+	if balances["ana"] != 20 || balances["diego"] != -20 {
+		t.Fatalf("overpayment balances = %#v", balances)
+	}
+	relations := PaymentRelations(group)
+	if len(relations) != 1 || relations[0] != (PaymentRelation{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 20}) {
+		t.Fatalf("overpayment relations = %#v", relations)
+	}
+}
+
 func TestBalancesRejectsInvalidMultiplePayers(t *testing.T) {
 	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}}, Expenses: []Expense{{
 		AmountCents: 100, Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 99}}, ParticipantIDs: []string{"ana", "diego"},

@@ -84,7 +84,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       }
       payers.add(ExpensePayer(memberId: member.id, amountCents: contribution));
     }
-    if (payers.fold<int>(0, (sum, payer) => sum + payer.amountCents) !=
+    if (payers.fold<int>(0, (sum, payer) => sum + payer.amountCents) <
         amountCents) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
