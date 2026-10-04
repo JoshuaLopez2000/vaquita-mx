@@ -38,6 +38,7 @@ class GroupDetailScreen extends StatelessWidget {
           description: input.description,
           amountCents: input.amountCents,
           payerId: input.payerId,
+          payers: input.payers,
           participantIds: input.participantIds,
           splitMode: input.splitMode,
         );

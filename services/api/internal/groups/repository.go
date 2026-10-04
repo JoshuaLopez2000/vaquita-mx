@@ -55,10 +55,15 @@ type Expense struct {
 	Description    string           `json:"description"`
 	AmountCents    int64            `json:"amount_cents"`
 	PayerID        string           `json:"payer_id"`
+	Payers         []ExpensePayer   `json:"payers"`
 	ParticipantIDs []string         `json:"participant_ids"`
 	SplitMode      string           `json:"split_mode"`
 	Shares         map[string]int64 `json:"shares"`
 	CreatedAt      time.Time        `json:"created_at"`
+}
+type ExpensePayer struct {
+	MemberID    string `json:"member_id"`
+	AmountCents int64  `json:"amount_cents"`
 }
 type Settlement struct {
 	ID           string    `json:"id"`
@@ -104,11 +109,12 @@ type UpdateMemberInput struct {
 	SalarySharing *bool  `json:"salary_sharing"`
 }
 type AddExpenseInput struct {
-	Description    string   `json:"description"`
-	AmountCents    int64    `json:"amount_cents"`
-	PayerID        string   `json:"payer_id"`
-	ParticipantIDs []string `json:"participant_ids"`
-	SplitMode      string   `json:"split_mode"`
+	Description    string         `json:"description"`
+	AmountCents    int64          `json:"amount_cents"`
+	PayerID        string         `json:"payer_id"`
+	Payers         []ExpensePayer `json:"payers"`
+	ParticipantIDs []string       `json:"participant_ids"`
+	SplitMode      string         `json:"split_mode"`
 }
 type Repository struct{ db *sql.DB }
 type Invitation struct {
@@ -397,9 +403,29 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 			ms[m.ID] = m
 		}
 	}
-	if _, ok := ms[in.PayerID]; !ok {
+	// payer_id remains accepted for backward-compatible clients. New clients
+	// send ordered payer contributions instead.
+	if len(in.Payers) == 0 {
+		in.Payers = []ExpensePayer{{MemberID: in.PayerID, AmountCents: in.AmountCents}}
+	}
+	var paid int64
+	payerSeen := map[string]bool{}
+	for _, payer := range in.Payers {
+		if _, ok := ms[payer.MemberID]; !ok || payerSeen[payer.MemberID] || payer.AmountCents <= 0 {
+			return g, ErrInvalid
+		}
+		var err error
+		paid, err = addCentavos(paid, payer.AmountCents)
+		if err != nil {
+			return g, ErrInvalid
+		}
+		payerSeen[payer.MemberID] = true
+	}
+	if paid != in.AmountCents {
 		return g, ErrInvalid
 	}
+	// Retain a meaningful legacy field for older readers.
+	in.PayerID = in.Payers[0].MemberID
 	seen := map[string]bool{}
 	for _, id := range in.ParticipantIDs {
 		m, ok := ms[id]
@@ -423,6 +449,11 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	}
 	for p, m := range in.ParticipantIDs {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_participants(expense_id,member_id,position)VALUES($1,$2,$3)`, id, m, p); e != nil {
+			return g, e
+		}
+	}
+	for p, payer := range in.Payers {
+		if _, e = t.ExecContext(c, `INSERT INTO expense_payers(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, p, payer.AmountCents); e != nil {
 			return g, e
 		}
 	}
@@ -679,12 +710,15 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if expense.AmountCents <= 0 {
 			return nil, ErrInvalid
 		}
+		if _, err := normalizedPayers(expense); err != nil {
+			return nil, err
+		}
 		shares, err := split(expense.AmountCents, expense.ParticipantIDs, g, expense.SplitMode)
 		if err != nil {
 			return nil, err
 		}
-		for participantID, share := range shares {
-			if err := add(participantID, expense.PayerID, share); err != nil {
+		for _, obligation := range expenseObligations(expense, shares) {
+			if err := add(obligation.from, obligation.to, obligation.amount); err != nil {
 				return nil, err
 			}
 		}
@@ -745,10 +779,19 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		exact[m.ID] = new(big.Int)
 	}
 	for _, e := range g.Expenses {
-		if _, exists := exact[e.PayerID]; !exists || e.AmountCents <= 0 {
+		if e.AmountCents <= 0 {
 			return nil, ErrInvalid
 		}
-		exact[e.PayerID].Add(exact[e.PayerID], big.NewInt(e.AmountCents))
+		payers, err := normalizedPayers(e)
+		if err != nil {
+			return nil, err
+		}
+		for _, payer := range payers {
+			if _, exists := exact[payer.MemberID]; !exists || payer.AmountCents <= 0 {
+				return nil, ErrInvalid
+			}
+			exact[payer.MemberID].Add(exact[payer.MemberID], big.NewInt(payer.AmountCents))
+		}
 		shares, err := split(e.AmountCents, e.ParticipantIDs, g, e.SplitMode)
 		if err != nil {
 			return nil, err
@@ -779,6 +822,65 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		b[id] = balance.Int64()
 	}
 	return b, nil
+}
+
+type obligation struct {
+	from, to string
+	amount   int64
+}
+
+// expenseObligations pairs participant shares with payer contributions in their
+// stored order. It conserves every centavo and makes the bilateral ledger
+// deterministic even when a participant also paid part of the expense.
+func expenseObligations(e Expense, shares map[string]int64) []obligation {
+	payers := e.Payers
+	if len(payers) == 0 {
+		payers = []ExpensePayer{{MemberID: e.PayerID, AmountCents: e.AmountCents}}
+	}
+	remaining := make([]ExpensePayer, len(payers))
+	copy(remaining, payers)
+	result := []obligation{}
+	payerIndex := 0
+	for _, participantID := range e.ParticipantIDs {
+		owed := shares[participantID]
+		for owed > 0 && payerIndex < len(remaining) {
+			amount := owed
+			if remaining[payerIndex].AmountCents < amount {
+				amount = remaining[payerIndex].AmountCents
+			}
+			result = append(result, obligation{participantID, remaining[payerIndex].MemberID, amount})
+			owed -= amount
+			remaining[payerIndex].AmountCents -= amount
+			if remaining[payerIndex].AmountCents == 0 {
+				payerIndex++
+			}
+		}
+	}
+	return result
+}
+
+func normalizedPayers(e Expense) ([]ExpensePayer, error) {
+	payers := e.Payers
+	if len(payers) == 0 {
+		payers = []ExpensePayer{{MemberID: e.PayerID, AmountCents: e.AmountCents}}
+	}
+	seen := map[string]bool{}
+	var total int64
+	for _, payer := range payers {
+		if payer.MemberID == "" || payer.AmountCents <= 0 || seen[payer.MemberID] {
+			return nil, ErrInvalid
+		}
+		var err error
+		total, err = addCentavos(total, payer.AmountCents)
+		if err != nil {
+			return nil, ErrInvalid
+		}
+		seen[payer.MemberID] = true
+	}
+	if total != e.AmountCents {
+		return nil, ErrInvalid
+	}
+	return payers, nil
 }
 
 func split(a int64, ids []string, g Group, mode string) (map[string]int64, error) {
@@ -886,6 +988,29 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			x.ParticipantIDs = append(x.ParticipantIDs, id)
 		}
 		ps.Close()
+		payers, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_payers WHERE expense_id=$1 ORDER BY position`, x.ID)
+		if queryErr != nil {
+			es.Close()
+			return queryErr
+		}
+		for payers.Next() {
+			var payer ExpensePayer
+			if queryErr = payers.Scan(&payer.MemberID, &payer.AmountCents); queryErr != nil {
+				payers.Close()
+				es.Close()
+				return queryErr
+			}
+			x.Payers = append(x.Payers, payer)
+		}
+		if queryErr = payers.Err(); queryErr != nil {
+			payers.Close()
+			es.Close()
+			return queryErr
+		}
+		payers.Close()
+		if len(x.Payers) == 0 {
+			x.Payers = []ExpensePayer{{MemberID: x.PayerID, AmountCents: x.AmountCents}}
+		}
 		x.Shares, e = split(x.AmountCents, x.ParticipantIDs, *g, x.SplitMode)
 		if e != nil {
 			es.Close()

@@ -37,6 +37,7 @@ class NewExpenseInput {
     required this.description,
     required this.amountCents,
     required this.payerId,
+    required this.payers,
     required this.participantIds,
     required this.splitMode,
   });
@@ -44,6 +45,7 @@ class NewExpenseInput {
   final String description;
   final int amountCents;
   final String payerId;
+  final List<ExpensePayer> payers;
   final List<String> participantIds;
   final String splitMode;
 }

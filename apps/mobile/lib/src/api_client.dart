@@ -268,6 +268,7 @@ class ApiClient {
     required String description,
     required int amountCents,
     required String payerId,
+    required List<ExpensePayer> payers,
     required List<String> participantIds,
     String splitMode = 'equal',
   }) async {
@@ -278,6 +279,10 @@ class ApiClient {
         'description': description,
         'amount_cents': amountCents,
         'payer_id': payerId,
+        'payers': [
+          for (final payer in payers)
+            {'member_id': payer.memberId, 'amount_cents': payer.amountCents},
+        ],
         'participant_ids': participantIds,
         'split_mode': splitMode,
       },

@@ -61,6 +61,7 @@ class AppCubit extends Cubit<AppState> {
     required String description,
     required int amountCents,
     required String payerId,
+    required List<ExpensePayer> payers,
     required List<String> participantIds,
     required String splitMode,
   }) =>
@@ -69,6 +70,7 @@ class AppCubit extends Cubit<AppState> {
         description: description,
         amountCents: amountCents,
         payerId: payerId,
+        payers: payers,
         participantIds: participantIds,
         splitMode: splitMode,
       );

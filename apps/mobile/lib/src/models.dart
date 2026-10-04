@@ -94,6 +94,7 @@ class Expense {
     required this.description,
     required this.amountCents,
     required this.payerId,
+    this.payers = const [],
     required this.participantIds,
     required this.createdAt,
     this.splitMode = 'equal',
@@ -104,6 +105,7 @@ class Expense {
   final String description;
   final int amountCents;
   final String payerId;
+  final List<ExpensePayer> payers;
   final List<String> participantIds;
   final DateTime createdAt;
   final String splitMode;
@@ -114,12 +116,28 @@ class Expense {
         description: json['description'] as String,
         amountCents: json['amount_cents'] as int,
         payerId: json['payer_id'] as String,
+        payers: ((json['payers'] as List<dynamic>?) ?? const [])
+            .map(
+                (value) => ExpensePayer.fromJson(value as Map<String, dynamic>))
+            .toList(),
         participantIds:
             (json['participant_ids'] as List<dynamic>).cast<String>(),
         createdAt: DateTime.parse(json['created_at'] as String),
         splitMode: json['split_mode'] as String? ?? 'equal',
         shares: ((json['shares'] as Map<String, dynamic>?) ?? const {})
             .map((key, value) => MapEntry(key, value as int)),
+      );
+}
+
+class ExpensePayer {
+  const ExpensePayer({required this.memberId, required this.amountCents});
+
+  final String memberId;
+  final int amountCents;
+
+  factory ExpensePayer.fromJson(Map<String, dynamic> json) => ExpensePayer(
+        memberId: json['member_id'] as String,
+        amountCents: json['amount_cents'] as int,
       );
 }
 

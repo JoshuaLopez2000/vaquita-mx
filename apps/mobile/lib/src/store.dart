@@ -205,6 +205,7 @@ class DemoStore extends ChangeNotifier {
     required String description,
     required int amountCents,
     required String payerId,
+    required List<ExpensePayer> payers,
     required List<String> participantIds,
     String splitMode = 'equal',
   }) async {
@@ -215,6 +216,7 @@ class DemoStore extends ChangeNotifier {
           description: description,
           amountCents: amountCents,
           payerId: payerId,
+          payers: payers,
           participantIds: participantIds,
           splitMode: splitMode,
         ),
@@ -227,6 +229,7 @@ class DemoStore extends ChangeNotifier {
             description: description.trim(),
             amountCents: amountCents,
             payerId: payerId,
+            payers: List.unmodifiable(payers),
             participantIds: List.unmodifiable(participantIds),
             createdAt: DateTime.now(),
           ),
@@ -359,11 +362,28 @@ class DemoStore extends ChangeNotifier {
     }
 
     for (final expense in group.expenses) {
+      final payers = expense.payers.isEmpty
+          ? [
+              ExpensePayer(
+                  memberId: expense.payerId, amountCents: expense.amountCents)
+            ]
+          : expense.payers;
+      final credits = <String, int>{
+        for (final payer in payers) payer.memberId: payer.amountCents
+      };
       for (final share in _equalShares(
         expense.amountCents,
         expense.participantIds,
       ).entries) {
-        add(share.key, expense.payerId, share.value);
+        var owed = share.value;
+        for (final payer in payers) {
+          final available = credits[payer.memberId] ?? 0;
+          final amount = owed < available ? owed : available;
+          if (amount > 0) add(share.key, payer.memberId, amount);
+          owed -= amount;
+          credits[payer.memberId] = available - amount;
+          if (owed == 0) break;
+        }
       }
     }
     for (final settlement in group.settlements) {
@@ -403,8 +423,16 @@ class DemoStore extends ChangeNotifier {
   Map<String, int> _localBalances(ExpenseGroup group) {
     final result = {for (final member in group.members) member.id: 0};
     for (final expense in group.expenses) {
-      result[expense.payerId] =
-          (result[expense.payerId] ?? 0) + expense.amountCents;
+      final payers = expense.payers.isEmpty
+          ? [
+              ExpensePayer(
+                  memberId: expense.payerId, amountCents: expense.amountCents)
+            ]
+          : expense.payers;
+      for (final payer in payers) {
+        result[payer.memberId] =
+            (result[payer.memberId] ?? 0) + payer.amountCents;
+      }
       final shares = _equalShares(expense.amountCents, expense.participantIds);
       for (final entry in shares.entries) {
         final participantId = entry.key;

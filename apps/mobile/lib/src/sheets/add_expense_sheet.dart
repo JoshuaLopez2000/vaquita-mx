@@ -10,17 +10,25 @@ class _AddExpenseSheet extends StatefulWidget {
 }
 
 class _AddExpenseSheetState extends State<_AddExpenseSheet> {
+  // Dart compiled for the web uses JavaScript numbers. Keep user-entered
+  // centavos within its exact-integer range rather than rounding money.
+  static const _maxSafeCentavos = 9007199254740991;
+
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
-  late String _payerId;
+  late final Set<String> _payerIds;
+  final Map<String, TextEditingController> _payerAmountControllers = {};
   late final Set<String> _participantIds;
   var _splitMode = 'equal';
 
   @override
   void initState() {
     super.initState();
-    _payerId = widget.group.members.first.id;
+    _payerIds = {widget.group.members.first.id};
+    for (final member in widget.group.members) {
+      _payerAmountControllers[member.id] = TextEditingController();
+    }
     _participantIds = widget.group.members.map((member) => member.id).toSet();
   }
 
@@ -28,14 +36,28 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   void dispose() {
     _descriptionController.dispose();
     _amountController.dispose();
+    for (final controller in _payerAmountControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   int? _parseAmount() {
-    final normalized = _amountController.text.replaceAll(',', '').trim();
-    final value = double.tryParse(normalized);
-    if (value == null || !value.isFinite || value <= 0) return null;
-    return (value * 100).round();
+    return _parseCentavos(_amountController.text);
+  }
+
+  int? _parseCentavos(String input) {
+    final normalized = input.replaceAll(',', '').trim();
+    final match = RegExp(r'^(\d+)(?:\.(\d{1,2}))?$').firstMatch(normalized);
+    if (match == null) return null;
+    final pesos = int.tryParse(match.group(1)!);
+    if (pesos == null) return null;
+    final decimals = (match.group(2) ?? '').padRight(2, '0');
+    final centavos = int.tryParse(decimals);
+    if (centavos == null || pesos > (_maxSafeCentavos - centavos) ~/ 100)
+      return null;
+    final value = pesos * 100 + centavos;
+    return value > 0 ? value : null;
   }
 
   void _submit() {
@@ -47,12 +69,34 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       );
       return;
     }
+    final amountCents = _parseAmount()!;
+    final payers = <ExpensePayer>[];
+    for (final member in widget.group.members) {
+      if (!_payerIds.contains(member.id)) continue;
+      final entered = _payerAmountControllers[member.id]!.text.trim();
+      final contribution = entered.isEmpty && _payerIds.length == 1
+          ? amountCents
+          : _parseCentavos(entered);
+      if (contribution == null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
+        return;
+      }
+      payers.add(ExpensePayer(memberId: member.id, amountCents: contribution));
+    }
+    if (payers.fold<int>(0, (sum, payer) => sum + payer.amountCents) !=
+        amountCents) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
+      return;
+    }
     Navigator.pop(
       context,
       NewExpenseInput(
         description: _descriptionController.text.trim(),
-        amountCents: _parseAmount()!,
-        payerId: _payerId,
+        amountCents: amountCents,
+        payerId: payers.first.memberId,
+        payers: payers,
         participantIds: _participantIds.toList(),
         splitMode: _splitMode,
       ),
@@ -116,22 +160,35 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   _parseAmount() == null ? l10n.amountGreaterZero : null,
             ),
             const SizedBox(height: 14),
-            DropdownButtonFormField<String>(
-              key: const Key('expense-payer-field'),
-              initialValue: _payerId,
-              decoration: InputDecoration(
-                labelText: l10n.paidBy,
-                prefixIcon: const Icon(Icons.account_balance_wallet_rounded),
-              ),
-              items: [
-                for (final member in widget.group.members)
-                  DropdownMenuItem(
-                    value: member.id,
-                    child: Text(member.name),
-                  ),
-              ],
-              onChanged: (value) => setState(() => _payerId = value!),
-            ),
+            Text(l10n.paidBy, style: Theme.of(context).textTheme.titleMedium),
+            for (final member in widget.group.members)
+              Row(children: [
+                Checkbox(
+                  value: _payerIds.contains(member.id),
+                  onChanged: (selected) => setState(() {
+                    if (selected ?? false) {
+                      _payerIds.add(member.id);
+                    } else if (_payerIds.length > 1) {
+                      _payerIds.remove(member.id);
+                      _payerAmountControllers[member.id]!.clear();
+                    }
+                  }),
+                ),
+                Expanded(child: Text(member.name)),
+                if (_payerIds.contains(member.id))
+                  SizedBox(
+                      width: 110,
+                      child: TextFormField(
+                        controller: _payerAmountControllers[member.id],
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
+                        ],
+                        decoration: const InputDecoration(
+                            prefixText: r'$ ', hintText: '0.00'),
+                      )),
+              ]),
             const SizedBox(height: 18),
             if (widget.group.salarySplitEnabled)
               SegmentedButton<String>(

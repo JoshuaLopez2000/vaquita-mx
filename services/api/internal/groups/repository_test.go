@@ -21,6 +21,35 @@ func TestBalancesAllocatesEveryCent(t *testing.T) {
 	}
 }
 
+func TestBalancesCreditsMultiplePayersExactly(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}, {ID: "sofia"}}, Expenses: []Expense{{
+		AmountCents: 101, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 51}, {MemberID: "diego", AmountCents: 50}},
+		ParticipantIDs: []string{"ana", "diego", "sofia"},
+	}}}
+	balances := Balances(group)
+	if balances["ana"] != 17 || balances["diego"] != 16 || balances["sofia"] != -33 {
+		t.Fatalf("multiple payer balances = %#v", balances)
+	}
+}
+
+func TestBalancesRejectsInvalidMultiplePayers(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}}, Expenses: []Expense{{
+		AmountCents: 100, Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 99}}, ParticipantIDs: []string{"ana", "diego"},
+	}}}
+	if balances := Balances(group); len(balances) != 0 {
+		t.Fatalf("invalid expense accepted: %#v", balances)
+	}
+}
+
+func TestBalancesRejectsDuplicatePayers(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}}, Expenses: []Expense{{
+		AmountCents: 100, Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 50}, {MemberID: "ana", AmountCents: 50}}, ParticipantIDs: []string{"ana", "diego"},
+	}}}
+	if balances := Balances(group); len(balances) != 0 {
+		t.Fatalf("duplicate payers accepted: %#v", balances)
+	}
+}
+
 func TestBalancesAppliesSettlement(t *testing.T) {
 	group := Group{
 		Members: []Member{{ID: "me"}, {ID: "ana"}},

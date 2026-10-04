@@ -23,7 +23,10 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
       final contactMember = member;
       final concepts = group.expenses
           .where((expense) =>
-              expense.payerId == contactMember.id ||
+              (expense.payers.isEmpty
+                      ? [expense.payerId]
+                      : expense.payers.map((payer) => payer.memberId))
+                  .contains(contactMember.id) ||
               expense.participantIds.contains(contactMember.id))
           .toList();
       balances.add(_GroupBalance(group, contactMember, amount, concepts));

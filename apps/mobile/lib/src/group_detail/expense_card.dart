@@ -9,9 +9,12 @@ class _ExpenseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final payer = group.members.firstWhere(
-      (member) => member.id == expense.payerId,
-    );
+    final payerIDs = expense.payers.isEmpty
+        ? [expense.payerId]
+        : expense.payers.map((payer) => payer.memberId);
+    final payerNames = payerIDs
+        .map((id) => group.members.firstWhere((member) => member.id == id).name)
+        .join(', ');
     return Card(
       child: ListTile(
         onTap: () => showExpenseDetailsSheet(context, group, expense),
@@ -32,7 +35,7 @@ class _ExpenseCard extends StatelessWidget {
         ),
         subtitle: Text(
           l10n.expenseSplitDetails(
-            payer.name,
+            payerNames,
             expense.splitMode == 'salary' ? l10n.bySalary : l10n.split,
             expense.participantIds.length,
           ),

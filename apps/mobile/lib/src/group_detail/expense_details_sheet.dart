@@ -23,7 +23,12 @@ void showExpenseDetailsSheet(
 ) {
   final l10n = AppLocalizations.of(context)!;
   final members = {for (final member in group.members) member.id: member};
-  final payer = members[expense.payerId];
+  final payers = expense.payers.isEmpty
+      ? [
+          ExpensePayer(
+              memberId: expense.payerId, amountCents: expense.amountCents)
+        ]
+      : expense.payers;
   final shares = _expenseShares(expense);
   final percentFormat = NumberFormat.percentPattern(l10n.localeName)
     ..minimumFractionDigits = 1
@@ -51,10 +56,12 @@ void showExpenseDetailsSheet(
             const SizedBox(height: 6),
             Text(expense.description,
                 style: Theme.of(context).textTheme.titleMedium),
-            if (payer != null) ...[
-              const SizedBox(height: 4),
-              Text(l10n.paidByName(payer.name)),
-            ],
+            for (final payer in payers)
+              if (members[payer.memberId] != null) ...[
+                const SizedBox(height: 4),
+                Text(l10n.paidByName(
+                    '${members[payer.memberId]!.name} — ${formatMoney(payer.amountCents)}')),
+              ],
             const SizedBox(height: 20),
             Card(
               child: Padding(

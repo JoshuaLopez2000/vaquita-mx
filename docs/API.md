@@ -16,7 +16,7 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `POST` | `/groups/{groupID}/members` | Invite a member; owner only. |
 | `PATCH` | `/groups/{groupID}/members/{memberID}` | Edit owner-managed identity data or the authenticated member's own salary consent. |
 | `DELETE` | `/groups/{groupID}/members/{memberID}` | Remove a non-owner member; owner only. |
-| `POST` | `/groups/{groupID}/expenses` | Record an equal or salary-weighted expense. |
+| `POST` | `/groups/{groupID}/expenses` | Record an equal or salary-weighted expense, with one or more payers. |
 | `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user. |
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
@@ -27,6 +27,12 @@ Every member object returned in a group or invitation includes a persisted
 `role` of `owner` or `member`. See the authorization matrix in
 [`SECURITY.md`](SECURITY.md#group-authorization-matrix) for the permissions and
 membership-state requirements applied to these routes.
+
+Expense creation accepts ordered `payers`, each with `member_id` and positive
+integer `amount_cents`. Their total must exactly match `amount_cents`, and all
+payers must be active group members. The legacy `payer_id` remains readable
+for historical single-payer expenses; new clients should send and display
+`payers`.
 
 `POST /payment-requests` is intentionally not a real payment operation. It
 requires a valid session, group access, an expense paid by that user, an active

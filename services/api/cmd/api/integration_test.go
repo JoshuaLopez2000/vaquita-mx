@@ -108,14 +108,18 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 
 	var withExpense groups.Group
 	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/expenses", ownerLogin.Token, map[string]any{
-		"description":     "Cena",
-		"amount_cents":    1001,
-		"payer_id":        ownerMember.ID,
+		"description":  "Cena",
+		"amount_cents": 1001,
+		"payer_id":     ownerMember.ID,
+		"payers": []map[string]any{
+			{"member_id": ownerMember.ID, "amount_cents": 700},
+			{"member_id": invitedMember.ID, "amount_cents": 301},
+		},
 		"participant_ids": []string{ownerMember.ID, invitedMember.ID},
 		"split_mode":      "equal",
 	}, http.StatusCreated, &withExpense)
-	assertBalance(t, withExpense, ownerMember.ID, 500)
-	assertBalance(t, withExpense, invitedMember.ID, -500)
+	assertBalance(t, withExpense, ownerMember.ID, 199)
+	assertBalance(t, withExpense, invitedMember.ID, -199)
 	if len(withExpense.Expenses) != 1 || withExpense.Expenses[0].AmountCents != 1001 {
 		t.Fatalf("unexpected persisted expense response: %#v", withExpense.Expenses)
 	}
@@ -127,12 +131,18 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	}
 
 	var expenseAmount int64
-	var participantCount int
+	var participantCount, payerCount int
 	if err := test.db.QueryRow(`SELECT amount_cents FROM expenses WHERE id=$1`, withExpense.Expenses[0].ID).Scan(&expenseAmount); err != nil {
 		t.Fatalf("read persisted expense: %v", err)
 	}
 	if err := test.db.QueryRow(`SELECT count(*) FROM expense_participants WHERE expense_id=$1`, withExpense.Expenses[0].ID).Scan(&participantCount); err != nil {
 		t.Fatalf("read persisted participants: %v", err)
+	}
+	if err := test.db.QueryRow(`SELECT count(*) FROM expense_payers WHERE expense_id=$1`, withExpense.Expenses[0].ID).Scan(&payerCount); err != nil {
+		t.Fatalf("read persisted payers: %v", err)
+	}
+	if payerCount != 2 {
+		t.Fatalf("persisted payer count = %d, want 2", payerCount)
 	}
 	if expenseAmount != 1001 || participantCount != 2 {
 		t.Fatalf("persisted expense amount=%d participants=%d", expenseAmount, participantCount)
@@ -144,7 +154,7 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	}, http.StatusCreated, &settled)
 	assertBalance(t, settled, ownerMember.ID, 0)
 	assertBalance(t, settled, invitedMember.ID, 0)
-	if len(settled.Settlements) != 1 || settled.Settlements[0].AmountCents != 500 {
+	if len(settled.Settlements) != 1 || settled.Settlements[0].AmountCents != 199 {
 		t.Fatalf("unexpected settlement response: %#v", settled.Settlements)
 	}
 

@@ -23,7 +23,11 @@ class MovementsScreen extends StatelessWidget {
         items.add(_Movement(
           group: group,
           title: expense.description,
-          detail: l10n.memberPaid(displayName(expense.payerId)),
+          detail: l10n.memberPaid((expense.payers.isEmpty
+                  ? [expense.payerId]
+                  : expense.payers.map((payer) => payer.memberId))
+              .map(displayName)
+              .join(', ')),
           amountCents: expense.amountCents,
           occurredAt: expense.createdAt,
           isSettlement: false,

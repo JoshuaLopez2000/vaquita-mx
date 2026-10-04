@@ -41,10 +41,10 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 3 || len(result.Applied) != 3 {
+	if result.CurrentVersion != 4 || len(result.Applied) != 4 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
-	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_participants", "settlements", "schema_migrations"} {
+	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "settlements", "schema_migrations"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("find table %s: %v", table, err)
@@ -54,7 +54,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 		}
 	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 3 {
+	if err != nil || version != 4 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -62,7 +62,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 3 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 4 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -117,7 +117,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 3 || len(result.Applied) != 3 {
+	if result.CurrentVersion != 4 || len(result.Applied) != 4 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
@@ -129,6 +129,10 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	}
 	if amount != 10001 || settlement != 2500 {
 		t.Fatalf("financial data changed: expense=%d settlement=%d", amount, settlement)
+	}
+	var payerAmount int64
+	if err := db.QueryRowContext(ctx, `SELECT amount_cents FROM expense_payers WHERE expense_id='expense-1' AND member_id='user-1'`).Scan(&payerAmount); err != nil || payerAmount != 10001 {
+		t.Fatalf("legacy payer was not migrated: amount=%d error=%v", payerAmount, err)
 	}
 	var users, groups, contacts int
 	if err := db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM expense_groups), (SELECT count(*) FROM contacts)`).Scan(&users, &groups, &contacts); err != nil {
