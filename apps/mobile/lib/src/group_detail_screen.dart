@@ -41,6 +41,7 @@ class GroupDetailScreen extends StatelessWidget {
           payers: input.payers,
           participantIds: input.participantIds,
           splitMode: input.splitMode,
+          shares: input.shares,
         );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

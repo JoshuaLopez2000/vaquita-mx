@@ -271,6 +271,7 @@ class ApiClient {
     required List<ExpensePayer> payers,
     required List<String> participantIds,
     String splitMode = 'equal',
+    List<ExpenseShare> shares = const [],
   }) async {
     final response = await _request(
       'POST',
@@ -285,6 +286,10 @@ class ApiClient {
         ],
         'participant_ids': participantIds,
         'split_mode': splitMode,
+        'shares': [
+          for (final share in shares)
+            {'member_id': share.memberId, 'amount_cents': share.amountCents},
+        ],
       },
     );
     _decode(response);

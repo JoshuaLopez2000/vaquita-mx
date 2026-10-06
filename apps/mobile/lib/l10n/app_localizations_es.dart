@@ -426,6 +426,32 @@ class AppLocalizationsEs extends AppLocalizations {
   String get bySalary => 'Por salario';
 
   @override
+  String get exactAmount => 'Monto exacto';
+
+  @override
+  String get exactSplitBetween =>
+      'Ingresa el monto exacto que debe cada persona';
+
+  @override
+  String get owes => 'Debe';
+
+  @override
+  String get consumed => 'Consumió';
+
+  @override
+  String get exactOverpaymentNeedsTotalChange =>
+      'Los pagos superan este total. Cambia el total o incluye a alguien que no haya pagado de más.';
+
+  @override
+  String exactAmountRemaining(String amount) {
+    return 'Restante: $amount';
+  }
+
+  @override
+  String get exactSharesMustMatchTotal =>
+      'Las partes exactas deben sumar el total pagado.';
+
+  @override
   String get salaryEligibleOnly =>
       'Solo participan quienes compartieron su salario.';
 

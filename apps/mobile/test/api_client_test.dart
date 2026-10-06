@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vaquita_mx/src/api_client.dart';
+import 'package:vaquita_mx/src/models.dart';
 
 void main() {
   test('loads groups from the API', () async {
@@ -55,6 +56,44 @@ void main() {
     );
 
     await client.createGroup(name: 'Roommates', memberNames: ['Ana']);
+  });
+
+  test('sends exact participant shares separately from payer contributions',
+      () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(request.url.path, '/api/v1/groups/group-1/expenses');
+        expect(body['payers'], [
+          {'member_id': 'ana', 'amount_cents': 7000},
+          {'member_id': 'diego', 'amount_cents': 3000},
+        ]);
+        expect(body['shares'], [
+          {'member_id': 'ana', 'amount_cents': 1000},
+          {'member_id': 'diego', 'amount_cents': 9000},
+        ]);
+        expect(body['split_mode'], 'exact');
+        return http.Response('{}', 201);
+      }),
+    );
+
+    await client.addExpense(
+      groupId: 'group-1',
+      description: 'Dinner',
+      amountCents: 10000,
+      payerId: 'ana',
+      payers: const [
+        ExpensePayer(memberId: 'ana', amountCents: 7000),
+        ExpensePayer(memberId: 'diego', amountCents: 3000),
+      ],
+      participantIds: const ['ana', 'diego'],
+      splitMode: 'exact',
+      shares: const [
+        ExpenseShare(memberId: 'ana', amountCents: 1000),
+        ExpenseShare(memberId: 'diego', amountCents: 9000),
+      ],
+    );
   });
 
   test('parses stable API error codes, fields, and correlation IDs', () async {

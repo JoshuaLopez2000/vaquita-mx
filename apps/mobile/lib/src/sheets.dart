@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vaquita_mx/src/models.dart';
+import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
 import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
@@ -40,6 +41,7 @@ class NewExpenseInput {
     required this.payers,
     required this.participantIds,
     required this.splitMode,
+    this.shares = const [],
   });
 
   final String description;
@@ -48,6 +50,7 @@ class NewExpenseInput {
   final List<ExpensePayer> payers;
   final List<String> participantIds;
   final String splitMode;
+  final List<ExpenseShare> shares;
 }
 
 Future<NewGroupInput?> showCreateGroupSheet(

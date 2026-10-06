@@ -141,6 +141,13 @@ class ExpensePayer {
       );
 }
 
+class ExpenseShare {
+  const ExpenseShare({required this.memberId, required this.amountCents});
+
+  final String memberId;
+  final int amountCents;
+}
+
 class Settlement {
   const Settlement({
     required this.id,

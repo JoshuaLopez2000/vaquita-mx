@@ -208,6 +208,7 @@ class DemoStore extends ChangeNotifier {
     required List<ExpensePayer> payers,
     required List<String> participantIds,
     String splitMode = 'equal',
+    List<ExpenseShare> shares = const [],
   }) async {
     if (_apiClient != null) {
       return _sync(
@@ -219,6 +220,7 @@ class DemoStore extends ChangeNotifier {
           payers: payers,
           participantIds: participantIds,
           splitMode: splitMode,
+          shares: shares,
         ),
       );
     }
@@ -231,6 +233,8 @@ class DemoStore extends ChangeNotifier {
             payerId: payerId,
             payers: List.unmodifiable(payers),
             participantIds: List.unmodifiable(participantIds),
+            splitMode: splitMode,
+            shares: {for (final share in shares) share.memberId: share.amountCents},
             createdAt: DateTime.now(),
           ),
         );

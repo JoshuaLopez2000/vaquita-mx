@@ -848,6 +848,48 @@ abstract class AppLocalizations {
   /// **'Por salario'**
   String get bySalary;
 
+  /// No description provided for @exactAmount.
+  ///
+  /// In es, this message translates to:
+  /// **'Monto exacto'**
+  String get exactAmount;
+
+  /// No description provided for @exactSplitBetween.
+  ///
+  /// In es, this message translates to:
+  /// **'Ingresa el monto exacto que debe cada persona'**
+  String get exactSplitBetween;
+
+  /// No description provided for @owes.
+  ///
+  /// In es, this message translates to:
+  /// **'Debe'**
+  String get owes;
+
+  /// No description provided for @consumed.
+  ///
+  /// In es, this message translates to:
+  /// **'Consumió'**
+  String get consumed;
+
+  /// No description provided for @exactOverpaymentNeedsTotalChange.
+  ///
+  /// In es, this message translates to:
+  /// **'Los pagos superan este total. Cambia el total o incluye a alguien que no haya pagado de más.'**
+  String get exactOverpaymentNeedsTotalChange;
+
+  /// No description provided for @exactAmountRemaining.
+  ///
+  /// In es, this message translates to:
+  /// **'Restante: {amount}'**
+  String exactAmountRemaining(String amount);
+
+  /// No description provided for @exactSharesMustMatchTotal.
+  ///
+  /// In es, this message translates to:
+  /// **'Las partes exactas deben sumar el total pagado.'**
+  String get exactSharesMustMatchTotal;
+
   /// No description provided for @salaryEligibleOnly.
   ///
   /// In es, this message translates to:

@@ -181,6 +181,49 @@ void main() {
     expect(find.text(r'$240.00'), findsOneWidget);
   });
 
+  testWidgets('keeps generated exact shares in sync with total paid',
+      (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('add-expense-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('expense-amount-field')),
+      '100',
+    );
+    await tester.tap(find.text('Monto exacto'));
+    await tester.pumpAndSettle();
+
+    TextFormField share(String memberId) =>
+        tester.widget(find.byKey(Key('expense-share-$memberId')));
+    expect(share('me').controller!.text, '25.00');
+
+    await tester.enterText(
+      find.byKey(const Key('expense-amount-field')),
+      '120',
+    );
+    await tester.pump();
+    expect(share('me').controller!.text, '30.00');
+
+    await tester.tap(find.byKey(const Key('expense-payer-checkbox-ana')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const Key('expense-payer-me')),
+      '70',
+    );
+    await tester.enterText(
+      find.byKey(const Key('expense-payer-ana')),
+      '80',
+    );
+    await tester.pump();
+
+    // Exact shares represent consumption, so they remain tied to the entered
+    // expense total even when payer contributions exceed it.
+    expect(share('me').controller!.text, '30.00');
+  });
+
   testWidgets('shows how an expense was split', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 

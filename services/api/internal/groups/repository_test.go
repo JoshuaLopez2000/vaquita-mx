@@ -32,6 +32,47 @@ func TestBalancesCreditsMultiplePayersExactly(t *testing.T) {
 	}
 }
 
+func TestBalancesKeepsExactSharesSeparateFromMultiplePayers(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}}, Expenses: []Expense{{
+		AmountCents: 100,
+		PayerID:     "ana",
+		Payers: []ExpensePayer{
+			{MemberID: "ana", AmountCents: 70},
+			{MemberID: "diego", AmountCents: 30},
+		},
+		ParticipantIDs: []string{"ana", "diego"},
+		SplitMode:      "exact",
+		ExplicitShares: []ExpenseShare{
+			{MemberID: "ana", AmountCents: 10},
+			{MemberID: "diego", AmountCents: 90},
+		},
+	}}}
+
+	balances := Balances(group)
+	if balances["ana"] != 60 || balances["diego"] != -60 {
+		t.Fatalf("exact shares with multiple payers = %#v", balances)
+	}
+}
+
+func TestExactSharesRequireEachParticipantAndEveryCentavo(t *testing.T) {
+	ids := []string{"ana", "diego"}
+	for _, shares := range [][]ExpenseShare{
+		{{MemberID: "ana", AmountCents: 100}},
+		{{MemberID: "ana", AmountCents: 50}, {MemberID: "ana", AmountCents: 50}},
+		{{MemberID: "ana", AmountCents: 50}, {MemberID: "diego", AmountCents: 49}},
+		{{MemberID: "ana", AmountCents: 50}, {MemberID: "diego", AmountCents: 51}},
+		{{MemberID: "ana", AmountCents: -1}, {MemberID: "diego", AmountCents: 101}},
+	} {
+		if _, err := validateExactShares(shares, ids, 100); err != ErrInvalid {
+			t.Fatalf("shares %#v error = %v, want ErrInvalid", shares, err)
+		}
+	}
+	shares, err := validateExactShares([]ExpenseShare{{MemberID: "ana", AmountCents: 1}, {MemberID: "diego", AmountCents: 99}}, ids, 100)
+	if err != nil || shares["ana"] != 1 || shares["diego"] != 99 {
+		t.Fatalf("valid one-cent exact shares = %#v, %v", shares, err)
+	}
+}
+
 func TestBalancesAllocateOverpaymentAcrossParticipants(t *testing.T) {
 	group := Group{Members: []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}}, Expenses: []Expense{{
 		AmountCents: 100, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 80}, {MemberID: "diego", AmountCents: 40}},

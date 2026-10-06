@@ -59,9 +59,18 @@ type Expense struct {
 	ParticipantIDs []string         `json:"participant_ids"`
 	SplitMode      string           `json:"split_mode"`
 	Shares         map[string]int64 `json:"shares"`
+	ExplicitShares []ExpenseShare   `json:"-"`
 	CreatedAt      time.Time        `json:"created_at"`
 }
 type ExpensePayer struct {
+	MemberID    string `json:"member_id"`
+	AmountCents int64  `json:"amount_cents"`
+}
+
+// ExpenseShare is an explicit, ordered allocation of an expense to a member.
+// It is used only with the exact split mode; payer contributions remain a
+// separate fact about who paid the expense.
+type ExpenseShare struct {
 	MemberID    string `json:"member_id"`
 	AmountCents int64  `json:"amount_cents"`
 }
@@ -115,6 +124,7 @@ type AddExpenseInput struct {
 	Payers         []ExpensePayer `json:"payers"`
 	ParticipantIDs []string       `json:"participant_ids"`
 	SplitMode      string         `json:"split_mode"`
+	Shares         []ExpenseShare `json:"shares"`
 }
 type Repository struct{ db *sql.DB }
 type Invitation struct {
@@ -394,7 +404,7 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	if in.SplitMode == "" {
 		in.SplitMode = "equal"
 	}
-	if in.SplitMode != "equal" && in.SplitMode != "salary" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
+	if in.SplitMode != "equal" && in.SplitMode != "salary" && in.SplitMode != "exact" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
 		return g, ErrInvalid
 	}
 	ms := map[string]Member{}
@@ -434,6 +444,13 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 		}
 		seen[id] = true
 	}
+	if in.SplitMode == "exact" {
+		if _, err := validateExactShares(in.Shares, in.ParticipantIDs, in.AmountCents); err != nil {
+			return g, ErrInvalid
+		}
+	} else if len(in.Shares) != 0 {
+		return g, ErrInvalid
+	}
 	id, e := newID("expense")
 	if e != nil {
 		return g, e
@@ -454,6 +471,11 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	}
 	for p, payer := range in.Payers {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_payers(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, p, payer.AmountCents); e != nil {
+			return g, e
+		}
+	}
+	for p, share := range in.Shares {
+		if _, e = t.ExecContext(c, `INSERT INTO expense_shares(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, share.MemberID, p, share.AmountCents); e != nil {
 			return g, e
 		}
 	}
@@ -717,7 +739,7 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if err != nil {
 			return nil, err
 		}
-		shares, err := split(allocatedAmount, expense.ParticipantIDs, g, expense.SplitMode)
+		shares, err := sharesForExpense(expense, g, allocatedAmount)
 		if err != nil {
 			return nil, err
 		}
@@ -800,7 +822,7 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		if err != nil {
 			return nil, err
 		}
-		shares, err := split(allocatedAmount, e.ParticipantIDs, g, e.SplitMode)
+		shares, err := sharesForExpense(e, g, allocatedAmount)
 		if err != nil {
 			return nil, err
 		}
@@ -972,6 +994,92 @@ func split(a int64, ids []string, g Group, mode string) (map[string]int64, error
 	return o, nil
 }
 
+func validateExactShares(shares []ExpenseShare, ids []string, total int64) (map[string]int64, error) {
+	if total <= 0 || len(shares) != len(ids) || len(ids) == 0 {
+		return nil, ErrInvalid
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || wanted[id] {
+			return nil, ErrInvalid
+		}
+		wanted[id] = true
+	}
+	result := make(map[string]int64, len(shares))
+	var allocated int64
+	for _, share := range shares {
+		if !wanted[share.MemberID] || share.AmountCents < 0 {
+			return nil, ErrInvalid
+		}
+		if _, duplicate := result[share.MemberID]; duplicate {
+			return nil, ErrInvalid
+		}
+		var err error
+		allocated, err = addCentavos(allocated, share.AmountCents)
+		if err != nil {
+			return nil, ErrInvalid
+		}
+		result[share.MemberID] = share.AmountCents
+	}
+	if allocated != total {
+		return nil, ErrInvalid
+	}
+	return result, nil
+}
+
+func sharesForExpense(e Expense, g Group, total int64) (map[string]int64, error) {
+	if e.SplitMode == "exact" {
+		shares, err := validateExactShares(e.ExplicitShares, e.ParticipantIDs, e.AmountCents)
+		if err != nil || total < e.AmountCents {
+			return nil, ErrInvalid
+		}
+		extra := total - e.AmountCents
+		if extra == 0 {
+			return shares, nil
+		}
+		eligible := make([]string, 0, len(e.ParticipantIDs))
+		var weight int64
+		for _, id := range e.ParticipantIDs {
+			if shares[id] > 0 {
+				eligible = append(eligible, id)
+				weight, err = addCentavos(weight, shares[id])
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if len(eligible) == 0 || weight == 0 {
+			return nil, ErrInvalid
+		}
+		used := int64(0)
+		for _, id := range eligible {
+			product := new(big.Int).Mul(big.NewInt(extra), big.NewInt(shares[id]))
+			portion := new(big.Int).Quo(product, big.NewInt(weight))
+			if !portion.IsInt64() {
+				return nil, ErrInvalid
+			}
+			var addErr error
+			shares[id], addErr = addCentavos(shares[id], portion.Int64())
+			if addErr != nil {
+				return nil, addErr
+			}
+			used, addErr = addCentavos(used, portion.Int64())
+			if addErr != nil {
+				return nil, addErr
+			}
+		}
+		for _, id := range eligible {
+			if used == extra {
+				break
+			}
+			shares[id]++
+			used++
+		}
+		return shares, nil
+	}
+	return split(total, e.ParticipantIDs, g, e.SplitMode)
+}
+
 func addCentavos(current, delta int64) (int64, error) {
 	if (delta > 0 && current > math.MaxInt64-delta) || (delta < 0 && current < math.MinInt64-delta) {
 		return 0, ErrInvalid
@@ -1033,6 +1141,26 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			return queryErr
 		}
 		payers.Close()
+		explicit, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_shares WHERE expense_id=$1 ORDER BY position`, x.ID)
+		if queryErr != nil {
+			es.Close()
+			return queryErr
+		}
+		for explicit.Next() {
+			var share ExpenseShare
+			if queryErr = explicit.Scan(&share.MemberID, &share.AmountCents); queryErr != nil {
+				explicit.Close()
+				es.Close()
+				return queryErr
+			}
+			x.ExplicitShares = append(x.ExplicitShares, share)
+		}
+		if queryErr = explicit.Err(); queryErr != nil {
+			explicit.Close()
+			es.Close()
+			return queryErr
+		}
+		explicit.Close()
 		if len(x.Payers) == 0 {
 			x.Payers = []ExpensePayer{{MemberID: x.PayerID, AmountCents: x.AmountCents}}
 		}
@@ -1041,7 +1169,7 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			es.Close()
 			return allocationErr
 		}
-		x.Shares, e = split(allocatedAmount, x.ParticipantIDs, *g, x.SplitMode)
+		x.Shares, e = sharesForExpense(x, *g, allocatedAmount)
 		if e != nil {
 			es.Close()
 			return e

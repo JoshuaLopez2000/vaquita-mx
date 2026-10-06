@@ -424,6 +424,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get bySalary => 'By salary';
 
   @override
+  String get exactAmount => 'Exact amount';
+
+  @override
+  String get exactSplitBetween => 'Enter the exact amount each person owes';
+
+  @override
+  String get owes => 'Owes';
+
+  @override
+  String get consumed => 'Consumed';
+
+  @override
+  String get exactOverpaymentNeedsTotalChange =>
+      'The payments exceed this total. Change the total or include someone who did not overpay.';
+
+  @override
+  String exactAmountRemaining(String amount) {
+    return 'Remaining: $amount';
+  }
+
+  @override
+  String get exactSharesMustMatchTotal =>
+      'The exact shares must add up to the total paid.';
+
+  @override
   String get salaryEligibleOnly =>
       'Only members who shared their salary are eligible.';
 

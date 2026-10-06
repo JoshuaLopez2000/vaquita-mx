@@ -44,7 +44,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if result.CurrentVersion != 4 || len(result.Applied) != 4 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
-	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "settlements", "schema_migrations"} {
+	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "settlements", "schema_migrations"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("find table %s: %v", table, err)

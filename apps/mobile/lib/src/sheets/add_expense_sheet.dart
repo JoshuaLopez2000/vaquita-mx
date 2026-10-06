@@ -20,7 +20,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   late final Set<String> _payerIds;
   final Map<String, TextEditingController> _payerAmountControllers = {};
   late final Set<String> _participantIds;
+  final Map<String, TextEditingController> _shareAmountControllers = {};
   var _splitMode = 'equal';
+  var _exactSharesEdited = false;
 
   @override
   void initState() {
@@ -28,6 +30,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     _payerIds = {widget.group.members.first.id};
     for (final member in widget.group.members) {
       _payerAmountControllers[member.id] = TextEditingController();
+      _shareAmountControllers[member.id] = TextEditingController();
     }
     _participantIds = widget.group.members.map((member) => member.id).toSet();
   }
@@ -39,6 +42,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     for (final controller in _payerAmountControllers.values) {
       controller.dispose();
     }
+    for (final controller in _shareAmountControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -46,7 +52,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     return _parseCentavos(_amountController.text);
   }
 
-  int? _parseCentavos(String input) {
+  int? _parseCentavos(String input, {bool allowZero = false}) {
     final normalized = input.replaceAll(',', '').trim();
     final match = RegExp(r'^(\d+)(?:\.(\d{1,2}))?$').firstMatch(normalized);
     if (match == null) return null;
@@ -58,7 +64,61 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       return null;
     }
     final value = pesos * 100 + centavos;
-    return value > 0 ? value : null;
+    return value > 0 || allowZero && value == 0 ? value : null;
+  }
+
+  String _formatCentavos(int amountCents) {
+    final sign = amountCents < 0 ? '-' : '';
+    final absolute = amountCents.abs();
+    return '$sign${absolute ~/ 100}.${(absolute % 100).toString().padLeft(2, '0')}';
+  }
+
+  void _populateExactShares() {
+    // Existing multiple-payer behavior treats every contributed centavo as
+    // group spending, even when it exceeds the entered expense amount. Until
+    // the user edits an exact share, keep the generated shares in sync with
+    // that allocation total.
+    final total = _parseAmount();
+    if (total == null || _participantIds.isEmpty) return;
+    final ordered = widget.group.members
+        .where((member) => _participantIds.contains(member.id))
+        .toList();
+    final shares = ExpenseAllocation.equalShares(
+      allocationTotalCents: total,
+      participantCount: ordered.length,
+    );
+    for (final (index, member) in ordered.indexed) {
+      _shareAmountControllers[member.id]!.text = _formatCentavos(shares[index]);
+    }
+  }
+
+  int? get _exactAllocatedCentavos {
+    var total = 0;
+    for (final id in _participantIds) {
+      final value = _parseCentavos(
+        _shareAmountControllers[id]!.text,
+        allowZero: true,
+      );
+      if (value == null) return null;
+      total += value;
+    }
+    return total;
+  }
+
+  List<ExpensePayer>? _draftPayers() {
+    final amountCents = _parseAmount();
+    if (amountCents == null) return null;
+    final payers = <ExpensePayer>[];
+    for (final member in widget.group.members) {
+      if (!_payerIds.contains(member.id)) continue;
+      final entered = _payerAmountControllers[member.id]!.text.trim();
+      final contribution = entered.isEmpty && _payerIds.length == 1
+          ? amountCents
+          : _parseCentavos(entered);
+      if (contribution == null) return null;
+      payers.add(ExpensePayer(memberId: member.id, amountCents: contribution));
+    }
+    return payers;
   }
 
   void _submit() {
@@ -71,24 +131,43 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       return;
     }
     final amountCents = _parseAmount()!;
-    final payers = <ExpensePayer>[];
-    for (final member in widget.group.members) {
-      if (!_payerIds.contains(member.id)) continue;
-      final entered = _payerAmountControllers[member.id]!.text.trim();
-      final contribution = entered.isEmpty && _payerIds.length == 1
-          ? amountCents
-          : _parseCentavos(entered);
-      if (contribution == null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
-        return;
-      }
-      payers.add(ExpensePayer(memberId: member.id, amountCents: contribution));
-    }
-    if (payers.fold<int>(0, (sum, payer) => sum + payer.amountCents) <
-        amountCents) {
+    final payers = _draftPayers();
+    final allocationTotal = payers == null
+        ? null
+        : ExpenseAllocation.total(
+            expenseTotalCents: amountCents,
+            payers: payers,
+          );
+    if (payers == null || allocationTotal == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
+      return;
+    }
+    if (_splitMode == 'exact' &&
+        !ExpenseAllocation.exactSharesMatch(
+          allocatedCents: _exactAllocatedCentavos,
+          allocationTotalCents: amountCents,
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.exactSharesMustMatchTotal)));
+      return;
+    }
+    if (_splitMode == 'exact' &&
+        !ExpenseAllocation.canAllocateExactOverpayment(
+          expenseTotalCents: amountCents,
+          payers: payers,
+          consumption: {
+            for (final member in widget.group.members)
+              if (_participantIds.contains(member.id))
+                member.id: _parseCentavos(
+                  _shareAmountControllers[member.id]!.text,
+                  allowZero: true,
+                )!,
+          },
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.exactOverpaymentNeedsTotalChange)),
+      );
       return;
     }
     Navigator.pop(
@@ -100,6 +179,19 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
         payers: payers,
         participantIds: _participantIds.toList(),
         splitMode: _splitMode,
+        shares: _splitMode == 'exact'
+            ? [
+                for (final member in widget.group.members)
+                  if (_participantIds.contains(member.id))
+                    ExpenseShare(
+                      memberId: member.id,
+                      amountCents: _parseCentavos(
+                        _shareAmountControllers[member.id]!.text,
+                        allowZero: true,
+                      )!,
+                    ),
+              ]
+            : const [],
       ),
     );
   }
@@ -151,6 +243,11 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
               ],
+              onChanged: (_) {
+                if (_splitMode == 'exact' && !_exactSharesEdited) {
+                  setState(_populateExactShares);
+                }
+              },
               decoration: InputDecoration(
                 labelText: l10n.amount,
                 hintText: '0.00',
@@ -165,6 +262,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             for (final member in widget.group.members)
               Row(children: [
                 Checkbox(
+                  key: Key('expense-payer-checkbox-${member.id}'),
                   value: _payerIds.contains(member.id),
                   onChanged: (selected) => setState(() {
                     if (selected ?? false) {
@@ -173,6 +271,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                       _payerIds.remove(member.id);
                       _payerAmountControllers[member.id]!.clear();
                     }
+                    if (_splitMode == 'exact' && !_exactSharesEdited) {
+                      _populateExactShares();
+                    }
                   }),
                 ),
                 Expanded(child: Text(member.name)),
@@ -180,35 +281,46 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   SizedBox(
                       width: 110,
                       child: TextFormField(
+                        key: Key('expense-payer-${member.id}'),
                         controller: _payerAmountControllers[member.id],
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         inputFormatters: [
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
                         ],
+                        onChanged: (_) {
+                          if (_splitMode == 'exact' && !_exactSharesEdited) {
+                            setState(_populateExactShares);
+                          }
+                        },
                         decoration: const InputDecoration(
                             prefixText: r'$ ', hintText: '0.00'),
                       )),
               ]),
             const SizedBox(height: 18),
-            if (widget.group.salarySplitEnabled)
-              SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(value: 'equal', label: Text(l10n.equal)),
-                    ButtonSegment(value: 'salary', label: Text(l10n.bySalary))
-                  ],
-                  selected: {
-                    _splitMode
-                  },
-                  onSelectionChanged: (value) => setState(() {
-                        _splitMode = value.first;
-                        if (_splitMode == 'salary') {
-                          _participantIds.removeWhere((id) => !widget
-                              .group.members
-                              .firstWhere((m) => m.id == id)
-                              .salarySharing);
-                        }
-                      })),
+            SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'equal', label: Text(l10n.equal)),
+                  if (widget.group.salarySplitEnabled)
+                    ButtonSegment(value: 'salary', label: Text(l10n.bySalary)),
+                  ButtonSegment(value: 'exact', label: Text(l10n.exactAmount)),
+                ],
+                selected: {
+                  _splitMode
+                },
+                onSelectionChanged: (value) => setState(() {
+                      _splitMode = value.first;
+                      if (_splitMode == 'salary') {
+                        _participantIds.removeWhere((id) => !widget
+                            .group.members
+                            .firstWhere((m) => m.id == id)
+                            .salarySharing);
+                      }
+                      if (_splitMode == 'exact') {
+                        _exactSharesEdited = false;
+                        _populateExactShares();
+                      }
+                    })),
             if (_splitMode == 'salary')
               Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -216,30 +328,72 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             Text(
               _splitMode == 'salary'
                   ? l10n.splitBySalaryBetween
-                  : l10n.splitEquallyBetween,
+                  : _splitMode == 'exact'
+                      ? l10n.exactSplitBetween
+                      : l10n.splitEquallyBetween,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
             ),
             const SizedBox(height: 4),
             for (final member in widget.group.members)
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: _participantIds.contains(member.id),
-                title: Text(member.name),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: _splitMode == 'salary' && !member.salarySharing
-                    ? null
-                    : (selected) {
-                        setState(() {
-                          if (selected ?? false) {
-                            _participantIds.add(member.id);
-                          } else {
-                            _participantIds.remove(member.id);
-                          }
-                        });
-                      },
+              Row(children: [
+                Expanded(
+                  child: CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: _participantIds.contains(member.id),
+                    title: Text(member.name),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: _splitMode == 'salary' && !member.salarySharing
+                        ? null
+                        : (selected) {
+                            setState(() {
+                              if (selected ?? false) {
+                                _participantIds.add(member.id);
+                                if (_splitMode == 'exact' &&
+                                    !_exactSharesEdited) {
+                                  _populateExactShares();
+                                }
+                              } else {
+                                _participantIds.remove(member.id);
+                              }
+                            });
+                          },
+                  ),
+                ),
+                if (_splitMode == 'exact' &&
+                    _participantIds.contains(member.id))
+                  SizedBox(
+                    width: 110,
+                    child: TextFormField(
+                      key: Key('expense-share-${member.id}'),
+                      controller: _shareAmountControllers[member.id],
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                      ],
+                      onChanged: (_) => setState(() {
+                        _exactSharesEdited = true;
+                      }),
+                      decoration: InputDecoration(
+                        labelText: l10n.consumed,
+                        prefixText: r'$ ',
+                        hintText: '0.00',
+                      ),
+                    ),
+                  ),
+              ]),
+            if (_splitMode == 'exact')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  l10n.exactAmountRemaining(_formatCentavos(
+                    (_parseAmount() ?? 0) - (_exactAllocatedCentavos ?? 0),
+                  )),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
             const SizedBox(height: 12),
             FilledButton.icon(

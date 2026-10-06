@@ -16,7 +16,7 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `POST` | `/groups/{groupID}/members` | Invite a member; owner only. |
 | `PATCH` | `/groups/{groupID}/members/{memberID}` | Edit owner-managed identity data or the authenticated member's own salary consent. |
 | `DELETE` | `/groups/{groupID}/members/{memberID}` | Remove a non-owner member; owner only. |
-| `POST` | `/groups/{groupID}/expenses` | Record an equal or salary-weighted expense, with one or more payers. |
+| `POST` | `/groups/{groupID}/expenses` | Record an equal, salary-weighted, or exact-split expense, with one or more payers. |
 | `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user. |
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
@@ -34,6 +34,13 @@ payers must be active group members. When it is greater, contributions are the
 amount allocated among participants for balance calculations. The legacy `payer_id` remains readable
 for historical single-payer expenses; new clients should send and display
 `payers`.
+
+For `split_mode: "exact"`, creation also requires ordered `shares`, each with
+`member_id` and non-negative integer `amount_cents`. A share is what that
+participant owes; it is separate from a payer contribution. Each active
+participant must occur exactly once, and all shares must allocate every
+centavo of the amount allocated by the payers. The server rejects duplicate,
+missing, inactive, negative, under-allocated, and over-allocated shares.
 
 `POST /payment-requests` is intentionally not a real payment operation. It
 requires a valid session, group access, an expense paid by that user, an active
