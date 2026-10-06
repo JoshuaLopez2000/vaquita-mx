@@ -700,6 +700,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Include money paid above the total in participant balances.';
 
   @override
+  String get financialStatistics => 'Financial statistics';
+
+  @override
+  String get allTime => 'All time';
+
+  @override
+  String get thisMonth => 'This month';
+
+  @override
+  String get distributedOverpayments => 'Distributed tips / overpayments';
+
+  @override
+  String get retainedOverpayments => 'Retained tips / overpayments';
+
+  @override
+  String get retainedOverpaymentsDescription =>
+      'Retained excess does not create participant debt.';
+
+  @override
+  String get noOverpayments =>
+      'No tips or overpayments were recorded in this period.';
+
+  @override
   String get salarySplitExplanation =>
       'The total is distributed proportionally using opted-in salaries. Salary values remain private.';
 

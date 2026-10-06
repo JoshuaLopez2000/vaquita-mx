@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
+import 'package:vaquita_mx/src/financial_statistics.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
@@ -17,6 +18,7 @@ part 'group_detail/member_balance_tile.dart';
 part 'group_detail/expense_card.dart';
 part 'group_detail/expense_details_sheet.dart';
 part 'group_detail/pending_payments_sheet.dart';
+part 'group_detail/financial_statistics_sheet.dart';
 part 'group_detail/empty_expenses.dart';
 
 class GroupDetailScreen extends StatelessWidget {
@@ -68,6 +70,12 @@ class GroupDetailScreen extends StatelessWidget {
           appBar: AppBar(
             title: Text(group.name),
             actions: [
+              IconButton(
+                key: const Key('group-financial-statistics-button'),
+                tooltip: l10n.financialStatistics,
+                onPressed: () => showFinancialStatisticsSheet(context, group),
+                icon: const Icon(Icons.insights_outlined),
+              ),
               IconButton(
                 tooltip: l10n.groupOptions,
                 onPressed: () => _showGroupInfo(context, group),

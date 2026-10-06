@@ -271,6 +271,23 @@ void main() {
     expect(find.text(r'$320.00'), findsWidgets);
   });
 
+  testWidgets('explains that retained excess does not create debt',
+      (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const Key('group-financial-statistics-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('EstadÃ­sticas financieras'), findsOneWidget);
+    expect(
+      find.text('El excedente retenido no crea deuda entre participantes.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('shows exact salary-based participant shares', (tester) async {
     final store = DemoStore.seeded();
     store.groupById('cdmx-weekend').expenses.insert(

@@ -486,20 +486,16 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 		}
 	}
 	if !*in.SplitOverpayment && paid > in.AmountCents {
-		credited, err := ledgerPayers(Expense{
+		retained, err := retainedOverpayments(Expense{
 			AmountCents:      in.AmountCents,
 			Payers:           in.Payers,
 			SplitOverpayment: false,
-		}, nil)
+		})
 		if err != nil {
 			return g, ErrInvalid
 		}
-		for index, payer := range in.Payers {
-			retained := payer.AmountCents - credited[index].AmountCents
-			if retained <= 0 {
-				continue
-			}
-			if _, err = t.ExecContext(c, `INSERT INTO expense_retained_overpayments(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, index, retained); err != nil {
+		for index, payer := range retained {
+			if _, err = t.ExecContext(c, `INSERT INTO expense_retained_overpayments(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, index, payer.AmountCents); err != nil {
 				return g, err
 			}
 		}
@@ -937,6 +933,28 @@ func ledgerPayers(e Expense, payers []ExpensePayer) ([]ExpensePayer, error) {
 		used++
 	}
 	return result, nil
+}
+
+func retainedOverpayments(e Expense) ([]ExpensePayer, error) {
+	if e.SplitOverpayment {
+		return nil, nil
+	}
+	payers, err := normalizedPayers(e)
+	if err != nil {
+		return nil, err
+	}
+	credited, err := ledgerPayers(e, payers)
+	if err != nil {
+		return nil, err
+	}
+	retained := make([]ExpensePayer, 0, len(payers))
+	for index, payer := range payers {
+		amount := payer.AmountCents - credited[index].AmountCents
+		if amount > 0 {
+			retained = append(retained, ExpensePayer{MemberID: payer.MemberID, AmountCents: amount})
+		}
+	}
+	return retained, nil
 }
 
 type obligation struct {

@@ -37,6 +37,9 @@ excess is retained by those payers proportionally to their contributions. It
 does not create debt, and is stored as immutable retained-overpayment data for
 future financial statistics. The legacy `payer_id` remains readable for
 historical single-payer expenses; new clients should send and display `payers`.
+Group responses expose `paid_amount_cents`, `overpayment_cents`,
+`split_overpayment`, and (when retained) ordered `retained_overpayments` so
+clients can report distributed and retained excess separately.
 
 For `split_mode: "exact"`, creation also requires ordered `shares`, each with
 `member_id` and non-negative integer `amount_cents`. A share is that

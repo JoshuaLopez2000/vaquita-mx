@@ -703,6 +703,29 @@ class AppLocalizationsEs extends AppLocalizations {
       'Incluye el dinero pagado por encima del total en los saldos de los participantes.';
 
   @override
+  String get financialStatistics => 'EstadÃ­sticas financieras';
+
+  @override
+  String get allTime => 'Todo el tiempo';
+
+  @override
+  String get thisMonth => 'Este mes';
+
+  @override
+  String get distributedOverpayments => 'Propinas / excedentes repartidos';
+
+  @override
+  String get retainedOverpayments => 'Propinas / excedentes retenidos';
+
+  @override
+  String get retainedOverpaymentsDescription =>
+      'El excedente retenido no crea deuda entre participantes.';
+
+  @override
+  String get noOverpayments =>
+      'No hay propinas ni excedentes registrados en este periodo.';
+
+  @override
   String get salarySplitExplanation =>
       'El total se distribuye proporcionalmente usando los salarios autorizados. Los valores de salario permanecen privados.';
 

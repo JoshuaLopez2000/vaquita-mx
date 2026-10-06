@@ -1329,6 +1329,48 @@ abstract class AppLocalizations {
   /// **'Incluye el dinero pagado por encima del total en los saldos de los participantes.'**
   String get splitOverpaymentDescription;
 
+  /// No description provided for @financialStatistics.
+  ///
+  /// In es, this message translates to:
+  /// **'EstadÃ­sticas financieras'**
+  String get financialStatistics;
+
+  /// No description provided for @allTime.
+  ///
+  /// In es, this message translates to:
+  /// **'Todo el tiempo'**
+  String get allTime;
+
+  /// No description provided for @thisMonth.
+  ///
+  /// In es, this message translates to:
+  /// **'Este mes'**
+  String get thisMonth;
+
+  /// No description provided for @distributedOverpayments.
+  ///
+  /// In es, this message translates to:
+  /// **'Propinas / excedentes repartidos'**
+  String get distributedOverpayments;
+
+  /// No description provided for @retainedOverpayments.
+  ///
+  /// In es, this message translates to:
+  /// **'Propinas / excedentes retenidos'**
+  String get retainedOverpayments;
+
+  /// No description provided for @retainedOverpaymentsDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'El excedente retenido no crea deuda entre participantes.'**
+  String get retainedOverpaymentsDescription;
+
+  /// No description provided for @noOverpayments.
+  ///
+  /// In es, this message translates to:
+  /// **'No hay propinas ni excedentes registrados en este periodo.'**
+  String get noOverpayments;
+
   /// No description provided for @salarySplitExplanation.
   ///
   /// In es, this message translates to:

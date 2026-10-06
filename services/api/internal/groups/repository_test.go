@@ -139,6 +139,45 @@ func TestBalancesKeepUnsplitOverpaymentOutOfEqualSplit(t *testing.T) {
 	}
 }
 
+func TestRetainedOverpaymentsHandleZeroSingleAndMultiplePayers(t *testing.T) {
+	tests := []struct {
+		name    string
+		expense Expense
+		want    []ExpensePayer
+	}{
+		{
+			name:    "zero",
+			expense: Expense{AmountCents: 100, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 100}}},
+		},
+		{
+			name:    "single payer",
+			expense: Expense{AmountCents: 100, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 125}}},
+			want:    []ExpensePayer{{MemberID: "ana", AmountCents: 25}},
+		},
+		{
+			name:    "multiple payers",
+			expense: Expense{AmountCents: 400, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 300}, {MemberID: "diego", AmountCents: 150}}},
+			want:    []ExpensePayer{{MemberID: "ana", AmountCents: 33}, {MemberID: "diego", AmountCents: 17}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			retained, err := retainedOverpayments(test.expense)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(retained) != len(test.want) {
+				t.Fatalf("retained = %#v, want %#v", retained, test.want)
+			}
+			for index := range test.want {
+				if retained[index] != test.want[index] {
+					t.Fatalf("retained = %#v, want %#v", retained, test.want)
+				}
+			}
+		})
+	}
+}
+
 func TestBalancesRejectsInvalidMultiplePayers(t *testing.T) {
 	group := Group{Members: []Member{{ID: "ana"}, {ID: "diego"}}, Expenses: []Expense{{
 		AmountCents: 100, Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 99}}, ParticipantIDs: []string{"ana", "diego"},
