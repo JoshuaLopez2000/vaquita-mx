@@ -99,6 +99,12 @@ class Expense {
     required this.createdAt,
     this.splitMode = 'equal',
     this.shares = const {},
+    this.paidAmountCents = 0,
+    this.consumptionShares = const {},
+    this.overpaymentCents = 0,
+    this.overpaymentShares = const {},
+    this.splitOverpayment = true,
+    this.retainedOverpayments = const [],
   });
 
   final String id;
@@ -110,6 +116,12 @@ class Expense {
   final DateTime createdAt;
   final String splitMode;
   final Map<String, int> shares;
+  final int paidAmountCents;
+  final Map<String, int> consumptionShares;
+  final int overpaymentCents;
+  final Map<String, int> overpaymentShares;
+  final bool splitOverpayment;
+  final List<ExpensePayer> retainedOverpayments;
 
   factory Expense.fromJson(Map<String, dynamic> json) => Expense(
         id: json['id'] as String,
@@ -126,6 +138,20 @@ class Expense {
         splitMode: json['split_mode'] as String? ?? 'equal',
         shares: ((json['shares'] as Map<String, dynamic>?) ?? const {})
             .map((key, value) => MapEntry(key, value as int)),
+        paidAmountCents: json['paid_amount_cents'] as int? ?? 0,
+        consumptionShares:
+            ((json['consumption_shares'] as Map<String, dynamic>?) ?? const {})
+                .map((key, value) => MapEntry(key, value as int)),
+        overpaymentCents: json['overpayment_cents'] as int? ?? 0,
+        overpaymentShares:
+            ((json['overpayment_shares'] as Map<String, dynamic>?) ?? const {})
+                .map((key, value) => MapEntry(key, value as int)),
+        splitOverpayment: json['split_overpayment'] as bool? ?? true,
+        retainedOverpayments:
+            ((json['retained_overpayments'] as List<dynamic>?) ?? const [])
+                .map((value) =>
+                    ExpensePayer.fromJson(value as Map<String, dynamic>))
+                .toList(),
       );
 }
 

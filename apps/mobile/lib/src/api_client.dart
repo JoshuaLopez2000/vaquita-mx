@@ -272,6 +272,7 @@ class ApiClient {
     required List<String> participantIds,
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
+    bool splitOverpayment = true,
   }) async {
     final response = await _request(
       'POST',
@@ -286,6 +287,7 @@ class ApiClient {
         ],
         'participant_ids': participantIds,
         'split_mode': splitMode,
+        'split_overpayment': splitOverpayment,
         'shares': [
           for (final share in shares)
             {'member_id': share.memberId, 'amount_cents': share.amountCents},

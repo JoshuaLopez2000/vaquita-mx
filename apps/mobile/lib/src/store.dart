@@ -209,6 +209,7 @@ class DemoStore extends ChangeNotifier {
     required List<String> participantIds,
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
+    bool splitOverpayment = true,
   }) async {
     if (_apiClient != null) {
       return _sync(
@@ -221,6 +222,7 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          splitOverpayment: splitOverpayment,
         ),
       );
     }
@@ -235,6 +237,7 @@ class DemoStore extends ChangeNotifier {
             participantIds: List.unmodifiable(participantIds),
             splitMode: splitMode,
             shares: {for (final share in shares) share.memberId: share.amountCents},
+            splitOverpayment: splitOverpayment,
             createdAt: DateTime.now(),
           ),
         );

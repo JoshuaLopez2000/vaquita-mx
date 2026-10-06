@@ -65,6 +65,7 @@ class AppCubit extends Cubit<AppState> {
     required List<String> participantIds,
     required String splitMode,
     List<ExpenseShare> shares = const [],
+    bool splitOverpayment = true,
   }) =>
       store.addExpense(
         groupId: groupId,
@@ -75,6 +76,7 @@ class AppCubit extends Cubit<AppState> {
         participantIds: participantIds,
         splitMode: splitMode,
         shares: shares,
+        splitOverpayment: splitOverpayment,
       );
 
   Future<bool> updateGroup(String groupId, Map<String, dynamic> input) =>

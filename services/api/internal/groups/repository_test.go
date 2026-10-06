@@ -76,7 +76,8 @@ func TestExactSharesRequireEachParticipantAndEveryCentavo(t *testing.T) {
 func TestBalancesAllocateOverpaymentAcrossParticipants(t *testing.T) {
 	group := Group{Members: []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}}, Expenses: []Expense{{
 		AmountCents: 100, PayerID: "ana", Payers: []ExpensePayer{{MemberID: "ana", AmountCents: 80}, {MemberID: "diego", AmountCents: 40}},
-		ParticipantIDs: []string{"ana", "diego"},
+		ParticipantIDs:   []string{"ana", "diego"},
+		SplitOverpayment: true,
 	}}}
 	balances := Balances(group)
 	if balances["ana"] != 20 || balances["diego"] != -20 {
@@ -85,6 +86,56 @@ func TestBalancesAllocateOverpaymentAcrossParticipants(t *testing.T) {
 	relations := PaymentRelations(group)
 	if len(relations) != 1 || relations[0] != (PaymentRelation{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 20}) {
 		t.Fatalf("overpayment relations = %#v", relations)
+	}
+}
+
+func TestBalancesKeepUnsplitOverpaymentOutOfDebts(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}}, Expenses: []Expense{{
+		AmountCents: 400,
+		PayerID:     "ana",
+		Payers: []ExpensePayer{
+			{MemberID: "ana", AmountCents: 300},
+			{MemberID: "diego", AmountCents: 150},
+		},
+		ParticipantIDs: []string{"ana", "diego"},
+		SplitMode:      "exact",
+		ExplicitShares: []ExpenseShare{
+			{MemberID: "ana", AmountCents: 100},
+			{MemberID: "diego", AmountCents: 300},
+		},
+		SplitOverpayment: false,
+	}}}
+
+	balances := Balances(group)
+	if balances["ana"] != 167 || balances["diego"] != -167 {
+		t.Fatalf("unsplit overpayment balances = %#v", balances)
+	}
+	relations := PaymentRelations(group)
+	if len(relations) != 1 || relations[0] != (PaymentRelation{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 167}) {
+		t.Fatalf("unsplit overpayment relations = %#v", relations)
+	}
+	credited, err := ledgerPayers(group.Expenses[0], nil)
+	if err != nil || credited[0].AmountCents != 267 || credited[1].AmountCents != 133 {
+		t.Fatalf("credited payer amounts = %#v, %v", credited, err)
+	}
+}
+
+func TestBalancesKeepUnsplitOverpaymentOutOfEqualSplit(t *testing.T) {
+	group := Group{Members: []Member{{ID: "ana", Active: true, Accepted: true}, {ID: "diego", Active: true, Accepted: true}}, Expenses: []Expense{{
+		AmountCents:      400,
+		PayerID:          "ana",
+		Payers:           []ExpensePayer{{MemberID: "ana", AmountCents: 550}},
+		ParticipantIDs:   []string{"ana", "diego"},
+		SplitOverpayment: false,
+	}}}
+
+	balances := Balances(group)
+	if balances["ana"] != 200 || balances["diego"] != -200 {
+		t.Fatalf("unsplit equal balances = %#v", balances)
+	}
+	relations := PaymentRelations(group)
+	if len(relations) != 1 || relations[0] != (PaymentRelation{FromMemberID: "diego", ToMemberID: "ana", AmountCents: 200}) {
+		t.Fatalf("unsplit equal relations = %#v", relations)
 	}
 }
 

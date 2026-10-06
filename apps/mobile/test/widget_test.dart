@@ -224,6 +224,34 @@ void main() {
     expect(share('me').controller!.text, '30.00');
   });
 
+  testWidgets('requires an entered payer amount when overpayment is not split',
+      (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('add-expense-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('expense-description-field')),
+      'Tip kept by payer',
+    );
+    await tester.enterText(
+      find.byKey(const Key('expense-amount-field')),
+      '100',
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('expense-split-overpayment-checkbox')),
+    );
+    await tester.tap(
+      find.byKey(const Key('expense-split-overpayment-checkbox')),
+    );
+    await tester.tap(find.byKey(const Key('add-expense-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('expense-description-field')), findsOneWidget);
+  });
+
   testWidgets('shows how an expense was split', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 

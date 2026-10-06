@@ -661,10 +661,28 @@ class AppLocalizationsEs extends AppLocalizations {
   String get total => 'Total';
 
   @override
+  String get totalPaid => 'Total pagado';
+
+  @override
+  String get consumption => 'Consumo';
+
+  @override
+  String get overpayment => 'Propina / excedente';
+
+  @override
+  String get overpaymentAllocation => 'Distribución de propina / excedente';
+
+  @override
+  String get finalLiability => 'Responsabilidad final';
+
+  @override
   String get splitMethod => 'Método de división';
 
   @override
   String get equalSplit => 'División igualitaria';
+
+  @override
+  String get exactSplit => 'Consumo exacto';
 
   @override
   String get salaryBasedSplit => 'División por salario';
@@ -672,6 +690,17 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get equalSplitExplanation =>
       'El total se divide en partes iguales. Los centavos restantes se asignan en el orden de los participantes.';
+
+  @override
+  String get exactSplitExplanation =>
+      'Se ingresa explícitamente el consumo de cada participante. La propina o excedente se asigna proporcionalmente al consumo.';
+
+  @override
+  String get splitOverpayment => 'Dividir propina / excedente';
+
+  @override
+  String get splitOverpaymentDescription =>
+      'Incluye el dinero pagado por encima del total en los saldos de los participantes.';
 
   @override
   String get salarySplitExplanation =>

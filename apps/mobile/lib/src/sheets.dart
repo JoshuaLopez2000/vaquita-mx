@@ -42,6 +42,7 @@ class NewExpenseInput {
     required this.participantIds,
     required this.splitMode,
     this.shares = const [],
+    this.splitOverpayment = true,
   });
 
   final String description;
@@ -51,6 +52,7 @@ class NewExpenseInput {
   final List<String> participantIds;
   final String splitMode;
   final List<ExpenseShare> shares;
+  final bool splitOverpayment;
 }
 
 Future<NewGroupInput?> showCreateGroupSheet(

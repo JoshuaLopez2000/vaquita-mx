@@ -51,16 +51,22 @@ type PaymentRelation struct {
 }
 type ContactStatus = UnpaidBalance
 type Expense struct {
-	ID             string           `json:"id"`
-	Description    string           `json:"description"`
-	AmountCents    int64            `json:"amount_cents"`
-	PayerID        string           `json:"payer_id"`
-	Payers         []ExpensePayer   `json:"payers"`
-	ParticipantIDs []string         `json:"participant_ids"`
-	SplitMode      string           `json:"split_mode"`
-	Shares         map[string]int64 `json:"shares"`
-	ExplicitShares []ExpenseShare   `json:"-"`
-	CreatedAt      time.Time        `json:"created_at"`
+	ID                   string           `json:"id"`
+	Description          string           `json:"description"`
+	AmountCents          int64            `json:"amount_cents"`
+	PayerID              string           `json:"payer_id"`
+	Payers               []ExpensePayer   `json:"payers"`
+	ParticipantIDs       []string         `json:"participant_ids"`
+	SplitMode            string           `json:"split_mode"`
+	Shares               map[string]int64 `json:"shares"`
+	PaidAmountCents      int64            `json:"paid_amount_cents"`
+	ConsumptionShares    map[string]int64 `json:"consumption_shares,omitempty"`
+	OverpaymentCents     int64            `json:"overpayment_cents"`
+	OverpaymentShares    map[string]int64 `json:"overpayment_shares,omitempty"`
+	SplitOverpayment     bool             `json:"split_overpayment"`
+	RetainedOverpayments []ExpensePayer   `json:"retained_overpayments,omitempty"`
+	ExplicitShares       []ExpenseShare   `json:"-"`
+	CreatedAt            time.Time        `json:"created_at"`
 }
 type ExpensePayer struct {
 	MemberID    string `json:"member_id"`
@@ -118,13 +124,14 @@ type UpdateMemberInput struct {
 	SalarySharing *bool  `json:"salary_sharing"`
 }
 type AddExpenseInput struct {
-	Description    string         `json:"description"`
-	AmountCents    int64          `json:"amount_cents"`
-	PayerID        string         `json:"payer_id"`
-	Payers         []ExpensePayer `json:"payers"`
-	ParticipantIDs []string       `json:"participant_ids"`
-	SplitMode      string         `json:"split_mode"`
-	Shares         []ExpenseShare `json:"shares"`
+	Description      string         `json:"description"`
+	AmountCents      int64          `json:"amount_cents"`
+	PayerID          string         `json:"payer_id"`
+	Payers           []ExpensePayer `json:"payers"`
+	ParticipantIDs   []string       `json:"participant_ids"`
+	SplitMode        string         `json:"split_mode"`
+	Shares           []ExpenseShare `json:"shares"`
+	SplitOverpayment *bool          `json:"split_overpayment"`
 }
 type Repository struct{ db *sql.DB }
 type Invitation struct {
@@ -404,6 +411,10 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	if in.SplitMode == "" {
 		in.SplitMode = "equal"
 	}
+	if in.SplitOverpayment == nil {
+		defaultSplitOverpayment := true
+		in.SplitOverpayment = &defaultSplitOverpayment
+	}
 	if in.SplitMode != "equal" && in.SplitMode != "salary" && in.SplitMode != "exact" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
 		return g, ErrInvalid
 	}
@@ -460,7 +471,7 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 		return g, e
 	}
 	defer t.Rollback()
-	_, e = t.ExecContext(c, `INSERT INTO expenses(id,group_id,description,amount_cents,payer_id,split_mode)VALUES($1,$2,$3,$4,$5,$6)`, id, gid, in.Description, in.AmountCents, in.PayerID, in.SplitMode)
+	_, e = t.ExecContext(c, `INSERT INTO expenses(id,group_id,description,amount_cents,payer_id,split_mode,split_overpayment)VALUES($1,$2,$3,$4,$5,$6,$7)`, id, gid, in.Description, in.AmountCents, in.PayerID, in.SplitMode, *in.SplitOverpayment)
 	if e != nil {
 		return g, e
 	}
@@ -472,6 +483,25 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	for p, payer := range in.Payers {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_payers(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, p, payer.AmountCents); e != nil {
 			return g, e
+		}
+	}
+	if !*in.SplitOverpayment && paid > in.AmountCents {
+		credited, err := ledgerPayers(Expense{
+			AmountCents:      in.AmountCents,
+			Payers:           in.Payers,
+			SplitOverpayment: false,
+		}, nil)
+		if err != nil {
+			return g, ErrInvalid
+		}
+		for index, payer := range in.Payers {
+			retained := payer.AmountCents - credited[index].AmountCents
+			if retained <= 0 {
+				continue
+			}
+			if _, err = t.ExecContext(c, `INSERT INTO expense_retained_overpayments(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, index, retained); err != nil {
+				return g, err
+			}
 		}
 	}
 	for p, share := range in.Shares {
@@ -732,7 +762,7 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if expense.AmountCents <= 0 {
 			return nil, ErrInvalid
 		}
-		if _, err := normalizedPayers(expense); err != nil {
+		if _, err := ledgerPayers(expense, nil); err != nil {
 			return nil, err
 		}
 		allocatedAmount, err := expenseAllocatedAmount(expense)
@@ -743,7 +773,11 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, obligation := range expenseObligations(expense, shares) {
+		obligations, err := expenseObligations(expense, shares)
+		if err != nil {
+			return nil, err
+		}
+		for _, obligation := range obligations {
 			if err := add(obligation.from, obligation.to, obligation.amount); err != nil {
 				return nil, err
 			}
@@ -808,11 +842,11 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		if e.AmountCents <= 0 {
 			return nil, ErrInvalid
 		}
-		payers, err := normalizedPayers(e)
+		credited, err := ledgerPayers(e, nil)
 		if err != nil {
 			return nil, err
 		}
-		for _, payer := range payers {
+		for _, payer := range credited {
 			if _, exists := exact[payer.MemberID]; !exists || payer.AmountCents <= 0 {
 				return nil, ErrInvalid
 			}
@@ -854,6 +888,57 @@ func calculateBalances(g Group) (map[string]int64, error) {
 	return b, nil
 }
 
+// ledgerPayers excludes retained overpayment from balances while preserving it
+// in the immutable payer contributions for later statistics.
+func ledgerPayers(e Expense, payers []ExpensePayer) ([]ExpensePayer, error) {
+	if payers == nil {
+		var err error
+		payers, err = normalizedPayers(e)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if e.SplitOverpayment {
+		return payers, nil
+	}
+	var paid int64
+	for _, payer := range payers {
+		var err error
+		paid, err = addCentavos(paid, payer.AmountCents)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if paid < e.AmountCents {
+		return nil, ErrInvalid
+	}
+	if paid == e.AmountCents {
+		return payers, nil
+	}
+	result := make([]ExpensePayer, len(payers))
+	used := int64(0)
+	for i, payer := range payers {
+		v := new(big.Int).Quo(new(big.Int).Mul(big.NewInt(e.AmountCents), big.NewInt(payer.AmountCents)), big.NewInt(paid))
+		if !v.IsInt64() {
+			return nil, ErrInvalid
+		}
+		result[i] = ExpensePayer{MemberID: payer.MemberID, AmountCents: v.Int64()}
+		var err error
+		used, err = addCentavos(used, result[i].AmountCents)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for i := range result {
+		if used == e.AmountCents {
+			break
+		}
+		result[i].AmountCents++
+		used++
+	}
+	return result, nil
+}
+
 type obligation struct {
 	from, to string
 	amount   int64
@@ -862,10 +947,10 @@ type obligation struct {
 // expenseObligations pairs participant shares with payer contributions in their
 // stored order. It conserves every centavo and makes the bilateral ledger
 // deterministic even when a participant also paid part of the expense.
-func expenseObligations(e Expense, shares map[string]int64) []obligation {
-	payers := e.Payers
-	if len(payers) == 0 {
-		payers = []ExpensePayer{{MemberID: e.PayerID, AmountCents: e.AmountCents}}
+func expenseObligations(e Expense, shares map[string]int64) ([]obligation, error) {
+	payers, err := ledgerPayers(e, nil)
+	if err != nil {
+		return nil, err
 	}
 	remaining := make([]ExpensePayer, len(payers))
 	copy(remaining, payers)
@@ -886,7 +971,7 @@ func expenseObligations(e Expense, shares map[string]int64) []obligation {
 			}
 		}
 	}
-	return result
+	return result, nil
 }
 
 func normalizedPayers(e Expense) ([]ExpensePayer, error) {
@@ -1028,6 +1113,9 @@ func validateExactShares(shares []ExpenseShare, ids []string, total int64) (map[
 }
 
 func sharesForExpense(e Expense, g Group, total int64) (map[string]int64, error) {
+	if !e.SplitOverpayment {
+		total = e.AmountCents
+	}
 	if e.SplitMode == "exact" {
 		shares, err := validateExactShares(e.ExplicitShares, e.ParticipantIDs, e.AmountCents)
 		if err != nil || total < e.AmountCents {
@@ -1104,13 +1192,13 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	}
 	rows.Close()
 	g.SalarySplitAvailable = r.salaryReady(c, g.ID)
-	es, e := r.db.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	es, e := r.db.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,split_overpayment,created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
 	if e != nil {
 		return e
 	}
 	for es.Next() {
 		var x Expense
-		if e = es.Scan(&x.ID, &x.Description, &x.AmountCents, &x.PayerID, &x.SplitMode, &x.CreatedAt); e != nil {
+		if e = es.Scan(&x.ID, &x.Description, &x.AmountCents, &x.PayerID, &x.SplitMode, &x.SplitOverpayment, &x.CreatedAt); e != nil {
 			es.Close()
 			return e
 		}
@@ -1161,6 +1249,26 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			return queryErr
 		}
 		explicit.Close()
+		retained, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_retained_overpayments WHERE expense_id=$1 ORDER BY position`, x.ID)
+		if queryErr != nil {
+			es.Close()
+			return queryErr
+		}
+		for retained.Next() {
+			var payer ExpensePayer
+			if queryErr = retained.Scan(&payer.MemberID, &payer.AmountCents); queryErr != nil {
+				retained.Close()
+				es.Close()
+				return queryErr
+			}
+			x.RetainedOverpayments = append(x.RetainedOverpayments, payer)
+		}
+		if queryErr = retained.Err(); queryErr != nil {
+			retained.Close()
+			es.Close()
+			return queryErr
+		}
+		retained.Close()
 		if len(x.Payers) == 0 {
 			x.Payers = []ExpensePayer{{MemberID: x.PayerID, AmountCents: x.AmountCents}}
 		}
@@ -1169,10 +1277,25 @@ func (r *Repository) load(c context.Context, g *Group) error {
 			es.Close()
 			return allocationErr
 		}
+		x.PaidAmountCents = allocatedAmount
+		x.OverpaymentCents = allocatedAmount - x.AmountCents
+		if x.SplitMode == "exact" {
+			x.ConsumptionShares, e = validateExactShares(x.ExplicitShares, x.ParticipantIDs, x.AmountCents)
+			if e != nil {
+				es.Close()
+				return e
+			}
+		}
 		x.Shares, e = sharesForExpense(x, *g, allocatedAmount)
 		if e != nil {
 			es.Close()
 			return e
+		}
+		if x.SplitOverpayment && x.OverpaymentCents > 0 && x.ConsumptionShares != nil {
+			x.OverpaymentShares = make(map[string]int64, len(x.Shares))
+			for id, share := range x.Shares {
+				x.OverpaymentShares[id] = share - x.ConsumptionShares[id]
+			}
 		}
 		g.Expenses = append(g.Expenses, x)
 	}

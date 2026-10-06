@@ -1251,6 +1251,36 @@ abstract class AppLocalizations {
   /// **'Total'**
   String get total;
 
+  /// No description provided for @totalPaid.
+  ///
+  /// In es, this message translates to:
+  /// **'Total pagado'**
+  String get totalPaid;
+
+  /// No description provided for @consumption.
+  ///
+  /// In es, this message translates to:
+  /// **'Consumo'**
+  String get consumption;
+
+  /// No description provided for @overpayment.
+  ///
+  /// In es, this message translates to:
+  /// **'Propina / excedente'**
+  String get overpayment;
+
+  /// No description provided for @overpaymentAllocation.
+  ///
+  /// In es, this message translates to:
+  /// **'Distribución de propina / excedente'**
+  String get overpaymentAllocation;
+
+  /// No description provided for @finalLiability.
+  ///
+  /// In es, this message translates to:
+  /// **'Responsabilidad final'**
+  String get finalLiability;
+
   /// No description provided for @splitMethod.
   ///
   /// In es, this message translates to:
@@ -1263,6 +1293,12 @@ abstract class AppLocalizations {
   /// **'División igualitaria'**
   String get equalSplit;
 
+  /// No description provided for @exactSplit.
+  ///
+  /// In es, this message translates to:
+  /// **'Consumo exacto'**
+  String get exactSplit;
+
   /// No description provided for @salaryBasedSplit.
   ///
   /// In es, this message translates to:
@@ -1274,6 +1310,24 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'El total se divide en partes iguales. Los centavos restantes se asignan en el orden de los participantes.'**
   String get equalSplitExplanation;
+
+  /// No description provided for @exactSplitExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Se ingresa explícitamente el consumo de cada participante. La propina o excedente se asigna proporcionalmente al consumo.'**
+  String get exactSplitExplanation;
+
+  /// No description provided for @splitOverpayment.
+  ///
+  /// In es, this message translates to:
+  /// **'Dividir propina / excedente'**
+  String get splitOverpayment;
+
+  /// No description provided for @splitOverpaymentDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Incluye el dinero pagado por encima del total en los saldos de los participantes.'**
+  String get splitOverpaymentDescription;
 
   /// No description provided for @salarySplitExplanation.
   ///

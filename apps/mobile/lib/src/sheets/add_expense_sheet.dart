@@ -22,6 +22,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   late final Set<String> _participantIds;
   final Map<String, TextEditingController> _shareAmountControllers = {};
   var _splitMode = 'equal';
+  var _splitOverpayment = true;
   var _exactSharesEdited = false;
 
   @override
@@ -112,7 +113,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     for (final member in widget.group.members) {
       if (!_payerIds.contains(member.id)) continue;
       final entered = _payerAmountControllers[member.id]!.text.trim();
-      final contribution = entered.isEmpty && _payerIds.length == 1
+      final contribution = entered.isEmpty &&
+              _payerIds.length == 1 &&
+              _splitOverpayment
           ? amountCents
           : _parseCentavos(entered);
       if (contribution == null) return null;
@@ -143,7 +146,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
           .showSnackBar(SnackBar(content: Text(l10n.amountGreaterZero)));
       return;
     }
-    if (_splitMode == 'exact' &&
+    if (_splitOverpayment &&
+        _splitMode == 'exact' &&
         !ExpenseAllocation.exactSharesMatch(
           allocatedCents: _exactAllocatedCentavos,
           allocationTotalCents: amountCents,
@@ -179,6 +183,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
         payers: payers,
         participantIds: _participantIds.toList(),
         splitMode: _splitMode,
+        splitOverpayment: _splitOverpayment,
         shares: _splitMode == 'exact'
             ? [
                 for (final member in widget.group.members)
@@ -297,6 +302,16 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                             prefixText: r'$ ', hintText: '0.00'),
                       )),
               ]),
+            CheckboxListTile(
+              key: const Key('expense-split-overpayment-checkbox'),
+              contentPadding: EdgeInsets.zero,
+              value: _splitOverpayment,
+              title: Text(l10n.splitOverpayment),
+              subtitle: Text(l10n.splitOverpaymentDescription),
+              onChanged: (value) => setState(() {
+                _splitOverpayment = value ?? true;
+              }),
+            ),
             const SizedBox(height: 18),
             SegmentedButton<String>(
                 segments: [

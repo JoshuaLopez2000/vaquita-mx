@@ -34,7 +34,14 @@ void showExpenseDetailsSheet(
               memberId: expense.payerId, amountCents: expense.amountCents)
         ]
       : expense.payers;
-  final shares = _expenseShares(expense);
+  final shares = expense.consumptionShares.isNotEmpty
+      ? expense.consumptionShares
+      : _expenseShares(expense);
+  final shareTotal = expense.consumptionShares.isNotEmpty
+      ? expense.amountCents
+      : (expense.paidAmountCents > 0
+          ? expense.paidAmountCents
+          : expense.amountCents);
   final percentFormat = NumberFormat.percentPattern(l10n.localeName)
     ..minimumFractionDigits = 1
     ..maximumFractionDigits = 1;
@@ -85,6 +92,13 @@ void showExpenseDetailsSheet(
                 ),
               ),
             ),
+            if (expense.paidAmountCents > expense.amountCents) ...[
+              const SizedBox(height: 8),
+              Text(
+                  '${l10n.totalPaid}: ${formatMoney(expense.paidAmountCents)}'),
+              Text(
+                  '${l10n.overpayment}: ${formatMoney(expense.overpaymentCents)}'),
+            ],
             const SizedBox(height: 16),
             Text(l10n.splitMethod,
                 style: Theme.of(context).textTheme.titleMedium),
@@ -97,13 +111,20 @@ void showExpenseDetailsSheet(
               ),
               label: Text(expense.splitMode == 'salary'
                   ? l10n.salaryBasedSplit
-                  : l10n.equalSplit),
+                  : expense.splitMode == 'exact'
+                      ? l10n.exactSplit
+                      : l10n.equalSplit),
             ),
             Text(expense.splitMode == 'salary'
                 ? l10n.salarySplitExplanation
-                : l10n.equalSplitExplanation),
+                : expense.splitMode == 'exact'
+                    ? l10n.exactSplitExplanation
+                    : l10n.equalSplitExplanation),
             const SizedBox(height: 22),
-            Text(l10n.participantShares,
+            Text(
+                expense.consumptionShares.isNotEmpty
+                    ? l10n.consumption
+                    : l10n.participantShares,
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),
             for (final participantId in expense.participantIds)
@@ -116,16 +137,39 @@ void showExpenseDetailsSheet(
                     child: Text(member?.initials ?? '?'),
                   ),
                   title: Text(member?.name ?? l10n.genericMember),
-                  subtitle: Text(share == null || expense.amountCents == 0
+                  subtitle: Text(share == null || shareTotal == 0
                       ? l10n.shareUnavailable
                       : l10n.shareOfTotal(
-                          percentFormat.format(share / expense.amountCents))),
+                          percentFormat.format(share / shareTotal))),
                   trailing: Text(
                     share == null ? '—' : formatMoney(share),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 );
               }),
+            if (expense.overpaymentShares.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(l10n.overpaymentAllocation,
+                  style: Theme.of(context).textTheme.titleMedium),
+              for (final participantId in expense.participantIds)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title:
+                      Text(members[participantId]?.name ?? l10n.genericMember),
+                  trailing: Text(formatMoney(
+                      expense.overpaymentShares[participantId] ?? 0)),
+                ),
+              Text(l10n.finalLiability,
+                  style: Theme.of(context).textTheme.titleMedium),
+              for (final participantId in expense.participantIds)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title:
+                      Text(members[participantId]?.name ?? l10n.genericMember),
+                  trailing:
+                      Text(formatMoney(expense.shares[participantId] ?? 0)),
+                ),
+            ],
             const SizedBox(height: 12),
             FilledButton(
               onPressed: () => Navigator.pop(sheetContext),

@@ -658,10 +658,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get total => 'Total';
 
   @override
+  String get totalPaid => 'Total paid';
+
+  @override
+  String get consumption => 'Consumption';
+
+  @override
+  String get overpayment => 'Tip / overpayment';
+
+  @override
+  String get overpaymentAllocation => 'Tip / overpayment allocation';
+
+  @override
+  String get finalLiability => 'Final responsibility';
+
+  @override
   String get splitMethod => 'Split method';
 
   @override
   String get equalSplit => 'Equal split';
+
+  @override
+  String get exactSplit => 'Exact consumption';
 
   @override
   String get salaryBasedSplit => 'Salary-based split';
@@ -669,6 +687,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get equalSplitExplanation =>
       'The total is divided equally. Remaining cents are assigned in participant order.';
+
+  @override
+  String get exactSplitExplanation =>
+      'Each participant\'s consumption is entered explicitly. Any tip or overpayment is allocated in proportion to consumption.';
+
+  @override
+  String get splitOverpayment => 'Split tip / overpayment';
+
+  @override
+  String get splitOverpaymentDescription =>
+      'Include money paid above the total in participant balances.';
 
   @override
   String get salarySplitExplanation =>

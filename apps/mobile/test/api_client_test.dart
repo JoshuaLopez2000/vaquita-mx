@@ -74,6 +74,7 @@ void main() {
           {'member_id': 'diego', 'amount_cents': 9000},
         ]);
         expect(body['split_mode'], 'exact');
+        expect(body['split_overpayment'], isFalse);
         return http.Response('{}', 201);
       }),
     );
@@ -93,6 +94,7 @@ void main() {
         ExpenseShare(memberId: 'ana', amountCents: 1000),
         ExpenseShare(memberId: 'diego', amountCents: 9000),
       ],
+      splitOverpayment: false,
     );
   });
 

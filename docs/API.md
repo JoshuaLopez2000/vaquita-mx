@@ -30,16 +30,19 @@ membership-state requirements applied to these routes.
 
 Expense creation accepts ordered `payers`, each with `member_id` and positive
 integer `amount_cents`. Their total must be at least `amount_cents`, and all
-payers must be active group members. When it is greater, contributions are the
-amount allocated among participants for balance calculations. The legacy `payer_id` remains readable
-for historical single-payer expenses; new clients should send and display
-`payers`.
+payers must be active group members. `split_overpayment` defaults to `true`:
+when it is true, money paid above the entered total is included in the group
+balances. When it is false, every payer contribution must be supplied and the
+excess is retained by those payers proportionally to their contributions. It
+does not create debt, and is stored as immutable retained-overpayment data for
+future financial statistics. The legacy `payer_id` remains readable for
+historical single-payer expenses; new clients should send and display `payers`.
 
 For `split_mode: "exact"`, creation also requires ordered `shares`, each with
-`member_id` and non-negative integer `amount_cents`. A share is what that
-participant owes; it is separate from a payer contribution. Each active
+`member_id` and non-negative integer `amount_cents`. A share is that
+participant's consumption, separate from a payer contribution. Each active
 participant must occur exactly once, and all shares must allocate every
-centavo of the amount allocated by the payers. The server rejects duplicate,
+centavo of the entered expense total. The server rejects duplicate,
 missing, inactive, negative, under-allocated, and over-allocated shares.
 
 `POST /payment-requests` is intentionally not a real payment operation. It
