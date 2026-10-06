@@ -281,7 +281,7 @@ void main() {
         .tap(find.byKey(const Key('group-financial-statistics-button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('EstadÃ­sticas financieras'), findsOneWidget);
+    expect(find.text('Estadísticas financieras'), findsOneWidget);
     expect(
       find.text('El excedente retenido no crea deuda entre participantes.'),
       findsOneWidget,

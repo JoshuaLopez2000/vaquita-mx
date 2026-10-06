@@ -703,7 +703,7 @@ class AppLocalizationsEs extends AppLocalizations {
       'Incluye el dinero pagado por encima del total en los saldos de los participantes.';
 
   @override
-  String get financialStatistics => 'EstadÃ­sticas financieras';
+  String get financialStatistics => 'Estadísticas financieras';
 
   @override
   String get allTime => 'Todo el tiempo';

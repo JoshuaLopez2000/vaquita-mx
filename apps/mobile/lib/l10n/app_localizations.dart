@@ -1332,7 +1332,7 @@ abstract class AppLocalizations {
   /// No description provided for @financialStatistics.
   ///
   /// In es, this message translates to:
-  /// **'EstadÃ­sticas financieras'**
+  /// **'Estadísticas financieras'**
   String get financialStatistics;
 
   /// No description provided for @allTime.
