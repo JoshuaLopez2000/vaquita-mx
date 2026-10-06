@@ -236,7 +236,9 @@ class DemoStore extends ChangeNotifier {
             payers: List.unmodifiable(payers),
             participantIds: List.unmodifiable(participantIds),
             splitMode: splitMode,
-            shares: {for (final share in shares) share.memberId: share.amountCents},
+            shares: {
+              for (final share in shares) share.memberId: share.amountCents
+            },
             splitOverpayment: splitOverpayment,
             createdAt: DateTime.now(),
           ),

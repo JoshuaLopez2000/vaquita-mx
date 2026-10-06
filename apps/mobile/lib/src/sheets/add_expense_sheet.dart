@@ -113,11 +113,10 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     for (final member in widget.group.members) {
       if (!_payerIds.contains(member.id)) continue;
       final entered = _payerAmountControllers[member.id]!.text.trim();
-      final contribution = entered.isEmpty &&
-              _payerIds.length == 1 &&
-              _splitOverpayment
-          ? amountCents
-          : _parseCentavos(entered);
+      final contribution =
+          entered.isEmpty && _payerIds.length == 1 && _splitOverpayment
+              ? amountCents
+              : _parseCentavos(entered);
       if (contribution == null) return null;
       payers.add(ExpensePayer(memberId: member.id, amountCents: contribution));
     }
