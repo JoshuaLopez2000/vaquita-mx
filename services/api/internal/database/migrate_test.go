@@ -117,7 +117,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 5 || len(result.Applied) != 5 {
+	if result.CurrentVersion != 6 || len(result.Applied) != 6 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
@@ -133,6 +133,10 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	var payerAmount int64
 	if err := db.QueryRowContext(ctx, `SELECT amount_cents FROM expense_payers WHERE expense_id='expense-1' AND member_id='user-1'`).Scan(&payerAmount); err != nil || payerAmount != 10001 {
 		t.Fatalf("legacy payer was not migrated: amount=%d error=%v", payerAmount, err)
+	}
+	var splitOverpayment bool
+	if err := db.QueryRowContext(ctx, `SELECT split_overpayment FROM expenses WHERE id='expense-1'`).Scan(&splitOverpayment); err != nil || !splitOverpayment {
+		t.Fatalf("legacy expense overpayment default = %t, error=%v", splitOverpayment, err)
 	}
 	var users, groups, contacts int
 	if err := db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM users), (SELECT count(*) FROM expense_groups), (SELECT count(*) FROM contacts)`).Scan(&users, &groups, &contacts); err != nil {
