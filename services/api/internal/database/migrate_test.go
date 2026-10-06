@@ -41,7 +41,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 4 || len(result.Applied) != 4 {
+	if result.CurrentVersion != 5 || len(result.Applied) != 5 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
 	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "settlements", "schema_migrations"} {
@@ -54,7 +54,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 		}
 	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 4 {
+	if err != nil || version != 5 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -62,7 +62,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 4 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 5 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -117,7 +117,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 4 || len(result.Applied) != 4 {
+	if result.CurrentVersion != 5 || len(result.Applied) != 5 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
