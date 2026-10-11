@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -314,7 +315,10 @@ class ApiClient {
     required String debtorId,
     required int amountCents,
   }) async {
-    final response = await _request('POST', '/api/v1/payment-requests', body: {
+    final response =
+        await _request('POST', '/api/v1/payment-requests', headers: {
+      'Idempotency-Key': _idempotencyKey(),
+    }, body: {
       'group_id': groupId,
       'debtor_id': debtorId,
       'amount_cents': amountCents,
@@ -359,10 +363,11 @@ class ApiClient {
     String method,
     String path, {
     Object? body,
+    Map<String, String>? headers,
     bool authenticated = true,
     bool retryAfterRefresh = true,
   }) async {
-    final response = await _send(method, path, body: body);
+    final response = await _send(method, path, body: body, headers: headers);
     if (response.statusCode != 401 ||
         !authenticated ||
         _token == null ||
@@ -376,6 +381,7 @@ class ApiClient {
           method,
           path,
           body: body,
+          headers: headers,
           authenticated: authenticated,
           retryAfterRefresh: false,
         );
@@ -387,17 +393,21 @@ class ApiClient {
   }
 
   Future<http.Response> _send(String method, String path,
-      {Object? body}) async {
+      {Object? body, Map<String, String>? headers}) async {
     final request = http.Request(method, Uri.parse('$_baseUrl$path'));
     request.headers.addAll({
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Bearer $_token',
+      ...?headers,
     });
     if (body != null) request.body = jsonEncode(body);
     final streamed =
         await _client.send(request).timeout(const Duration(seconds: 8));
     return http.Response.fromStream(streamed);
   }
+
+  String _idempotencyKey() =>
+      'mobile-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
   Future<bool> _refreshAccessToken() {
     final active = _refreshInProgress;

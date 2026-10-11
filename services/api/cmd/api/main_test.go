@@ -26,7 +26,7 @@ func TestCORSAllowsConfiguredWebOriginAndPreflight(t *testing.T) {
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3000" {
 		t.Fatalf("allow origin = %q", got)
 	}
-	if got := response.Header().Get("Access-Control-Allow-Headers"); got != "Authorization, Content-Type, X-Correlation-ID" {
+	if got := response.Header().Get("Access-Control-Allow-Headers"); got != "Authorization, Content-Type, Idempotency-Key, X-Correlation-ID" {
 		t.Fatalf("allow headers = %q", got)
 	}
 	if got := response.Header().Get("Access-Control-Expose-Headers"); got != correlationHeader {

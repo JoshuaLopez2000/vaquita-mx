@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 type application struct {
 	auth     *auth.Repository
 	payments payments.Provider
+	requests *payments.Repository
 	groups   *groups.Repository
 }
 
@@ -76,9 +78,16 @@ func main() {
 		os.Exit(1)
 	}
 	defer authRepository.Close()
+	paymentRepository, err := payments.Open(startupContext, databaseURL)
+	if err != nil {
+		slog.Error("connect payments database", "error", err)
+		os.Exit(1)
+	}
+	defer paymentRepository.Close()
 	app := application{
 		auth:     authRepository,
 		payments: payments.SimulatedProvider{},
+		requests: paymentRepository,
 		groups:   repository,
 	}
 
@@ -126,6 +135,7 @@ func (app application) routes(allowedOrigins string) http.Handler {
 	// The simulator is protected and validates its input against the ledger. It
 	// remains a portfolio/demo boundary; it does not move money or settle debt.
 	mux.HandleFunc("POST /api/v1/payment-requests", app.requireUser(app.createPaymentRequest))
+	mux.HandleFunc("POST /api/v1/payment-requests/{requestID}/simulate", app.requireUser(app.completeSimulatedPayment))
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeAPIError(w, http.StatusNotFound, "resource_not_found", "resource not found", nil)
 	})
@@ -174,7 +184,7 @@ func cors(next http.Handler, allowedOrigins string) http.Handler {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Add("Vary", "Origin")
 				}
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Correlation-ID")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Correlation-ID")
 				w.Header().Set("Access-Control-Expose-Headers", "X-Correlation-ID")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 			}
@@ -598,6 +608,27 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	if !decodeJSON(w, r, &input) {
 		return
 	}
+	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if key == "" || len(key) > 128 {
+		writeAPIError(w, http.StatusBadRequest, "idempotency_key_required", "a valid Idempotency-Key is required", map[string]string{"Idempotency-Key": "required"})
+		return
+	}
+	payloadHash, err := paymentPayloadHash(input)
+	if err != nil {
+		serverError(w, "hash payment request", err)
+		return
+	}
+	if existing, found, err := app.requests.FindIdempotent(r.Context(), userID(r), key, payloadHash); err != nil {
+		if errors.Is(err, payments.ErrIdempotencyConflict) {
+			writeAPIError(w, http.StatusConflict, "idempotency_key_conflict", "Idempotency-Key was already used with a different request", nil)
+			return
+		}
+		serverError(w, "find idempotent payment request", err)
+		return
+	} else if found {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
 	if err := app.groups.ValidatePaymentRequest(r.Context(), userID(r), input.GroupID, input.DebtorID, input.AmountCents); err != nil {
 		if errors.Is(err, groups.ErrNotFound) {
 			writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
@@ -619,7 +650,61 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 		serverError(w, "create payment request", err)
 		return
 	}
+	creditorMemberID, err := app.requests.CreditorMemberID(r.Context(), userID(r), input.GroupID)
+	if err != nil {
+		serverError(w, "find payment request creditor", err)
+		return
+	}
+	stored, created, err := app.requests.Create(r.Context(), userID(r), key, payloadHash, creditorMemberID, result, input)
+	if errors.Is(err, payments.ErrIdempotencyConflict) {
+		writeAPIError(w, http.StatusConflict, "idempotency_key_conflict", "Idempotency-Key was already used with a different request", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "persist payment request", err)
+		return
+	}
+	if !created {
+		writeJSON(w, http.StatusOK, stored)
+		return
+	}
+	writeJSON(w, http.StatusCreated, stored)
+}
+
+func (app application) completeSimulatedPayment(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ProviderEventID string `json:"provider_event_id"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	result, created, err := app.requests.CompleteSimulated(r.Context(), userID(r), r.PathValue("requestID"), input.ProviderEventID)
+	if errors.Is(err, payments.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "payment request not found", nil)
+		return
+	}
+	if errors.Is(err, payments.ErrInvalidEvent) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid or expired simulated payment event", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "complete simulated payment", err)
+		return
+	}
+	if !created {
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func paymentPayloadHash(input payments.CreateRequest) (string, error) {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) bool {

@@ -178,6 +178,91 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	assertBalance(t, ownerGroups.Groups[0], invitedMember.ID, 0)
 }
 
+func TestSimulatedPaymentRequestsAreDurableAndIdempotent(t *testing.T) {
+	t.Parallel()
+	test := newPostgreSQLApplication(t)
+	client, baseURL := test.server.Client(), test.server.URL
+	creditor := registerUser(t, client, baseURL, "Ana", "payment-ana@example.test", "+525588880001")
+	debtor := registerUser(t, client, baseURL, "Beto", "payment-beto@example.test", "+525588880002")
+	var group groups.Group
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups", creditor.Token, map[string]any{
+		"name": "Pago durable", "emoji": "P", "visibility": "shared",
+		"members": []map[string]string{{"name": "Beto", "phone": "+525588880002"}},
+	}, http.StatusCreated, &group)
+	creditorMember, debtorMember := findMember(t, group, creditor.User.ID), findMember(t, group, debtor.User.ID)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/group-invitations/"+group.ID+"/response", debtor.Token, map[string]bool{"accept": true}, http.StatusNoContent, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/expenses", creditor.Token, map[string]any{
+		"description": "Cena", "amount_cents": 100, "payer_id": creditorMember.ID,
+		"participant_ids": []string{creditorMember.ID, debtorMember.ID}, "split_mode": "equal",
+	}, http.StatusCreated, nil)
+	payload := map[string]any{"group_id": group.ID, "debtor_id": debtorMember.ID, "amount_cents": 50, "currency": "MXN", "description": "simulated only"}
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", creditor.Token, payload, http.StatusBadRequest, nil)
+	var request payments.StoredRequest
+	doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", creditor.Token, payload, map[string]string{"Idempotency-Key": "payment-request-1"}, http.StatusCreated, &request)
+	if request.Status != payments.StatusPending || request.ID == "" || request.PaymentURL == "" {
+		t.Fatalf("created payment request = %#v", request)
+	}
+	var retried payments.StoredRequest
+	doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", creditor.Token, payload, map[string]string{"Idempotency-Key": "payment-request-1"}, http.StatusOK, &retried)
+	if retried.ID != request.ID {
+		t.Fatalf("retry request id = %q, want %q", retried.ID, request.ID)
+	}
+	conflict := map[string]any{"group_id": group.ID, "debtor_id": debtorMember.ID, "amount_cents": 49, "currency": "MXN"}
+	var conflictError apiError
+	doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", creditor.Token, conflict, map[string]string{"Idempotency-Key": "payment-request-1"}, http.StatusConflict, &conflictError)
+	if conflictError.Code != "idempotency_key_conflict" {
+		t.Fatalf("idempotency conflict = %#v", conflictError)
+	}
+	var persistedRequests int
+	if err := test.db.QueryRow(`SELECT count(*) FROM payment_requests`).Scan(&persistedRequests); err != nil || persistedRequests != 1 {
+		t.Fatalf("payment request count = %d, err=%v", persistedRequests, err)
+	}
+
+	complete := func() int {
+		body, err := json.Marshal(map[string]string{"provider_event_id": "demo-event-1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/payment-requests/"+request.ID+"/simulate", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+debtor.Token)
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		return response.StatusCode
+	}
+	statuses := make(chan int, 2)
+	var calls sync.WaitGroup
+	for range 2 {
+		calls.Add(1)
+		go func() { defer calls.Done(); statuses <- complete() }()
+	}
+	calls.Wait()
+	close(statuses)
+	gotStatuses := map[int]int{}
+	for status := range statuses {
+		gotStatuses[status]++
+	}
+	if gotStatuses[http.StatusCreated] != 1 || gotStatuses[http.StatusOK] != 1 {
+		t.Fatalf("concurrent callback statuses = %#v", gotStatuses)
+	}
+	var settlementCount, eventCount int
+	if err := test.db.QueryRow(`SELECT count(*) FROM settlements WHERE group_id=$1`, group.ID).Scan(&settlementCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := test.db.QueryRow(`SELECT count(*) FROM payment_provider_events WHERE payment_request_id=$1`, request.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if settlementCount != 1 || eventCount != 1 {
+		t.Fatalf("settlements=%d events=%d, want one each", settlementCount, eventCount)
+	}
+}
+
 func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 	t.Parallel()
 	test := newPostgreSQLApplication(t)
@@ -293,8 +378,8 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 		"amount_cents": int64(50),
 		"currency":     "MXN",
 	}
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", owner.Token, paymentRequest, http.StatusCreated, nil)
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", member.Token, paymentRequest, http.StatusUnprocessableEntity, nil)
+	doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", owner.Token, paymentRequest, map[string]string{"Idempotency-Key": "owner-payment-request"}, http.StatusCreated, nil)
+	doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", member.Token, paymentRequest, map[string]string{"Idempotency-Key": "member-payment-request"}, http.StatusUnprocessableEntity, nil)
 	createExpense(member, acceptedMember.ID, "Member expense", http.StatusCreated)
 	for name, denied := range map[string]struct {
 		session auth.Session
@@ -311,7 +396,7 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 
 	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
 		t.Run("payment_request_denied_"+name, func(t *testing.T) {
-			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", session.Token, paymentRequest, http.StatusNotFound, nil)
+			doJSONHeaders(t, client, http.MethodPost, baseURL+"/api/v1/payment-requests", session.Token, paymentRequest, map[string]string{"Idempotency-Key": "denied-" + name}, http.StatusNotFound, nil)
 		})
 	}
 
@@ -544,7 +629,12 @@ func newPostgreSQLApplication(t *testing.T) postgresApplication {
 		t.Fatalf("open auth repository: %v", err)
 	}
 	t.Cleanup(func() { _ = authRepository.Close() })
-	app := application{auth: authRepository, groups: groupRepository, payments: payments.SimulatedProvider{}}
+	paymentRepository, err := payments.Open(ctx, scopedURL.String())
+	if err != nil {
+		t.Fatalf("open payment repository: %v", err)
+	}
+	t.Cleanup(func() { _ = paymentRepository.Close() })
+	app := application{auth: authRepository, groups: groupRepository, payments: payments.SimulatedProvider{}, requests: paymentRepository}
 	server := httptest.NewServer(app.routes("*"))
 	t.Cleanup(server.Close)
 	return postgresApplication{db: db, server: server}
@@ -598,6 +688,10 @@ func assertBalance(t *testing.T, group groups.Group, memberID string, want int64
 }
 
 func doJSON(t *testing.T, client *http.Client, method, endpoint, token string, input any, wantStatus int, output any) {
+	doJSONHeaders(t, client, method, endpoint, token, input, nil, wantStatus, output)
+}
+
+func doJSONHeaders(t *testing.T, client *http.Client, method, endpoint, token string, input any, headers map[string]string, wantStatus int, output any) {
 	t.Helper()
 	var body io.Reader
 	if input != nil {
@@ -616,6 +710,9 @@ func doJSON(t *testing.T, client *http.Client, method, endpoint, token string, i
 	}
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	for name, value := range headers {
+		request.Header.Set(name, value)
 	}
 	response, err := client.Do(request)
 	if err != nil {

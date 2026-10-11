@@ -21,7 +21,8 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
 | `POST` | `/group-invitations/{groupID}/response` | Accept or decline the authenticated user's pending invitation. |
-| `POST` | `/payment-requests` | Create a **simulated** request for an exact share of an expense paid by the authenticated user. |
+| `POST` | `/payment-requests` | Create a durable **simulated** request for an exact share of an expense paid by the authenticated user. |
+| `POST` | `/payment-requests/{requestID}/simulate` | Confirm a simulator event as the debtor; this is not a real transfer. |
 
 Every member object returned in a group or invitation includes a persisted
 `role` of `owner` or `member`. See the authorization matrix in
@@ -51,7 +52,16 @@ missing, inactive, negative, under-allocated, and over-allocated shares.
 `POST /payment-requests` is intentionally not a real payment operation. It
 requires a valid session, group access, an expense paid by that user, an active
 participant debtor, and the exact centavo share computed by the ledger. The
-returned deep link is a simulator artifact and does not settle a balance.
+returned deep link is a simulator artifact and does not settle a balance. It
+also requires an `Idempotency-Key` header (1–128 characters). A retry with the
+same authenticated user, key, and payload returns the original request; a key
+reused with another payload returns `409 idempotency_key_conflict`.
+
+The debtor confirms a demo through `POST /payment-requests/{requestID}/simulate`
+with `{ "provider_event_id": "opaque-demo-event" }`. A provider event ID is
+unique per provider: callbacks may be retried safely and create at most one
+immutable settlement. This route is authenticated, accepts no claim that money
+moved, and is only the deterministic simulator boundary.
 
 ## Correlation IDs and errors
 
@@ -90,6 +100,8 @@ one beta-version compatibility window; new clients must not branch on it.
 | `invalid_refresh_token` | 401 | A refresh token is invalid, expired, reused, or revoked. |
 | `resource_not_found` | 404 | The resource is missing or intentionally hidden from this user. |
 | `email_already_registered` | 409 | Registration conflicts with an existing account. |
+| `idempotency_key_required` | 400 | A payment-request creation is missing a valid `Idempotency-Key`. |
+| `idempotency_key_conflict` | 409 | The key was already used by this user for a different request payload. |
 | `validation_failed` | 422 | Domain or financial input is invalid. |
 | `internal_error` | 500 | An unexpected server failure occurred; details are logged only server-side. |
 | `service_unavailable` | 503 | A required service is temporarily unavailable. |

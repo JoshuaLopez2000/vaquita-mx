@@ -52,6 +52,9 @@ Recommended database rules:
   from expense shares and direct settlements. It is a read model, never a
   financial record; settlements remain the authoritative immutable history.
 - Provider event IDs and idempotency keys have unique constraints.
+- Simulator requests, callbacks, and their settlement reference are stored in
+  one PostgreSQL transaction; a callback replay can never create another
+  settlement.
 - Financial rows are reversed with compensating entries rather than deleted.
 - All records use UTC timestamps; presentation uses the user's time zone.
 
