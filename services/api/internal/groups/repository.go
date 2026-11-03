@@ -180,7 +180,7 @@ func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput
 		g.Visibility = in.Visibility
 	}
 	if in.SalarySplitEnabled != nil {
-		if *in.SalarySplitEnabled && (g.Visibility != "shared" || !r.salaryReady(c, id)) {
+		if *in.SalarySplitEnabled && (g.Visibility != "shared" || !salaryReady(c, r.db, id)) {
 			return g, ErrInvalid
 		}
 		g.SalarySplitEnabled = *in.SalarySplitEnabled
@@ -392,16 +392,28 @@ func (r *Repository) RespondInvitation(c context.Context, u, groupID string, acc
 	return nil
 }
 
-func (r *Repository) salaryReady(c context.Context, groupID string) bool {
+func salaryReady(c context.Context, q queryer, groupID string) bool {
 	var missing int
-	e := r.db.QueryRowContext(c, `SELECT COUNT(*) FROM group_members x LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 AND x.removed_at IS NULL AND (NOT x.accepted OR x.declined_at IS NOT NULL OR NOT x.salary_sharing OR COALESCE(u.salary_cents,0)<=0)`, groupID).Scan(&missing)
+	e := q.QueryRowContext(c, `SELECT COUNT(*) FROM group_members x LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 AND x.removed_at IS NULL AND (NOT x.accepted OR x.declined_at IS NOT NULL OR NOT x.salary_sharing OR COALESCE(u.salary_cents,0)<=0)`, groupID).Scan(&missing)
 	return e == nil && missing == 0
 }
+// queryer is the subset of *sql.DB and *sql.Tx that read-only loading needs.
+// It lets a single transaction serve both the authorization read and the
+// validation used by commands that must not write against stale state.
+type queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 func (r *Repository) load(c context.Context, g *Group) error {
+	return load(c, g, r.db)
+}
+
+func load(c context.Context, g *Group, q queryer) error {
 	g.Members = make([]Member, 0)
 	g.Expenses = make([]Expense, 0)
 	g.Settlements = make([]Settlement, 0)
-	rows, e := r.db.QueryContext(c, `SELECT m.id,COALESCE(x.user_id,''),x.role,m.name,COALESCE(m.phone,''),x.removed_at IS NULL,x.salary_sharing,x.accepted,COALESCE(u.salary_cents,0) FROM group_members x JOIN members m ON m.id=x.member_id LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 ORDER BY x.position`, g.ID)
+	rows, e := q.QueryContext(c, `SELECT m.id,COALESCE(x.user_id,''),x.role,m.name,COALESCE(m.phone,''),x.removed_at IS NULL,x.salary_sharing,x.accepted,COALESCE(u.salary_cents,0) FROM group_members x JOIN members m ON m.id=x.member_id LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 ORDER BY x.position`, g.ID)
 	if e != nil {
 		return e
 	}
@@ -414,81 +426,93 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		g.Members = append(g.Members, m)
 	}
 	rows.Close()
-	g.SalarySplitAvailable = r.salaryReady(c, g.ID)
-	es, e := r.db.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,split_overpayment,created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	g.SalarySplitAvailable = salaryReady(c, q, g.ID)
+	es, e := q.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,split_overpayment,created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
 	if e != nil {
 		return e
 	}
+	// A transaction shares one connection, so the expense rows must all be
+	// read and closed before any per-expense query runs on the same tx.
+	type expenseSeed struct {
+		id               string
+		description      string
+		amountCents      int64
+		payerID          string
+		splitMode        string
+		splitOverpayment bool
+		createdAt        time.Time
+	}
+	seeds := make([]expenseSeed, 0)
 	for es.Next() {
-		var x Expense
-		if e = es.Scan(&x.ID, &x.Description, &x.AmountCents, &x.PayerID, &x.SplitMode, &x.SplitOverpayment, &x.CreatedAt); e != nil {
+		var x expenseSeed
+		if e = es.Scan(&x.id, &x.description, &x.amountCents, &x.payerID, &x.splitMode, &x.splitOverpayment, &x.createdAt); e != nil {
 			es.Close()
 			return e
 		}
-		ps, _ := r.db.QueryContext(c, `SELECT member_id FROM expense_participants WHERE expense_id=$1 ORDER BY position`, x.ID)
+		seeds = append(seeds, x)
+	}
+	if e = es.Err(); e != nil {
+		es.Close()
+		return e
+	}
+	es.Close()
+	for _, seed := range seeds {
+		x := Expense{ID: seed.id, Description: seed.description, AmountCents: seed.amountCents, PayerID: seed.payerID, SplitMode: seed.splitMode, SplitOverpayment: seed.splitOverpayment, CreatedAt: seed.createdAt}
+		ps, _ := q.QueryContext(c, `SELECT member_id FROM expense_participants WHERE expense_id=$1 ORDER BY position`, x.ID)
 		for ps.Next() {
 			var id string
 			ps.Scan(&id)
 			x.ParticipantIDs = append(x.ParticipantIDs, id)
 		}
 		ps.Close()
-		payers, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_payers WHERE expense_id=$1 ORDER BY position`, x.ID)
+		payers, queryErr := q.QueryContext(c, `SELECT member_id,amount_cents FROM expense_payers WHERE expense_id=$1 ORDER BY position`, x.ID)
 		if queryErr != nil {
-			es.Close()
 			return queryErr
 		}
 		for payers.Next() {
 			var payer ExpensePayer
 			if queryErr = payers.Scan(&payer.MemberID, &payer.AmountCents); queryErr != nil {
 				payers.Close()
-				es.Close()
 				return queryErr
 			}
 			x.Payers = append(x.Payers, payer)
 		}
 		if queryErr = payers.Err(); queryErr != nil {
 			payers.Close()
-			es.Close()
 			return queryErr
 		}
 		payers.Close()
-		explicit, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_shares WHERE expense_id=$1 ORDER BY position`, x.ID)
+		explicit, queryErr := q.QueryContext(c, `SELECT member_id,amount_cents FROM expense_shares WHERE expense_id=$1 ORDER BY position`, x.ID)
 		if queryErr != nil {
-			es.Close()
 			return queryErr
 		}
 		for explicit.Next() {
 			var share ExpenseShare
 			if queryErr = explicit.Scan(&share.MemberID, &share.AmountCents); queryErr != nil {
 				explicit.Close()
-				es.Close()
 				return queryErr
 			}
 			x.ExplicitShares = append(x.ExplicitShares, share)
 		}
 		if queryErr = explicit.Err(); queryErr != nil {
 			explicit.Close()
-			es.Close()
 			return queryErr
 		}
 		explicit.Close()
-		retained, queryErr := r.db.QueryContext(c, `SELECT member_id,amount_cents FROM expense_retained_overpayments WHERE expense_id=$1 ORDER BY position`, x.ID)
+		retained, queryErr := q.QueryContext(c, `SELECT member_id,amount_cents FROM expense_retained_overpayments WHERE expense_id=$1 ORDER BY position`, x.ID)
 		if queryErr != nil {
-			es.Close()
 			return queryErr
 		}
 		for retained.Next() {
 			var payer ExpensePayer
 			if queryErr = retained.Scan(&payer.MemberID, &payer.AmountCents); queryErr != nil {
 				retained.Close()
-				es.Close()
 				return queryErr
 			}
 			x.RetainedOverpayments = append(x.RetainedOverpayments, payer)
 		}
 		if queryErr = retained.Err(); queryErr != nil {
 			retained.Close()
-			es.Close()
 			return queryErr
 		}
 		retained.Close()
@@ -497,7 +521,6 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		}
 		allocatedAmount, allocationErr := expenseAllocatedAmount(x)
 		if allocationErr != nil {
-			es.Close()
 			return allocationErr
 		}
 		x.PaidAmountCents = allocatedAmount
@@ -505,13 +528,11 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		if x.SplitMode == "exact" {
 			x.ConsumptionShares, e = validateExactShares(x.ExplicitShares, x.ParticipantIDs, x.AmountCents)
 			if e != nil {
-				es.Close()
 				return e
 			}
 		}
 		x.Shares, e = sharesForExpense(x, *g, allocatedAmount)
 		if e != nil {
-			es.Close()
 			return e
 		}
 		if x.SplitOverpayment && x.OverpaymentCents > 0 && x.ConsumptionShares != nil {
@@ -522,8 +543,7 @@ func (r *Repository) load(c context.Context, g *Group) error {
 		}
 		g.Expenses = append(g.Expenses, x)
 	}
-	es.Close()
-	ss, e := r.db.QueryContext(c, `SELECT id,from_member_id,to_member_id,amount_cents,created_at FROM settlements WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	ss, e := q.QueryContext(c, `SELECT id,from_member_id,to_member_id,amount_cents,created_at FROM settlements WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
 	if e != nil {
 		return e
 	}

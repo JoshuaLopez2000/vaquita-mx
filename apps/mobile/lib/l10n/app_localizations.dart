@@ -1106,6 +1106,24 @@ abstract class AppLocalizations {
   /// **'No se pudo confirmar el pago.'**
   String get couldNotConfirmPayment;
 
+  /// No description provided for @settlementAmount.
+  ///
+  /// In es, this message translates to:
+  /// **'Monto a liquidar'**
+  String get settlementAmount;
+
+  /// No description provided for @settleAll.
+  ///
+  /// In es, this message translates to:
+  /// **'Liquidar todo'**
+  String get settleAll;
+
+  /// No description provided for @settlementAmountError.
+  ///
+  /// In es, this message translates to:
+  /// **'Introduce un monto hasta el saldo pendiente.'**
+  String get settlementAmountError;
+
   /// No description provided for @salarySplitsEnabled.
   ///
   /// In es, this message translates to:

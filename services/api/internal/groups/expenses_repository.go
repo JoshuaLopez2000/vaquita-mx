@@ -2,6 +2,8 @@ package groups
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"strings"
 )
 
@@ -116,37 +118,76 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	}
 	return r.Get(c, u, gid)
 }
-func (r *Repository) AddSettlement(c context.Context, u, g, id string) (Group, error) {
-	x, e := r.Get(c, u, g)
+func (r *Repository) AddSettlement(c context.Context, u, g, id string, amountCents *int64) (Group, error) {
+	t, e := r.db.BeginTx(c, nil)
 	if e != nil {
-		return x, e
+		return Group{}, e
+	}
+	defer t.Rollback()
+	// Serialize settlement writes per group so two concurrent payments can
+	// never both validate against the same outstanding balance.
+	if e = lockGroup(c, t, g); e != nil {
+		return Group{}, e
 	}
 	var selfID string
-	if e = r.db.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
-		return x, ErrNotFound
+	if e = t.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
+		if errors.Is(e, sql.ErrNoRows) {
+			return Group{}, ErrNotFound
+		}
+		return Group{}, e
 	}
 	if id == selfID {
-		return x, ErrInvalid
+		return Group{}, ErrInvalid
 	}
-	var amount int64
+	// Read the ledger inside the same transaction that records the payment,
+	// so the outstanding amount is protected by the lock above.
+	x := Group{ID: g}
+	if e = load(c, &x, t); e != nil {
+		return Group{}, e
+	}
+	var outstanding int64
 	for _, relation := range x.PaymentRelations {
 		if relation.FromMemberID == selfID && relation.ToMemberID == id {
-			amount = relation.AmountCents
+			outstanding = relation.AmountCents
 			break
 		}
 	}
+	var amount int64
+	if amountCents == nil {
+		amount = outstanding
+	} else {
+		amount = *amountCents
+		if amount < 0 {
+			return Group{}, ErrInvalid
+		}
+		if amount > outstanding {
+			return Group{}, ErrOverpayment
+		}
+	}
 	if amount == 0 {
-		return x, ErrInvalid
+		return Group{}, ErrInvalid
 	}
 	sid, e := newID("settlement")
 	if e != nil {
-		return x, e
+		return Group{}, e
 	}
-	_, e = r.db.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, selfID, id, amount)
+	_, e = t.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, selfID, id, amount)
 	if e != nil {
-		return x, e
+		return Group{}, e
+	}
+	if e = t.Commit(); e != nil {
+		return Group{}, e
 	}
 	return r.Get(c, u, g)
+}
+
+// lockGroup serializes concurrent writers for one group for the whole
+// transaction, so every concurrent payment validates against committed state.
+func lockGroup(c context.Context, q queryer, groupID string) error {
+	// pg_advisory_xact_lock returns void; scan the NULL column to finish the
+	// statement and let the lock hold until the transaction ends.
+	var locked any
+	return q.QueryRowContext(c, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, groupID).Scan(&locked)
 }
 
 // ValidatePaymentRequest ties the simulated-provider boundary to the ledger.
