@@ -17,7 +17,7 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `PATCH` | `/groups/{groupID}/members/{memberID}` | Edit owner-managed identity data or the authenticated member's own salary consent. |
 | `DELETE` | `/groups/{groupID}/members/{memberID}` | Remove a non-owner member; owner only. |
 | `POST` | `/groups/{groupID}/expenses` | Record an equal, salary-weighted, or exact-split expense, with one or more payers. |
-| `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user. |
+| `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user, partial or full. |
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
 | `POST` | `/group-invitations/{groupID}/response` | Accept or decline the authenticated user's pending invitation. |
@@ -48,6 +48,22 @@ participant's consumption, separate from a payer contribution. Each active
 participant must occur exactly once, and all shares must allocate every
 centavo of the entered expense total. The server rejects duplicate,
 missing, inactive, negative, under-allocated, and over-allocated shares.
+
+`POST /groups/{groupID}/settlements` records an immutable settlement from the
+authenticated member (`from`) to another member (`to`). The body takes
+`member_id` to name the recipient and an optional integer `amount_cents`:
+
+- without `amount_cents`, the debtor settles the entire current bilateral
+  obligation (the previous behavior, still supported);
+- with `amount_cents`, the debtor may record any positive MXN centavo amount
+  up to the current obligation. Zero, negative, and fractional amounts are
+  rejected, an amount above the outstanding balance returns
+  `422 validation_failed` ("amount exceeds the outstanding balance"), and the
+  validated read plus the insert share one transaction per group so
+  concurrent partial settlements can never overpay.
+
+Each accepted amount creates a new immutable settlement row; repeated payments
+reduce the derived balances without changing expense history.
 
 `POST /payment-requests` is intentionally not a real payment operation. It
 requires a valid session, group access, an expense paid by that user, an active

@@ -14,8 +14,9 @@ const (
 )
 
 var (
-	ErrInvalid  = errors.New("invalid group data")
-	ErrNotFound = errors.New("group not found")
+	ErrInvalid     = errors.New("invalid group data")
+	ErrOverpayment = errors.New("settlement exceeds outstanding balance")
+	ErrNotFound    = errors.New("group not found")
 )
 
 type Member struct {

@@ -353,14 +353,19 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 
 func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		MemberID string `json:"member_id"`
+		MemberID    string `json:"member_id"`
+		AmountCents *int64 `json:"amount_cents"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddSettlement(r.Context(), userID(r), r.PathValue("groupID"), input.MemberID)
+	result, err := app.groups.AddSettlement(r.Context(), userID(r), r.PathValue("groupID"), input.MemberID, input.AmountCents)
 	if errors.Is(err, groups.ErrInvalid) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "member has no balance to settle", nil)
+		return
+	}
+	if errors.Is(err, groups.ErrOverpayment) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "amount exceeds the outstanding balance", nil)
 		return
 	}
 	if errors.Is(err, groups.ErrNotFound) {

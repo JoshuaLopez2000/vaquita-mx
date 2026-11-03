@@ -571,6 +571,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldNotConfirmPayment => 'Could not confirm the payment.';
 
   @override
+  String get settlementAmount => 'Amount to settle';
+
+  @override
+  String get settleAll => 'Settle everything';
+
+  @override
+  String get settlementAmountError =>
+      'Enter an amount up to the outstanding balance.';
+
+  @override
   String get salarySplitsEnabled => 'Salary-based splits enabled';
 
   @override

@@ -42,8 +42,13 @@ class AppCubit extends Cubit<AppState> {
   Future<bool> settleBalance({
     required String groupId,
     required String memberId,
+    int? amountCents,
   }) =>
-      store.settleBalance(groupId: groupId, memberId: memberId);
+      store.settleBalance(
+        groupId: groupId,
+        memberId: memberId,
+        amountCents: amountCents,
+      );
 
   Future<bool> requestPayment({
     required String groupId,

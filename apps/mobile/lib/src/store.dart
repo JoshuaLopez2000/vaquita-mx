@@ -265,12 +265,14 @@ class DemoStore extends ChangeNotifier {
   Future<bool> settleBalance({
     required String groupId,
     required String memberId,
+    int? amountCents,
   }) async {
     if (_apiClient != null) {
       final settled = await _sync(
         () => _apiClient.settleBalance(
           groupId: groupId,
           memberId: memberId,
+          amountCents: amountCents,
         ),
       );
       if (settled) await loadStatus();
@@ -278,14 +280,18 @@ class DemoStore extends ChangeNotifier {
     }
     final group = groupById(groupId);
     final memberBalance = balances(group)[memberId] ?? 0;
-    if (memberBalance == 0) return false;
+    // The signed-in user settles a bilateral debt: a negative balance means
+    // the user owes, and any direction is paid by its absolute value.
+    final outstanding = memberBalance < 0 ? -memberBalance : memberBalance;
+    final amount = amountCents ?? outstanding;
+    if (amount <= 0 || amount > outstanding) return false;
     group.settlements.insert(
       0,
       Settlement(
         id: _nextId('settlement'),
         fromMemberId: memberBalance < 0 ? memberId : currentUserId,
         toMemberId: memberBalance < 0 ? currentUserId : memberId,
-        amountCents: memberBalance.abs(),
+        amountCents: amount,
         createdAt: DateTime.now(),
       ),
     );

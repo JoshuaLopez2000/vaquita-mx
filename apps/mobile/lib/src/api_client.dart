@@ -301,11 +301,15 @@ class ApiClient {
   Future<void> settleBalance({
     required String groupId,
     required String memberId,
+    int? amountCents,
   }) async {
     final response = await _request(
       'POST',
       '/api/v1/groups/$groupId/settlements',
-      body: {'member_id': memberId},
+      body: {
+        'member_id': memberId,
+        if (amountCents != null) 'amount_cents': amountCents,
+      },
     );
     _decode(response);
   }
