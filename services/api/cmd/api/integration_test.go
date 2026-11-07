@@ -570,8 +570,10 @@ func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
 }
 
 type postgresApplication struct {
-	db     *sql.DB
-	server *httptest.Server
+	db       *sql.DB
+	dbURL    string
+	server   *httptest.Server
+	provider *payments.SimulatedProvider
 }
 
 func newPostgreSQLApplication(t *testing.T) postgresApplication {
@@ -634,10 +636,11 @@ func newPostgreSQLApplication(t *testing.T) postgresApplication {
 		t.Fatalf("open payment repository: %v", err)
 	}
 	t.Cleanup(func() { _ = paymentRepository.Close() })
-	app := application{auth: authRepository, groups: groupRepository, payments: payments.SimulatedProvider{}, requests: paymentRepository}
+	paymentProvider := payments.NewSimulatedProvider()
+	app := application{auth: authRepository, groups: groupRepository, payments: paymentProvider, requests: paymentRepository}
 	server := httptest.NewServer(app.routes("*"))
 	t.Cleanup(server.Close)
-	return postgresApplication{db: db, server: server}
+	return postgresApplication{db: db, dbURL: scopedURL.String(), server: server, provider: paymentProvider}
 }
 
 func registerUser(t *testing.T, client *http.Client, baseURL, name, email, phone string) auth.Session {

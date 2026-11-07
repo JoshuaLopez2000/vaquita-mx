@@ -10,14 +10,15 @@ import (
 )
 
 type paymentRevalidationSetup struct {
-	pg           postgresApplication
-	client       *http.Client
-	baseURL      string
-	group        groups.Group
-	creditor     groups.Member
-	debtor       groups.Member
-	creditorTok  string
-	debtorTok    string
+	pg          postgresApplication
+	client      *http.Client
+	baseURL     string
+	group       groups.Group
+	creditor    groups.Member
+	debtor      groups.Member
+	creditorTok string
+	debtorTok   string
+	provider    *payments.SimulatedProvider
 }
 
 // paymentRevalidationFixture builds a creditor, an accepted debtor, and a
@@ -43,7 +44,8 @@ func paymentRevalidationFixture(t *testing.T) paymentRevalidationSetup {
 		"participant_ids": []string{creditorMember.ID, debtorMember.ID},
 		"split_mode":      "equal",
 	}, http.StatusCreated, nil)
-	return paymentRevalidationSetup{test, client, baseURL, group, creditorMember, debtorMember, creditor.Token, debtor.Token}
+	provider := test.provider
+	return paymentRevalidationSetup{test, client, baseURL, group, creditorMember, debtorMember, creditor.Token, debtor.Token, provider}
 }
 
 // requestPayment creates a payment request from the creditor for the debtor.

@@ -41,7 +41,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 8 || len(result.Applied) != 8 {
+	if result.CurrentVersion != 9 || len(result.Applied) != 9 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
 	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "settlements", "payment_requests", "payment_provider_events", "schema_migrations"} {
@@ -60,8 +60,22 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if !outstandingColumn {
 		t.Fatal("payment_provider_events.outstanding_cents was not created")
 	}
+	var reconcileTable bool
+	if err := db.QueryRowContext(ctx, `SELECT to_regclass('payment_reconcile_events') IS NOT NULL`).Scan(&reconcileTable); err != nil {
+		t.Fatal(err)
+	}
+	if !reconcileTable {
+		t.Fatal("payment_reconcile_events was not created")
+	}
+	var providerRef bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='payment_requests' AND column_name='provider_ref')`).Scan(&providerRef); err != nil {
+		t.Fatal(err)
+	}
+	if !providerRef {
+		t.Fatal("payment_requests.provider_ref was not created")
+	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 8 {
+	if err != nil || version != 9 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -69,7 +83,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 8 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 9 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -124,7 +138,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 8 || len(result.Applied) != 8 {
+	if result.CurrentVersion != 9 || len(result.Applied) != 9 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
