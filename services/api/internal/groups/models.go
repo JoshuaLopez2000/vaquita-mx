@@ -14,9 +14,10 @@ const (
 )
 
 var (
-	ErrInvalid     = errors.New("invalid group data")
-	ErrOverpayment = errors.New("settlement exceeds outstanding balance")
-	ErrNotFound    = errors.New("group not found")
+	ErrInvalid      = errors.New("invalid group data")
+	ErrOverpayment  = errors.New("settlement exceeds outstanding balance")
+	ErrNotFound     = errors.New("group not found")
+	ErrSyncConflict = errors.New("offline sync conflicts with existing data")
 )
 
 type Member struct {
@@ -130,4 +131,49 @@ type Repository struct{ db *sql.DB }
 type Invitation struct {
 	Group  Group  `json:"group"`
 	Member Member `json:"member"`
+}
+
+type OfflineSyncGroupInput struct {
+	ID                 string                       `json:"id"`
+	Name               string                       `json:"name"`
+	Emoji              string                       `json:"emoji"`
+	Visibility         string                       `json:"visibility"`
+	SalarySplitEnabled bool                         `json:"salary_split_enabled"`
+	Members            []OfflineSyncMemberInput     `json:"members"`
+	Expenses           []OfflineSyncExpenseInput    `json:"expenses"`
+	Settlements        []OfflineSyncSettlementInput `json:"settlements"`
+}
+
+type OfflineSyncMemberInput struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Phone         string `json:"phone"`
+	SalarySharing bool   `json:"salary_sharing"`
+	Active        bool   `json:"active"`
+}
+
+type OfflineSyncExpenseInput struct {
+	ID               string           `json:"id"`
+	Description      string           `json:"description"`
+	AmountCents      int64            `json:"amount_cents"`
+	PayerID          string           `json:"payer_id"`
+	Payers           []ExpensePayer   `json:"payers"`
+	ParticipantIDs   []string         `json:"participant_ids"`
+	SplitMode        string           `json:"split_mode"`
+	Shares           map[string]int64 `json:"shares"`
+	SplitOverpayment bool             `json:"split_overpayment"`
+	CreatedAt        time.Time        `json:"created_at"`
+}
+
+type OfflineSyncSettlementInput struct {
+	ID           string    `json:"id"`
+	FromMemberID string    `json:"from_member_id"`
+	ToMemberID   string    `json:"to_member_id"`
+	AmountCents  int64     `json:"amount_cents"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type OfflineSyncGroupResult struct {
+	LocalGroupID  string `json:"local_group_id"`
+	RemoteGroupID string `json:"remote_group_id"`
 }

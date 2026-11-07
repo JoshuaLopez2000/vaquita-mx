@@ -569,6 +569,114 @@ func TestAPIDatabaseFailureReturnsSafeError(t *testing.T) {
 	}
 }
 
+func TestOfflineGroupSyncIsIdempotentAndInvitesOnlyOnSync(t *testing.T) {
+	t.Parallel()
+	test := newPostgreSQLApplication(t)
+	client := test.server.Client()
+	owner := registerUser(t, client, test.server.URL, "Ana", "offline-ana@example.test", "+525511112233")
+	member := registerUser(t, client, test.server.URL, "Beto", "offline-beto@example.test", "+525522223344")
+
+	type invitationResponse struct {
+		Invitations []groups.Invitation `json:"invitations"`
+	}
+	var before invitationResponse
+	doJSON(t, client, http.MethodGet, test.server.URL+"/api/v1/group-invitations", member.Token, nil, http.StatusOK, &before)
+	if len(before.Invitations) != 0 {
+		t.Fatalf("invitations before sync = %d, want 0", len(before.Invitations))
+	}
+
+	localGroup := map[string]any{
+		"id":         "local_group_offline_test",
+		"name":       "Offline trip",
+		"emoji":      "🏖️",
+		"visibility": "shared",
+		"members": []map[string]any{
+			{"id": "me", "name": "Ana", "phone": "+525511112233", "active": true},
+			{"id": "local_member_beto", "name": "Beto", "phone": "+525522223344", "active": true},
+			{"id": "local_member_guest", "name": "Guest", "phone": "", "active": true},
+		},
+		"expenses": []map[string]any{
+			{
+				"id":                "local_expense_dinner",
+				"description":       "Dinner",
+				"amount_cents":      101,
+				"payer_id":          "me",
+				"payers":            []map[string]any{{"member_id": "me", "amount_cents": 101}},
+				"participant_ids":   []string{"me", "local_member_beto"},
+				"split_mode":        "equal",
+				"shares":            map[string]int64{},
+				"split_overpayment": true,
+				"created_at":        "2026-11-07T10:00:00Z",
+			},
+		},
+		"settlements": []any{},
+	}
+	var result struct {
+		Groups []groups.OfflineSyncGroupResult `json:"groups"`
+	}
+	syncRequest := func(payload map[string]any, status int, target any) {
+		t.Helper()
+		doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/offline-sync/groups", owner.Token, map[string]any{
+			"groups": []map[string]any{payload},
+		}, status, target)
+	}
+	syncRequest(localGroup, http.StatusOK, &result)
+	if len(result.Groups) != 1 || result.Groups[0].RemoteGroupID != localGroup["id"] {
+		t.Fatalf("sync result = %#v", result.Groups)
+	}
+
+	syncRequest(localGroup, http.StatusOK, &result)
+	var synced []groups.Group
+	doJSON(t, client, http.MethodGet, test.server.URL+"/api/v1/groups", owner.Token, nil, http.StatusOK, &struct {
+		Groups *[]groups.Group `json:"groups"`
+	}{Groups: &synced})
+	if len(synced) != 1 || len(synced[0].Expenses) != 1 {
+		t.Fatalf("synced groups = %#v; want one group with one expense", synced)
+	}
+	guestFound := false
+	for _, syncedMember := range synced[0].Members {
+		if syncedMember.Name == "Guest" {
+			guestFound = true
+			if syncedMember.Phone != "" || !syncedMember.Accepted {
+				t.Fatalf("synced guest = %#v; want an accepted member without a phone", syncedMember)
+			}
+			break
+		}
+	}
+	if !guestFound {
+		t.Fatal("synced group omitted the local guest without a phone")
+	}
+	if synced[0].Expenses[0].AmountCents != 101 {
+		t.Fatalf("synced expense amount = %d, want 101 centavos", synced[0].Expenses[0].AmountCents)
+	}
+
+	var after invitationResponse
+	doJSON(t, client, http.MethodGet, test.server.URL+"/api/v1/group-invitations", member.Token, nil, http.StatusOK, &after)
+	if len(after.Invitations) != 1 || after.Invitations[0].Group.ID != localGroup["id"] {
+		t.Fatalf("invitations after sync = %#v, want one synced group invitation", after.Invitations)
+	}
+
+	localGroup["expenses"] = []map[string]any{
+		{
+			"id":                "local_expense_dinner",
+			"description":       "Dinner",
+			"amount_cents":      202,
+			"payer_id":          "me",
+			"payers":            []map[string]any{{"member_id": "me", "amount_cents": 202}},
+			"participant_ids":   []string{"me", "local_member_beto"},
+			"split_mode":        "equal",
+			"shares":            map[string]int64{},
+			"split_overpayment": true,
+			"created_at":        "2026-11-07T10:00:00Z",
+		},
+	}
+	var conflict apiError
+	syncRequest(localGroup, http.StatusConflict, &conflict)
+	if conflict.Code != "sync_conflict" {
+		t.Fatalf("sync conflict response = %#v", conflict)
+	}
+}
+
 type postgresApplication struct {
 	db       *sql.DB
 	dbURL    string

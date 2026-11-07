@@ -256,4 +256,13 @@
   ,"signOutDescription": "Sign out on this device"
   ,"signOutAll": "Sign out everywhere"
   ,"signOutAllDescription": "Revoke every session for your account"
+  ,"loginOrSignUp": "Log in / Sign up"
+  ,"loginOrSignUpDescription": "Create an account to sync your groups"
+  ,"syncLocalGroupsTitle": "Sync your local groups?"
+  ,"syncLocalGroupsDescription": "Syncing sends your local groups and their history to your account. Members may receive invitations when a group is shared."
+  ,"later": "Later"
+  ,"syncNow": "Sync now"
+  ,"syncLocalGroupsButton": "Sync local groups"
+  ,"syncCompleted": "Local groups synced"
+  ,"syncFailed": "Sync failed. Your local data is safe; try again."
 }

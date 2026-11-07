@@ -15,6 +15,7 @@ func (app application) routes(allowedOrigins string) http.Handler {
 	mux.HandleFunc("POST /api/v1/contacts", app.requireUser(app.saveContacts))
 	mux.HandleFunc("DELETE /api/v1/contacts/{contactID}", app.requireUser(app.removeContact))
 	mux.HandleFunc("GET /api/v1/groups", app.requireUser(app.listGroups))
+	mux.HandleFunc("POST /api/v1/offline-sync/groups", app.requireUser(app.syncLocalGroups))
 	mux.HandleFunc("GET /api/v1/group-invitations", app.requireUser(app.listInvitations))
 	mux.HandleFunc("POST /api/v1/group-invitations/{groupID}/response", app.requireUser(app.respondInvitation))
 	mux.HandleFunc("POST /api/v1/groups", app.requireUser(app.createGroup))

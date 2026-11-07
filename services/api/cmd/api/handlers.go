@@ -330,6 +330,30 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, result)
 }
 
+func (app application) syncLocalGroups(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Groups []groups.OfflineSyncGroupInput `json:"groups"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	results, err := app.groups.SyncLocalGroups(r.Context(), userID(r), input.Groups)
+	switch {
+	case errors.Is(err, groups.ErrSyncConflict):
+		writeAPIError(w, http.StatusConflict, "sync_conflict", "local history conflicts with previously synchronized data", nil)
+	case errors.Is(err, groups.ErrInvalid):
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid local group data", nil)
+	case errors.Is(err, groups.ErrOverpayment):
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "local settlement exceeds the outstanding balance", nil)
+	case errors.Is(err, groups.ErrNotFound):
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
+	case err != nil:
+		serverError(w, "sync local groups", err)
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"groups": results})
+	}
+}
+
 func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 	var input groups.AddExpenseInput
 	if !decodeJSON(w, r, &input) {

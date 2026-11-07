@@ -5,12 +5,16 @@ class ProfileScreen extends StatelessWidget {
     required this.store,
     required this.onLocaleChanged,
     required this.onSignOut,
+    required this.onAuthenticate,
+    required this.onSync,
     super.key,
   });
 
   final DemoStore store;
   final ValueChanged<Locale> onLocaleChanged;
   final Future<void> Function(bool allDevices) onSignOut;
+  final Future<void> Function() onAuthenticate;
+  final Future<void> Function() onSync;
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
@@ -45,6 +49,17 @@ class ProfileScreen extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 28),
+            if (user == null && store.apiClient != null)
+              Card(
+                child: ListTile(
+                  key: const Key('login-signup-button'),
+                  leading: const Icon(Icons.login_rounded),
+                  title: Text(l10n.loginOrSignUp),
+                  subtitle: Text(l10n.loginOrSignUpDescription),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: onAuthenticate,
+                ),
+              ),
             if (user != null)
               Card(
                 child: Column(
@@ -63,6 +78,15 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 ),
               ),
+            if (user != null && store.isOfflineFirst) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const Key('sync-local-groups-button'),
+                onPressed: onSync,
+                icon: const Icon(Icons.sync_rounded),
+                label: Text(l10n.syncLocalGroupsButton),
+              ),
+            ],
             const SizedBox(height: 18),
             Text(l10n.contacts,
                 style: Theme.of(context)
@@ -162,7 +186,7 @@ class ProfileScreen extends StatelessWidget {
                 },
               ),
             ),
-            if (store.isRemote) ...[
+            if (user != null) ...[
               const SizedBox(height: 18),
               Card(
                 child: Column(

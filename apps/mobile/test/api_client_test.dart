@@ -58,6 +58,68 @@ void main() {
     await client.createGroup(name: 'Roommates', memberNames: ['Ana']);
   });
 
+  test('syncs only supported local group fields and returns ID mappings',
+      () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/offline-sync/groups');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final group =
+            (body['groups'] as List<dynamic>).single as Map<String, dynamic>;
+        expect(group.keys.toSet(), {
+          'id',
+          'name',
+          'emoji',
+          'visibility',
+          'salary_split_enabled',
+          'members',
+          'expenses',
+          'settlements',
+        });
+        expect((group['expenses'] as List<dynamic>).single,
+            containsPair('amount_cents', 101));
+        return http.Response(
+          jsonEncode({
+            'groups': [
+              {
+                'local_group_id': 'local_group_1',
+                'remote_group_id': 'local_group_1',
+              }
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final ids = await client.syncLocalGroups([
+      ExpenseGroup(
+        id: 'local_group_1',
+        name: 'Offline group',
+        emoji: '🍲',
+        members: const [
+          Member(id: 'me', name: 'Ana'),
+          Member(id: 'local_member_1', name: 'Beto'),
+        ],
+        expenses: [
+          Expense(
+            id: 'local_expense_1',
+            description: 'Soup',
+            amountCents: 101,
+            payerId: 'me',
+            payers: const [ExpensePayer(memberId: 'me', amountCents: 101)],
+            participantIds: const ['me', 'local_member_1'],
+            createdAt: DateTime.utc(2026, 11, 7),
+          ),
+        ],
+      ),
+    ]);
+
+    expect(ids, {'local_group_1': 'local_group_1'});
+  });
+
   test('sends exact participant shares separately from payer contributions',
       () async {
     final client = ApiClient(

@@ -1,16 +1,31 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
+import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/models.dart';
 
 class DemoStore extends ChangeNotifier {
   DemoStore.seeded()
       : _apiClient = null,
+        _offlineDatabase = null,
+        _offlineFirst = false,
         groups = _seedGroups();
 
-  DemoStore.remote(this._apiClient) : groups = [];
+  DemoStore.remote(this._apiClient)
+      : _offlineDatabase = null,
+        _offlineFirst = false,
+        groups = [];
+
+  DemoStore.offline(this._apiClient, this._offlineDatabase)
+      : _offlineFirst = true,
+        groups = [];
 
   static const seedUserId = 'me';
   final ApiClient? _apiClient;
+  final OfflineDatabase? _offlineDatabase;
+  final bool _offlineFirst;
   final List<ExpenseGroup> groups;
   final List<AppContact> contacts = [];
   final List<ContactStatus> contactStatus = [];
@@ -19,13 +34,30 @@ class DemoStore extends ChangeNotifier {
   int? _requestedTab;
   bool isLoading = false;
   String? errorMessage;
+  final Set<String> _syncEnabledInMemory = {};
+  bool _syncing = false;
+  bool _syncRequested = false;
 
   bool get isRemote => _apiClient != null;
+  bool get isOfflineFirst => _offlineFirst;
+  bool get isAuthenticated => _apiClient?.user != null;
   ApiClient? get apiClient => _apiClient;
 
   String get currentUserId => _apiClient?.userId ?? seedUserId;
   AppUser? get authenticatedUser => _apiClient?.user;
-  Member get currentUser => Member(id: currentUserId, name: 'You');
+  Member get currentUser => Member(
+        id: currentUserId,
+        userId: _apiClient?.userId ?? '',
+        name: _apiClient?.user?.name ?? 'You',
+      );
+
+  Future<void> initialize() async {
+    if (_offlineDatabase == null) return;
+    groups
+      ..clear()
+      ..addAll(await _offlineDatabase.loadGroups());
+    notifyListeners();
+  }
 
   void showMovements() {
     _requestedTab = 2;
@@ -42,15 +74,32 @@ class DemoStore extends ChangeNotifier {
       groups.firstWhere((group) => group.id == id);
 
   Future<void> load() async {
-    if (_apiClient == null) return;
+    final api = _apiClient;
+    if (api == null || api.user == null) return;
     isLoading = true;
     errorMessage = null;
     notifyListeners();
     try {
-      final loaded = await _apiClient.listGroups();
-      groups
-        ..clear()
-        ..addAll(loaded);
+      final loaded = await api.listGroups();
+      if (_offlineFirst) {
+        for (final group in loaded) {
+          final index = groups.indexWhere((local) => local.id == group.id);
+          final hasPendingChanges =
+              await _offlineDatabase?.isPending(group.id) ?? false;
+          if (index >= 0 && hasPendingChanges) {
+            continue;
+          } else if (index >= 0) {
+            groups[index] = group;
+          } else {
+            groups.add(group);
+          }
+          await _offlineDatabase?.saveGroup(group, needsSync: false);
+        }
+      } else {
+        groups
+          ..clear()
+          ..addAll(loaded);
+      }
     } on ApiException catch (error) {
       errorMessage = error.code;
     } catch (_) {
@@ -61,19 +110,80 @@ class DemoStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> syncLocalGroups({bool enable = false}) async {
+    final api = _apiClient;
+    if (api == null || api.user == null || !_offlineFirst) return false;
+    if (_syncing) {
+      _syncRequested = true;
+      return true;
+    }
+    isLoading = true;
+    _syncing = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final accountId = api.userId;
+      if (accountId == null) return false;
+      if (enable) {
+        _syncEnabledInMemory.add(accountId);
+        await _offlineDatabase?.setSyncEnabled(accountId, true);
+      } else {
+        final enabled = _offlineDatabase != null
+            ? await _offlineDatabase.syncEnabled(accountId)
+            : _syncEnabledInMemory.contains(accountId);
+        if (!enabled) return true;
+      }
+
+      do {
+        _syncRequested = false;
+        final pending =
+            await _offlineDatabase?.groupsPendingSync() ?? List.of(groups);
+        if (pending.isEmpty) break;
+        final revisions = <String, int>{
+          for (final group in pending)
+            group.id: await _offlineDatabase?.revision(group.id) ?? 1,
+        };
+        final syncedIds = await api.syncLocalGroups(pending);
+        for (final group in pending) {
+          final remoteId = syncedIds[group.id];
+          if (remoteId == null) {
+            throw const FormatException('Sync response omitted a local group');
+          }
+          await _offlineDatabase?.markSynced(
+              group.id, remoteId, revisions[group.id]!);
+        }
+      } while (_offlineDatabase != null &&
+          (_syncRequested || await _offlineDatabase.hasPendingGroups()));
+      await load();
+      return true;
+    } on ApiException catch (error) {
+      errorMessage = error.code;
+      return false;
+    } catch (_) {
+      errorMessage = 'server_request_failed';
+      return false;
+    } finally {
+      _syncing = false;
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> findContacts(List<String> phones) async {
-    if (_apiClient == null) return;
+    final api = _apiClient;
+    if (api == null || api.user == null) return;
     contacts
       ..clear()
-      ..addAll(await _apiClient.matchContacts(phones));
+      ..addAll(await api.matchContacts(phones));
     notifyListeners();
   }
 
   Future<void> loadContacts() async {
-    if (_apiClient == null) return;
+    final api = _apiClient;
+    if (api == null || api.user == null) return;
     contacts
       ..clear()
-      ..addAll(await _apiClient.listContacts());
+      ..addAll(await api.listContacts());
     notifyListeners();
   }
 
@@ -82,7 +192,7 @@ class DemoStore extends ChangeNotifier {
   }
 
   Future<bool> saveContacts(List<AppContact> newContacts) async {
-    if (_apiClient == null) {
+    if (_apiClient == null || _offlineFirst) {
       contacts.addAll(newContacts.map((contact) => AppContact(
           id: _nextId('contact'), name: contact.name, phone: contact.phone)));
       notifyListeners();
@@ -94,7 +204,7 @@ class DemoStore extends ChangeNotifier {
   }
 
   Future<bool> removeContact(String contactId) async {
-    if (_apiClient == null) {
+    if (_apiClient == null || _offlineFirst) {
       contacts.removeWhere((contact) => contact.id == contactId);
       notifyListeners();
       return true;
@@ -130,7 +240,7 @@ class DemoStore extends ChangeNotifier {
     bool salarySplitEnabled = false,
     List<Map<String, String>>? members,
   }) async {
-    if (_apiClient != null) {
+    if (_apiClient != null && !_offlineFirst) {
       return _sync(
         () => _apiClient.createGroup(
             name: name,
@@ -141,43 +251,117 @@ class DemoStore extends ChangeNotifier {
             members: members),
       );
     }
-    final id = _nextId('group');
-    final localMembers = <Member>[currentUser];
-    for (final rawName in memberNames) {
+    final id = _offlineFirst ? _newLocalId('local_group') : _nextId('group');
+    final localMembers = <Member>[
+      Member(
+        id: _offlineFirst ? seedUserId : currentUserId,
+        userId: _apiClient?.userId ?? '',
+        name: _apiClient?.user?.name ?? 'You',
+      )
+    ];
+    final drafts = members ??
+        memberNames
+            .map((name) => <String, String>{'name': name, 'phone': ''})
+            .toList();
+    for (final draft in drafts) {
+      final rawName = draft['name'] ?? '';
       final trimmed = rawName.trim();
       if (trimmed.isEmpty || trimmed.toLowerCase() == 'you') continue;
-      localMembers.add(Member(id: _nextId('member'), name: trimmed));
+      localMembers.add(Member(
+        id: _offlineFirst ? _newLocalId('local_member') : _nextId('member'),
+        name: trimmed,
+        phone: draft['phone'] ?? '',
+        accepted: true,
+      ));
     }
+    final group = ExpenseGroup(
+      id: id,
+      name: name.trim(),
+      emoji: emoji.trim(),
+      members: localMembers,
+      visibility: visibility,
+      salarySplitEnabled: salarySplitEnabled,
+    );
     groups.insert(
       0,
-      ExpenseGroup(
-        id: id,
-        name: name.trim(),
-        emoji: emoji.trim(),
-        members: localMembers,
-      ),
+      group,
     );
+    await _persistGroup(group);
     notifyListeners();
     return true;
   }
 
-  Future<bool> updateGroup(String groupId, Map<String, dynamic> input) =>
-      _apiClient != null
-          ? _sync(() => _apiClient.updateGroup(groupId, input))
-          : Future.value(false);
-  Future<bool> addMember(String groupId, String name, String phone) =>
-      _apiClient != null
-          ? _sync(() => _apiClient.addMember(groupId, name: name, phone: phone))
-          : Future.value(false);
+  Future<bool> updateGroup(String groupId, Map<String, dynamic> input) async {
+    if (_apiClient != null && !_offlineFirst) {
+      return _sync(() => _apiClient.updateGroup(groupId, input));
+    }
+    if (!_offlineFirst) return false;
+    final group = groupById(groupId);
+    final index = groups.indexOf(group);
+    groups[index] = ExpenseGroup(
+      id: group.id,
+      name: input['name'] as String? ?? group.name,
+      emoji: input['emoji'] as String? ?? group.emoji,
+      visibility: input['visibility'] as String? ?? group.visibility,
+      salarySplitEnabled:
+          input['salary_split_enabled'] as bool? ?? group.salarySplitEnabled,
+      members: group.members,
+      expenses: group.expenses,
+      settlements: group.settlements,
+      paymentRelations: group.paymentRelations,
+      balances: group.balances,
+    );
+    await _persistGroup(groups[index]);
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> addMember(String groupId, String name, String phone) async {
+    if (_apiClient != null && !_offlineFirst) {
+      return _sync(
+          () => _apiClient.addMember(groupId, name: name, phone: phone));
+    }
+    if (!_offlineFirst) return false;
+    final group = groupById(groupId);
+    group.members.add(Member(
+      id: _newLocalId('local_member'),
+      name: name.trim(),
+      phone: phone.trim(),
+      accepted: true,
+    ));
+    await _persistGroup(group);
+    notifyListeners();
+    return true;
+  }
+
   Future<bool> updateMember(
-          String groupId, String memberId, Map<String, dynamic> input) =>
-      _apiClient != null
-          ? _sync(() => _apiClient.updateMember(groupId, memberId, input))
-          : Future.value(false);
+      String groupId, String memberId, Map<String, dynamic> input) async {
+    if (_apiClient != null && !_offlineFirst) {
+      return _sync(() => _apiClient.updateMember(groupId, memberId, input));
+    }
+    if (!_offlineFirst) return false;
+    final group = groupById(groupId);
+    final index = group.members.indexWhere((member) => member.id == memberId);
+    if (index < 0) return false;
+    final member = group.members[index];
+    group.members[index] = Member(
+      id: member.id,
+      userId: member.userId,
+      name: input['name'] as String? ?? member.name,
+      phone: input['phone'] as String? ?? member.phone,
+      active: member.active,
+      accepted: member.accepted,
+      salarySharing: input['salary_sharing'] as bool? ?? member.salarySharing,
+    );
+    await _persistGroup(group);
+    notifyListeners();
+    return true;
+  }
 
   Future<void> loadStatus() async {
-    if (_apiClient == null) return;
-    final rows = await _apiClient.status();
+    final api = _apiClient;
+    if (api == null || api.user == null) return;
+    final rows = await api.status();
     contactStatus
       ..clear()
       ..addAll(rows.map(ContactStatus.fromJson));
@@ -185,17 +369,18 @@ class DemoStore extends ChangeNotifier {
   }
 
   Future<void> loadInvitations() async {
-    if (_apiClient == null) return;
+    final api = _apiClient;
+    if (api == null || api.user == null) return;
     invitations
       ..clear()
-      ..addAll(await _apiClient.invitations());
+      ..addAll(await api.invitations());
     notifyListeners();
   }
 
   Future<bool> respondInvitation(String groupId, bool accept) async {
-    if (_apiClient == null) return false;
-    final updated =
-        await _sync(() => _apiClient.respondInvitation(groupId, accept));
+    final api = _apiClient;
+    if (api == null || api.user == null) return false;
+    final updated = await _sync(() => api.respondInvitation(groupId, accept));
     if (updated) await loadInvitations();
     return updated;
   }
@@ -211,7 +396,7 @@ class DemoStore extends ChangeNotifier {
     List<ExpenseShare> shares = const [],
     bool splitOverpayment = true,
   }) async {
-    if (_apiClient != null) {
+    if (_apiClient != null && !_offlineFirst) {
       return _sync(
         () => _apiClient.addExpense(
           groupId: groupId,
@@ -229,7 +414,9 @@ class DemoStore extends ChangeNotifier {
     groupById(groupId).expenses.insert(
           0,
           Expense(
-            id: _nextId('expense'),
+            id: _offlineFirst
+                ? _newLocalId('local_expense')
+                : _nextId('expense'),
             description: description.trim(),
             amountCents: amountCents,
             payerId: payerId,
@@ -243,21 +430,29 @@ class DemoStore extends ChangeNotifier {
             createdAt: DateTime.now(),
           ),
         );
+    await _persistGroup(groupById(groupId));
     notifyListeners();
     return true;
   }
 
   Future<bool> removeMember(String groupId, String memberId) async {
-    if (_apiClient != null) {
+    if (_apiClient != null && !_offlineFirst) {
       return _sync(() => _apiClient.removeMember(groupId, memberId));
     }
     final group = groupById(groupId);
     final index = group.members.indexWhere((member) => member.id == memberId);
     if (index < 0) return false;
+    final removed = group.members[index];
     group.members[index] = Member(
-        id: group.members[index].id,
-        name: group.members[index].name,
-        active: false);
+      id: removed.id,
+      userId: removed.userId,
+      name: removed.name,
+      phone: removed.phone,
+      active: false,
+      salarySharing: removed.salarySharing,
+      accepted: removed.accepted,
+    );
+    await _persistGroup(group);
     notifyListeners();
     return true;
   }
@@ -267,7 +462,7 @@ class DemoStore extends ChangeNotifier {
     required String memberId,
     int? amountCents,
   }) async {
-    if (_apiClient != null) {
+    if (_apiClient != null && !_offlineFirst) {
       final settled = await _sync(
         () => _apiClient.settleBalance(
           groupId: groupId,
@@ -279,6 +474,7 @@ class DemoStore extends ChangeNotifier {
       return settled;
     }
     final group = groupById(groupId);
+    final selfId = _selfMember(group)?.id ?? currentUserId;
     final memberBalance = balances(group)[memberId] ?? 0;
     // The signed-in user settles a bilateral debt: a negative balance means
     // the user owes, and any direction is paid by its absolute value.
@@ -288,13 +484,16 @@ class DemoStore extends ChangeNotifier {
     group.settlements.insert(
       0,
       Settlement(
-        id: _nextId('settlement'),
-        fromMemberId: memberBalance < 0 ? memberId : currentUserId,
-        toMemberId: memberBalance < 0 ? currentUserId : memberId,
+        id: _offlineFirst
+            ? _newLocalId('local_settlement')
+            : _nextId('settlement'),
+        fromMemberId: memberBalance < 0 ? memberId : selfId,
+        toMemberId: memberBalance < 0 ? selfId : memberId,
         amountCents: amount,
         createdAt: DateTime.now(),
       ),
     );
+    await _persistGroup(group);
     _refreshLocalStatus();
     notifyListeners();
     return true;
@@ -324,7 +523,9 @@ class DemoStore extends ChangeNotifier {
   }
 
   Map<String, int> balances(ExpenseGroup group) {
-    if (_apiClient != null) return Map.unmodifiable(group.balances);
+    if (_apiClient != null && !_offlineFirst) {
+      return Map.unmodifiable(group.balances);
+    }
     return _localBalances(group);
   }
 
@@ -333,8 +534,9 @@ class DemoStore extends ChangeNotifier {
     required String debtorId,
     required int amountCents,
   }) {
-    if (_apiClient == null) return Future.value(false);
-    return _sync(() => _apiClient.requestPayment(
+    final api = _apiClient;
+    if (api == null || api.user == null) return Future.value(false);
+    return _sync(() => api.requestPayment(
           groupId: groupId,
           debtorId: debtorId,
           amountCents: amountCents,
@@ -344,11 +546,9 @@ class DemoStore extends ChangeNotifier {
   // Positive means the contact owes the signed-in user; negative means the
   // signed-in user owes the contact. Remote relations are server-authoritative.
   int balanceWith(ExpenseGroup group, Member contact) {
-    final self = group.members.where(
-      (member) => member.userId == currentUserId || member.id == currentUserId,
-    );
-    if (self.isEmpty) return 0;
-    final selfID = self.first.id;
+    final self = _selfMember(group);
+    if (self == null) return 0;
+    final selfID = self.id;
     final relations = paymentRelations(group);
     for (final relation in relations) {
       if (relation.fromMemberId == contact.id &&
@@ -364,7 +564,7 @@ class DemoStore extends ChangeNotifier {
   }
 
   List<PaymentRelation> paymentRelations(ExpenseGroup group) =>
-      _apiClient != null
+      _apiClient != null && !_offlineFirst
           ? group.paymentRelations
           : _localPaymentRelations(group);
 
@@ -386,10 +586,7 @@ class DemoStore extends ChangeNotifier {
       final credits = <String, int>{
         for (final payer in payers) payer.memberId: payer.amountCents
       };
-      for (final share in _equalShares(
-        _allocatedExpenseAmount(expense),
-        expense.participantIds,
-      ).entries) {
+      for (final share in _localExpenseShares(expense).entries) {
         var owed = share.value;
         for (final payer in payers) {
           final available = credits[payer.memberId] ?? 0;
@@ -448,10 +645,7 @@ class DemoStore extends ChangeNotifier {
         result[payer.memberId] =
             (result[payer.memberId] ?? 0) + payer.amountCents;
       }
-      final shares = _equalShares(
-        _allocatedExpenseAmount(expense),
-        expense.participantIds,
-      );
+      final shares = _localExpenseShares(expense);
       for (final entry in shares.entries) {
         final participantId = entry.key;
         final share = entry.value;
@@ -468,6 +662,7 @@ class DemoStore extends ChangeNotifier {
   }
 
   int _allocatedExpenseAmount(Expense expense) {
+    if (!expense.splitOverpayment) return expense.amountCents;
     final paid = expense.payers.isEmpty
         ? expense.amountCents
         : expense.payers.fold<int>(
@@ -475,6 +670,56 @@ class DemoStore extends ChangeNotifier {
             (sum, payer) => sum + payer.amountCents,
           );
     return paid > expense.amountCents ? paid : expense.amountCents;
+  }
+
+  Map<String, int> _localExpenseShares(Expense expense) {
+    if (expense.splitMode != 'exact') {
+      if (expense.shares.isNotEmpty &&
+          (expense.splitMode == 'salary' ||
+              expense.consumptionShares.isNotEmpty)) {
+        return expense.shares;
+      }
+      return _equalShares(
+        _allocatedExpenseAmount(expense),
+        expense.participantIds,
+      );
+    }
+
+    final consumption = expense.consumptionShares.isNotEmpty
+        ? expense.consumptionShares
+        : expense.shares;
+    final allocated = Map<String, int>.from(consumption);
+    final extra = _allocatedExpenseAmount(expense) - expense.amountCents;
+    if (extra <= 0) return allocated;
+
+    final eligible = [
+      for (final id in expense.participantIds)
+        if ((consumption[id] ?? 0) > 0) id,
+    ];
+    final weight = eligible.fold<int>(
+      0,
+      (total, id) => total + consumption[id]!,
+    );
+    if (weight <= 0) {
+      return _equalShares(
+          _allocatedExpenseAmount(expense), expense.participantIds);
+    }
+
+    var used = 0;
+    for (final id in eligible) {
+      final portion = (BigInt.from(extra) *
+              BigInt.from(consumption[id]!) ~/
+              BigInt.from(weight))
+          .toInt();
+      allocated[id] = (allocated[id] ?? 0) + portion;
+      used += portion;
+    }
+    for (final id in eligible) {
+      if (used == extra) break;
+      allocated[id] = allocated[id]! + 1;
+      used++;
+    }
+    return allocated;
   }
 
   Map<String, int> _equalShares(int amountCents, List<String> participantIds) {
@@ -490,11 +735,25 @@ class DemoStore extends ChangeNotifier {
   }
 
   int currentUserBalance(ExpenseGroup group) {
-    final member = group.members
-        .where((member) =>
-            member.userId == currentUserId || member.id == currentUserId)
-        .toList();
-    return member.isEmpty ? 0 : balances(group)[member.first.id] ?? 0;
+    final member = _selfMember(group);
+    return member == null ? 0 : balances(group)[member.id] ?? 0;
+  }
+
+  Member? _selfMember(ExpenseGroup group) {
+    for (final member in group.members) {
+      if (member.userId == currentUserId || member.id == currentUserId) {
+        return member;
+      }
+    }
+    if (_offlineFirst) {
+      for (final member in group.members) {
+        if (member.id == seedUserId) return member;
+      }
+      if (group.members.isNotEmpty && group.members.first.userId.isEmpty) {
+        return group.members.first;
+      }
+    }
+    return null;
   }
 
   Future<bool> _sync(Future<void> Function() mutation) async {
@@ -503,10 +762,14 @@ class DemoStore extends ChangeNotifier {
     notifyListeners();
     try {
       await mutation();
-      final loaded = await _apiClient!.listGroups();
-      groups
-        ..clear()
-        ..addAll(loaded);
+      if (_offlineFirst) {
+        await load();
+      } else {
+        final loaded = await _apiClient!.listGroups();
+        groups
+          ..clear()
+          ..addAll(loaded);
+      }
       return true;
     } on ApiException catch (error) {
       errorMessage = error.code;
@@ -520,9 +783,53 @@ class DemoStore extends ChangeNotifier {
     }
   }
 
+  Future<void> _persistGroup(ExpenseGroup group) async {
+    await _offlineDatabase?.saveGroup(group);
+    if (_offlineFirst && isAuthenticated) {
+      unawaited(syncLocalGroups());
+    }
+  }
+
+  Future<void> refreshAuthentication() async {
+    final user = _apiClient?.user;
+    if (_offlineFirst && user != null) {
+      for (final group in groups) {
+        final index = group.members.indexWhere(
+          (member) => member.id == seedUserId || member.userId == user.id,
+        );
+        if (index < 0) continue;
+        final existing = group.members[index];
+        if (existing.userId == user.id && existing.name == user.name) continue;
+        group.members[index] = Member(
+          id: existing.id,
+          userId: user.id,
+          name: user.name,
+          phone: user.phone,
+          active: existing.active,
+          accepted: existing.accepted,
+          salarySharing: existing.salarySharing,
+        );
+        await _persistGroup(group);
+      }
+    }
+    notifyListeners();
+  }
+
+  void reportConnectivityError() {
+    errorMessage = 'server_unavailable';
+    notifyListeners();
+  }
+
+  String _newLocalId(String prefix) {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    return '${prefix}_${bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join()}_${_sequence++}';
+  }
+
   @override
   void dispose() {
     _apiClient?.close();
+    unawaited(_offlineDatabase?.close());
     super.dispose();
   }
 

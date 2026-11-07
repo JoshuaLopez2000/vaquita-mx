@@ -64,6 +64,11 @@ member's relationship with another member.
 - Use Android App Links or verified deep links in production.
 - Redact sensitive content from screenshots and push notifications.
 - Consider Play Integrity signals as risk input, not authentication.
+- Offline group and financial history is stored in app-private SQLite storage on
+  supported native platforms. It is not encrypted at the application layer;
+  treat it as sensitive, and assess database encryption and backup exclusions
+  before public deployment. Offline sync is opt-in per account and requires
+  authenticated API access.
 
 ## Privacy
 

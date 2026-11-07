@@ -1472,6 +1472,60 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Revocar todas las sesiones de tu cuenta'**
   String get signOutAllDescription;
+
+  /// No description provided for @loginOrSignUp.
+  ///
+  /// In es, this message translates to:
+  /// **'Iniciar sesión / Registrarse'**
+  String get loginOrSignUp;
+
+  /// No description provided for @loginOrSignUpDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Crea una cuenta para sincronizar tus grupos'**
+  String get loginOrSignUpDescription;
+
+  /// No description provided for @syncLocalGroupsTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'¿Sincronizar tus grupos locales?'**
+  String get syncLocalGroupsTitle;
+
+  /// No description provided for @syncLocalGroupsDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'La sincronización envía tus grupos locales y su historial a tu cuenta. Los miembros podrían recibir invitaciones cuando un grupo se comparta.'**
+  String get syncLocalGroupsDescription;
+
+  /// No description provided for @later.
+  ///
+  /// In es, this message translates to:
+  /// **'Más tarde'**
+  String get later;
+
+  /// No description provided for @syncNow.
+  ///
+  /// In es, this message translates to:
+  /// **'Sincronizar ahora'**
+  String get syncNow;
+
+  /// No description provided for @syncLocalGroupsButton.
+  ///
+  /// In es, this message translates to:
+  /// **'Sincronizar grupos locales'**
+  String get syncLocalGroupsButton;
+
+  /// No description provided for @syncCompleted.
+  ///
+  /// In es, this message translates to:
+  /// **'Grupos locales sincronizados'**
+  String get syncCompleted;
+
+  /// No description provided for @syncFailed.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo sincronizar. Tus datos locales están seguros; inténtalo de nuevo.'**
+  String get syncFailed;
 }
 
 class _AppLocalizationsDelegate

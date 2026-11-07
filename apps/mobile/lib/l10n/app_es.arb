@@ -256,4 +256,13 @@
   ,"signOutDescription": "Cerrar sesión en este dispositivo"
   ,"signOutAll": "Cerrar todas las sesiones"
   ,"signOutAllDescription": "Revocar todas las sesiones de tu cuenta"
+  ,"loginOrSignUp": "Iniciar sesión / Registrarse"
+  ,"loginOrSignUpDescription": "Crea una cuenta para sincronizar tus grupos"
+  ,"syncLocalGroupsTitle": "¿Sincronizar tus grupos locales?"
+  ,"syncLocalGroupsDescription": "La sincronización envía tus grupos locales y su historial a tu cuenta. Los miembros podrían recibir invitaciones cuando un grupo se comparta."
+  ,"later": "Más tarde"
+  ,"syncNow": "Sincronizar ahora"
+  ,"syncLocalGroupsButton": "Sincronizar grupos locales"
+  ,"syncCompleted": "Grupos locales sincronizados"
+  ,"syncFailed": "No se pudo sincronizar. Tus datos locales están seguros; inténtalo de nuevo."
 }
