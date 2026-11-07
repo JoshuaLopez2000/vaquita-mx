@@ -409,6 +409,18 @@ func (r *Repository) load(c context.Context, g *Group) error {
 	return load(c, g, r.db)
 }
 
+// Ledger reads the persisted members, expenses, and settlements of one group
+// through q and derives balances and payment relations with the exact
+// projection the API serves. q may be a *sql.DB or *sql.Tx, so other packages
+// can revalidate financial state inside their own transaction snapshots.
+func Ledger(c context.Context, groupID string, q queryer) (Group, error) {
+	g := Group{ID: groupID}
+	if err := load(c, &g, q); err != nil {
+		return Group{}, err
+	}
+	return g, nil
+}
+
 func load(c context.Context, g *Group, q queryer) error {
 	g.Members = make([]Member, 0)
 	g.Expenses = make([]Expense, 0)

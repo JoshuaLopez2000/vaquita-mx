@@ -41,7 +41,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 7 || len(result.Applied) != 7 {
+	if result.CurrentVersion != 8 || len(result.Applied) != 8 {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
 	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "settlements", "payment_requests", "payment_provider_events", "schema_migrations"} {
@@ -53,8 +53,15 @@ func TestMigrateCleanDatabase(t *testing.T) {
 			t.Fatalf("table %s was not created", table)
 		}
 	}
+	var outstandingColumn bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='payment_provider_events' AND column_name='outstanding_cents')`).Scan(&outstandingColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !outstandingColumn {
+		t.Fatal("payment_provider_events.outstanding_cents was not created")
+	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 7 {
+	if err != nil || version != 8 {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -62,7 +69,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 7 || len(second.Applied) != 0 {
+	if second.CurrentVersion != 8 || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -117,7 +124,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 7 || len(result.Applied) != 7 {
+	if result.CurrentVersion != 8 || len(result.Applied) != 8 {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64

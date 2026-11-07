@@ -78,5 +78,14 @@ Recommended database rules:
 | `POST` | `/api/v1/groups/{id}/settlements` | Record a simulated settlement |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
+| `POST` | `/api/v1/payment-requests/{id}/simulate` | Complete a simulated payment |
+
+Simulated payment completion revalidates the bilateral ledger inside the
+completion transaction and stores the outstanding debtor/creditor balance in
+`payment_provider_events.outstanding_cents`. Amounts are never capped at
+completion: when the outstanding debt shrank between creation and the callback
+(such as a partial settlement in between), the payment completes in full and
+the difference is projected as the receiver's debt to the payer. The
+annotation keeps every overpayment traceable in the immutable event history.
 
 The development endpoints are intentionally unauthenticated to make the local vertical slice easy to exercise. Authentication is required before any non-local deployment exposes domain mutations.

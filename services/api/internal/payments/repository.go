@@ -11,6 +11,8 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
 )
 
 var (
@@ -112,11 +114,21 @@ func (r *Repository) CompleteSimulated(ctx context.Context, actorUserID, request
 		return StoredRequest{}, false, ErrInvalidEvent
 	}
 
+	// Revalidate the bilateral ledger inside this transaction. Payments are
+	// never capped by the recreated ledger: an amount above the outstanding
+	// debt completes fully and the difference is the receiver's debt to the
+	// payer in the next projection. The outstanding value stays on the event
+	// so overpayments remain traceable financial history.
+	outstanding, err := outstandingFor(ctx, tx, request)
+	if err != nil {
+		return StoredRequest{}, false, err
+	}
+
 	eventID, err := newEventID()
 	if err != nil {
 		return StoredRequest{}, false, err
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO payment_provider_events(id,provider,provider_event_id,payment_request_id,status) VALUES($1,$2,$3,$4,$5) ON CONFLICT(provider,provider_event_id) DO NOTHING`, eventID, request.Provider, providerEventID, request.ID, StatusPaid)
+	result, err := tx.ExecContext(ctx, `INSERT INTO payment_provider_events(id,provider,provider_event_id,payment_request_id,status,outstanding_cents) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(provider,provider_event_id) DO NOTHING`, eventID, request.Provider, providerEventID, request.ID, StatusPaid, outstanding)
 	if err != nil {
 		return StoredRequest{}, false, err
 	}
@@ -179,4 +191,21 @@ func newEventID() (string, error) {
 	}
 	return "pe_" + hex.EncodeToString(value), nil
 }
+
+// outstandingFor revalidates the current debtor/creditor debt through the same
+// deterministic ledger projection the API serves. It reads through the
+// completion transaction, so the annotation shares the settlement snapshot.
+func outstandingFor(ctx context.Context, tx *sql.Tx, request StoredRequest) (int64, error) {
+	ledger, err := groups.Ledger(ctx, request.GroupID, tx)
+	if err != nil {
+		return 0, fmt.Errorf("revalidate outstanding balance: %w", err)
+	}
+	for _, relation := range ledger.PaymentRelations {
+		if relation.FromMemberID == request.DebtorMemberID && relation.ToMemberID == request.CreditorMemberID {
+			return relation.AmountCents, nil
+		}
+	}
+	return 0, nil
+}
+
 func isUniqueViolation(err error) bool { return strings.Contains(err.Error(), "duplicate key") }
