@@ -25,6 +25,8 @@ services/api/coverage.out
 # Editors and OS
 .idea/
 .vscode/
+.agents/
+skills-lock.json
 *.iml
 .DS_Store
 Thumbs.db

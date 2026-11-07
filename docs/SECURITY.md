@@ -25,6 +25,12 @@ requirements are defined in [Security scanning](SECURITY_SCANNING.md).
 - Process events transactionally and make retries safe.
 - Match amount, currency, receiver, and correlation ID before settlement.
 - Never accept a client-side `paid: true` value as proof of payment.
+- Reconciliation (issue #27) asks the provider adapter for its own record of
+  pending requests through authenticated server-side credentials. A settled
+  result is applied once per provider event, transactionally; divergent
+  amount, currency, receiver, correlation ID, or repeated provider failures
+  park the request in `payment_reconcile_events` for manual review instead of
+  inventing settlements.
 - Use compensating ledger entries instead of destructive edits.
 
 ## Group authorization matrix

@@ -465,6 +465,15 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 		serverError(w, "validate payment request", err)
 		return
 	}
+	creditorMemberID, err := app.requests.CreditorMemberID(r.Context(), userID(r), input.GroupID)
+	if err != nil {
+		serverError(w, "find payment request creditor", err)
+		return
+	}
+	// The provider needs the receiver reference to authenticate its side of
+	// the payment; it is derived server-side from the authenticated user and
+	// excluded from the idempotency hash (json:"-").
+	input.CreditorID = creditorMemberID
 	result, err := app.payments.CreateRequest(r.Context(), input)
 	if errors.Is(err, payments.ErrInvalidRequest) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "group_id, debtor_id, a positive amount_cents, and currency MXN are required", nil)
@@ -472,11 +481,6 @@ func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Reque
 	}
 	if err != nil {
 		serverError(w, "create payment request", err)
-		return
-	}
-	creditorMemberID, err := app.requests.CreditorMemberID(r.Context(), userID(r), input.GroupID)
-	if err != nil {
-		serverError(w, "find payment request creditor", err)
 		return
 	}
 	stored, created, err := app.requests.Create(r.Context(), userID(r), key, payloadHash, creditorMemberID, result, input)

@@ -78,9 +78,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer paymentRepository.Close()
+	paymentProvider := payments.NewSimulatedProvider()
+	reconciler := payments.NewReconciler(paymentProvider, paymentRepository)
+	jobContext, stopJobs := context.WithCancel(context.Background())
+	defer stopJobs()
+	go reconciler.Run(jobContext)
 	app := application{
 		auth:     authRepository,
-		payments: payments.SimulatedProvider{},
+		payments: paymentProvider,
 		requests: paymentRepository,
 		groups:   repository,
 	}

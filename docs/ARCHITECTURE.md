@@ -78,5 +78,35 @@ Recommended database rules:
 | `POST` | `/api/v1/groups/{id}/settlements` | Record a simulated settlement |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
+| `POST` | `/api/v1/payment-requests/{id}/simulate` | Complete a simulated payment |
+
+Simulated payment completion revalidates the bilateral ledger inside the
+completion transaction and stores the outstanding debtor/creditor balance in
+`payment_provider_events.outstanding_cents`. Amounts are never capped at
+completion: when the outstanding debt shrank between creation and the callback
+(such as a partial settlement in between), the payment completes in full and
+the difference is projected as the receiver's debt to the payer. The
+annotation keeps every overpayment traceable in the immutable event history.
+
+### Payment reconciliation job (Phase 2)
+
+A `payments.Reconciler` runs inside the API process (30 second interval in
+development). Each cycle:
+
+1. Claims due `PENDING` payment requests with `FOR UPDATE SKIP LOCKED` plus a
+   lease on `payment_requests.reconcile_after`, so concurrent workers and
+   crashed workers pair up correctly.
+2. Asks the active provider adapter for the request's own record through the
+   opaque `provider_ref` returned at creation.
+3. Applies a provider-confirmed `PAID` state exactly once through the same
+   completion transaction as client callbacks, matching amount, MXN currency,
+   receiver, and correlation ID first.
+4. Closes requests the provider reports as `EXPIRED` or `FAILED`, retries
+   provider outages with bounded exponential backoff (`max 5` fruitless
+   attempts), and parks unresolved mismatches in `payment_reconcile_events`
+   with a `MANUAL` outcome.
+
+Pending requests untouched by matching provider state simply reschedule; only
+settlement-grade divergence reaches manual review.
 
 The development endpoints are intentionally unauthenticated to make the local vertical slice easy to exercise. Authentication is required before any non-local deployment exposes domain mutations.
