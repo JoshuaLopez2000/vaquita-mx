@@ -37,14 +37,20 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
+	migrations, err := Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestVersion := len(migrations)
+
 	result, err := Migrate(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 9 || len(result.Applied) != 9 {
+	if result.CurrentVersion != latestVersion || len(result.Applied) != latestVersion {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
-	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "settlements", "payment_requests", "payment_provider_events", "schema_migrations"} {
+	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "settlements", "payment_requests", "payment_provider_events", "offline_sync_groups", "offline_sync_members", "offline_sync_entries", "schema_migrations"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("find table %s: %v", table, err)
@@ -75,7 +81,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 		t.Fatal("payment_requests.provider_ref was not created")
 	}
 	version, err := Verify(ctx, db)
-	if err != nil || version != 9 {
+	if err != nil || version != latestVersion {
 		t.Fatalf("verify version = %d, error = %v", version, err)
 	}
 
@@ -83,7 +89,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.CurrentVersion != 9 || len(second.Applied) != 0 {
+	if second.CurrentVersion != latestVersion || len(second.Applied) != 0 {
 		t.Fatalf("migration rerun was not idempotent: %#v", second)
 	}
 }
@@ -112,6 +118,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	latestVersion := len(migrations)
 	// This is the state produced by the application before migrations were
 	// versioned: the current schema exists, but there is no migration ledger.
 	if _, err := db.ExecContext(ctx, migrations[0].SQL); err != nil {
@@ -138,7 +145,7 @@ func TestMigrateAdoptsCurrentUnversionedSchemaWithoutDataLoss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.CurrentVersion != 9 || len(result.Applied) != 9 {
+	if result.CurrentVersion != latestVersion || len(result.Applied) != latestVersion {
 		t.Fatalf("unexpected adoption result: %#v", result)
 	}
 	var amount, settlement int64
