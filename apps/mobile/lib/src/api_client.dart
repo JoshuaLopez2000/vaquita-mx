@@ -159,6 +159,74 @@ class ApiClient {
         .toList();
   }
 
+  Future<Map<String, String>> syncLocalGroups(List<ExpenseGroup> groups) async {
+    final response = await _request(
+      'POST',
+      '/api/v1/offline-sync/groups',
+      body: {
+        'groups': [for (final group in groups) _offlineGroupPayload(group)],
+      },
+    );
+    final rows = (_decode(response)['groups'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    return {
+      for (final row in rows)
+        row['local_group_id'] as String: row['remote_group_id'] as String,
+    };
+  }
+
+  Map<String, dynamic> _offlineGroupPayload(ExpenseGroup group) => {
+        'id': group.id,
+        'name': group.name,
+        'emoji': group.emoji,
+        'visibility': group.visibility,
+        'salary_split_enabled': group.salarySplitEnabled,
+        'members': [
+          for (final member in group.members)
+            {
+              'id': member.id,
+              'name': member.name,
+              'phone': member.phone,
+              'salary_sharing': member.salarySharing,
+              'active': member.active,
+            },
+        ],
+        'expenses': [
+          for (final expense in group.expenses)
+            {
+              'id': expense.id,
+              'description': expense.description,
+              'amount_cents': expense.amountCents,
+              'payer_id': expense.payerId,
+              'payers': [
+                for (final payer in expense.payers)
+                  {
+                    'member_id': payer.memberId,
+                    'amount_cents': payer.amountCents,
+                  },
+              ],
+              'participant_ids': expense.participantIds,
+              'split_mode': expense.splitMode,
+              'shares': expense.splitMode == 'exact' &&
+                      expense.consumptionShares.isNotEmpty
+                  ? expense.consumptionShares
+                  : expense.shares,
+              'split_overpayment': expense.splitOverpayment,
+              'created_at': expense.createdAt.toUtc().toIso8601String(),
+            },
+        ],
+        'settlements': [
+          for (final settlement in group.settlements)
+            {
+              'id': settlement.id,
+              'from_member_id': settlement.fromMemberId,
+              'to_member_id': settlement.toMemberId,
+              'amount_cents': settlement.amountCents,
+              'created_at': settlement.createdAt.toUtc().toIso8601String(),
+            },
+        ],
+      };
+
   Future<void> createGroup({
     required String name,
     required List<String> memberNames,

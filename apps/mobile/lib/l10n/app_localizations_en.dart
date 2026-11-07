@@ -782,4 +782,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get signOutAllDescription => 'Revoke every session for your account';
+
+  @override
+  String get loginOrSignUp => 'Log in / Sign up';
+
+  @override
+  String get loginOrSignUpDescription =>
+      'Create an account to sync your groups';
+
+  @override
+  String get syncLocalGroupsTitle => 'Sync your local groups?';
+
+  @override
+  String get syncLocalGroupsDescription =>
+      'Syncing sends your local groups and their history to your account. Members may receive invitations when a group is shared.';
+
+  @override
+  String get later => 'Later';
+
+  @override
+  String get syncNow => 'Sync now';
+
+  @override
+  String get syncLocalGroupsButton => 'Sync local groups';
+
+  @override
+  String get syncCompleted => 'Local groups synced';
+
+  @override
+  String get syncFailed => 'Sync failed. Your local data is safe; try again.';
 }

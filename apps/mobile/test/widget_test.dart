@@ -1,11 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/app.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/store.dart';
 
 void main() {
+  testWidgets('keeps the app open and offers authentication in Profile',
+      (tester) async {
+    final store = DemoStore.remote(
+      ApiClient(baseUrl: 'http://example.test'),
+    );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.text('Perfil'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('login-signup-button')), findsOneWidget);
+    expect(find.text('Iniciar sesión / Registrarse'), findsOneWidget);
+    expect(find.byKey(const Key('auth-submit')), findsNothing);
+    store.dispose();
+  });
+
   testWidgets('shows balances, groups, and navigation', (tester) async {
     await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
 

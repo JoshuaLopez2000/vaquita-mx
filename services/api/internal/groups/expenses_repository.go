@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 )
 
 func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseInput) (Group, error) {
@@ -12,9 +13,31 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	if e != nil {
 		return g, e
 	}
+	if e = prepareExpense(g, &in); e != nil {
+		return g, e
+	}
+	id, e := newID("expense")
+	if e != nil {
+		return g, e
+	}
+	t, e := r.db.BeginTx(c, nil)
+	if e != nil {
+		return g, e
+	}
+	defer t.Rollback()
+	if e = insertExpense(c, t, gid, id, in, time.Time{}); e != nil {
+		return g, e
+	}
+	if e = t.Commit(); e != nil {
+		return g, e
+	}
+	return r.Get(c, u, gid)
+}
+
+func prepareExpense(g Group, in *AddExpenseInput) error {
 	in.Description = strings.TrimSpace(in.Description)
 	if in.Description == "" || in.AmountCents <= 0 || len(in.ParticipantIDs) == 0 {
-		return g, ErrInvalid
+		return ErrInvalid
 	}
 	if in.SplitMode == "" {
 		in.SplitMode = "equal"
@@ -24,7 +47,7 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 		in.SplitOverpayment = &defaultSplitOverpayment
 	}
 	if in.SplitMode != "equal" && in.SplitMode != "salary" && in.SplitMode != "exact" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
-		return g, ErrInvalid
+		return ErrInvalid
 	}
 	ms := map[string]Member{}
 	for _, m := range g.Members {
@@ -41,17 +64,17 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	payerSeen := map[string]bool{}
 	for _, payer := range in.Payers {
 		if _, ok := ms[payer.MemberID]; !ok || payerSeen[payer.MemberID] || payer.AmountCents <= 0 {
-			return g, ErrInvalid
+			return ErrInvalid
 		}
 		var err error
 		paid, err = addCentavos(paid, payer.AmountCents)
 		if err != nil {
-			return g, ErrInvalid
+			return ErrInvalid
 		}
 		payerSeen[payer.MemberID] = true
 	}
 	if paid < in.AmountCents {
-		return g, ErrInvalid
+		return ErrInvalid
 	}
 	// Retain a meaningful legacy field for older readers.
 	in.PayerID = in.Payers[0].MemberID
@@ -59,38 +82,45 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	for _, id := range in.ParticipantIDs {
 		m, ok := ms[id]
 		if !ok || seen[id] || in.SplitMode == "salary" && !m.SalarySharing {
-			return g, ErrInvalid
+			return ErrInvalid
 		}
 		seen[id] = true
 	}
 	if in.SplitMode == "exact" {
 		if _, err := validateExactShares(in.Shares, in.ParticipantIDs, in.AmountCents); err != nil {
-			return g, ErrInvalid
+			return ErrInvalid
 		}
 	} else if len(in.Shares) != 0 {
-		return g, ErrInvalid
+		return ErrInvalid
 	}
-	id, e := newID("expense")
-	if e != nil {
-		return g, e
+	return nil
+}
+
+func insertExpense(c context.Context, t *sql.Tx, gid, id string, in AddExpenseInput, createdAt time.Time) error {
+	var e error
+	var paid int64
+	for _, payer := range in.Payers {
+		paid, e = addCentavos(paid, payer.AmountCents)
+		if e != nil {
+			return ErrInvalid
+		}
 	}
-	t, e := r.db.BeginTx(c, nil)
-	if e != nil {
-		return g, e
+	if createdAt.IsZero() {
+		_, e = t.ExecContext(c, `INSERT INTO expenses(id,group_id,description,amount_cents,payer_id,split_mode,split_overpayment)VALUES($1,$2,$3,$4,$5,$6,$7)`, id, gid, in.Description, in.AmountCents, in.PayerID, in.SplitMode, *in.SplitOverpayment)
+	} else {
+		_, e = t.ExecContext(c, `INSERT INTO expenses(id,group_id,description,amount_cents,payer_id,split_mode,split_overpayment,created_at)VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, gid, in.Description, in.AmountCents, in.PayerID, in.SplitMode, *in.SplitOverpayment, createdAt)
 	}
-	defer t.Rollback()
-	_, e = t.ExecContext(c, `INSERT INTO expenses(id,group_id,description,amount_cents,payer_id,split_mode,split_overpayment)VALUES($1,$2,$3,$4,$5,$6,$7)`, id, gid, in.Description, in.AmountCents, in.PayerID, in.SplitMode, *in.SplitOverpayment)
 	if e != nil {
-		return g, e
+		return e
 	}
 	for p, m := range in.ParticipantIDs {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_participants(expense_id,member_id,position)VALUES($1,$2,$3)`, id, m, p); e != nil {
-			return g, e
+			return e
 		}
 	}
 	for p, payer := range in.Payers {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_payers(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, p, payer.AmountCents); e != nil {
-			return g, e
+			return e
 		}
 	}
 	if !*in.SplitOverpayment && paid > in.AmountCents {
@@ -100,23 +130,20 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 			SplitOverpayment: false,
 		})
 		if err != nil {
-			return g, ErrInvalid
+			return ErrInvalid
 		}
 		for index, payer := range retained {
 			if _, err = t.ExecContext(c, `INSERT INTO expense_retained_overpayments(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, payer.MemberID, index, payer.AmountCents); err != nil {
-				return g, err
+				return err
 			}
 		}
 	}
 	for p, share := range in.Shares {
 		if _, e = t.ExecContext(c, `INSERT INTO expense_shares(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, share.MemberID, p, share.AmountCents); e != nil {
-			return g, e
+			return e
 		}
 	}
-	if e = t.Commit(); e != nil {
-		return g, e
-	}
-	return r.Get(c, u, gid)
+	return nil
 }
 func (r *Repository) AddSettlement(c context.Context, u, g, id string, amountCents *int64) (Group, error) {
 	t, e := r.db.BeginTx(c, nil)

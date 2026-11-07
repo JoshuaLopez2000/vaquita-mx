@@ -15,14 +15,24 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 
 ## Core flow
 
-1. A user creates a group and invites members.
-2. A member records an expense and its payer or payers.
-3. The group chooses equal, percentage, shares, or exact splits.
-4. The server calculates obligations in integer centavos.
-5. A creditor creates one request per debtor.
-6. The debtor opens the request and completes payment externally.
-7. An authenticated provider event, or the demo simulator, records settlement.
-8. The balance view changes while the original expense remains immutable.
+1. A user opens the app and can create and manage groups without an account.
+2. The app stores local groups, expenses, and settlements on the device.
+3. A user can log in or sign up from Profile and choose whether to sync local
+   groups now or later.
+4. Invites are sent only when the user opts in to syncing. Sync merges local
+   groups with the account's existing groups and safely retries pending changes.
+5. A member records an expense and its payer or payers.
+6. The group chooses equal, percentage, shares, or exact splits.
+7. The server calculates obligations in integer centavos.
+8. A creditor creates one request per debtor.
+9. The debtor opens the request and completes payment externally.
+10. An authenticated provider event, or the demo simulator, records settlement.
+11. The balance view changes while the original expense remains immutable.
+
+Offline data remains on the device until the user explicitly enables sync for
+the signed-in account. Once enabled, pending changes retry when connectivity
+returns. The app uses SQLite on supported native platforms; web currently keeps
+offline data in memory only.
 
 ## MVP scope
 
@@ -36,6 +46,7 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 - Reminders and a simple activity feed.
 - Spanish-first UI with English localization support.
 - Simulated provider that supports deterministic demos.
+- Offline-first group and ledger management with opt-in account sync.
 
 ## Deliberate exclusions
 

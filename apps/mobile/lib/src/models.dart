@@ -20,6 +20,14 @@ class AppUser {
         phone: json['phone'] as String? ?? '',
         salaryCents: json['salary_cents'] as int? ?? 0,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'email': email,
+        'phone': phone,
+        'salary_cents': salaryCents,
+      };
 }
 
 class Member {
@@ -49,6 +57,16 @@ class Member {
         salarySharing: json['salary_sharing'] as bool? ?? false,
         accepted: json['accepted'] as bool? ?? true,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'name': name,
+        'phone': phone,
+        'active': active,
+        'salary_sharing': salarySharing,
+        'accepted': accepted,
+      };
 
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -153,6 +171,25 @@ class Expense {
                     ExpensePayer.fromJson(value as Map<String, dynamic>))
                 .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'description': description,
+        'amount_cents': amountCents,
+        'payer_id': payerId,
+        'payers': payers.map((payer) => payer.toJson()).toList(),
+        'participant_ids': participantIds,
+        'created_at': createdAt.toIso8601String(),
+        'split_mode': splitMode,
+        'shares': shares,
+        'paid_amount_cents': paidAmountCents,
+        'consumption_shares': consumptionShares,
+        'overpayment_cents': overpaymentCents,
+        'overpayment_shares': overpaymentShares,
+        'split_overpayment': splitOverpayment,
+        'retained_overpayments':
+            retainedOverpayments.map((payer) => payer.toJson()).toList(),
+      };
 }
 
 class ExpensePayer {
@@ -165,6 +202,11 @@ class ExpensePayer {
         memberId: json['member_id'] as String,
         amountCents: json['amount_cents'] as int,
       );
+
+  Map<String, dynamic> toJson() => {
+        'member_id': memberId,
+        'amount_cents': amountCents,
+      };
 }
 
 class ExpenseShare {
@@ -196,6 +238,14 @@ class Settlement {
         amountCents: json['amount_cents'] as int,
         createdAt: DateTime.parse(json['created_at'] as String),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'from_member_id': fromMemberId,
+        'to_member_id': toMemberId,
+        'amount_cents': amountCents,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class PaymentRelation {
@@ -271,6 +321,27 @@ class ExpenseGroup {
                     PaymentRelation.fromJson(value as Map<String, dynamic>))
                 .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'emoji': emoji,
+        'visibility': visibility,
+        'salary_split_enabled': salarySplitEnabled,
+        'salary_split_available': salarySplitAvailable,
+        'members': members.map((member) => member.toJson()).toList(),
+        'expenses': expenses.map((expense) => expense.toJson()).toList(),
+        'settlements':
+            settlements.map((settlement) => settlement.toJson()).toList(),
+        'balances': balances,
+        'payment_relations': paymentRelations
+            .map((relation) => {
+                  'from_member_id': relation.fromMemberId,
+                  'to_member_id': relation.toMemberId,
+                  'amount_cents': relation.amountCents,
+                })
+            .toList(),
+      };
 
   int get totalSpentCents => expenses.fold(
         0,

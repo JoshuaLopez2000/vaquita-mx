@@ -15,6 +15,8 @@ class AppCubit extends Cubit<AppState> {
   void _publish() => emit(AppState.fromStore(store));
 
   Future<void> loadGroups() => store.load();
+  Future<bool> syncLocalGroups({bool enable = false}) =>
+      store.syncLocalGroups(enable: enable);
   Future<void> loadInbox() async {
     await Future.wait([store.loadStatus(), store.loadInvitations()]);
   }

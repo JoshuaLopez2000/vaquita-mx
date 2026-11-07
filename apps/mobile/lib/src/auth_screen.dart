@@ -9,7 +9,7 @@ class AuthScreen extends StatefulWidget {
       {required this.api, required this.onAuthenticated, super.key});
 
   final ApiClient api;
-  final VoidCallback onAuthenticated;
+  final Future<void> Function() onAuthenticated;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -68,7 +68,12 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       await widget.api.persistSession();
       await _storage.write(key: _lastEmailKey, value: _email.text.trim());
-      if (mounted) widget.onAuthenticated();
+      if (mounted) {
+        await widget.onAuthenticated();
+      }
+      if (mounted) {
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+      }
     } on ApiException catch (error) {
       if (mounted) {
         setState(() => _error = localizedError(

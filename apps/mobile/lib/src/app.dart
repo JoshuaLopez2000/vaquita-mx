@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,6 +14,7 @@ import 'package:vaquita_mx/src/group_detail_screen.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/l10n/localized_error.dart';
 import 'package:vaquita_mx/src/models.dart';
+import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 
@@ -41,12 +45,13 @@ class VaquitaApp extends StatefulWidget {
 }
 
 class _VaquitaAppState extends State<VaquitaApp> {
-  late final DemoStore store;
-  late final AppCubit appCubit;
+  DemoStore? store;
+  AppCubit? appCubit;
   late final bool _ownsStore;
-  var _authenticated = false;
   var _restoringSession = true;
   var _locale = const Locale('es');
+  String? _initializationError;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   void _setLocale(Locale locale) => setState(() => _locale = locale);
 
@@ -54,44 +59,76 @@ class _VaquitaAppState extends State<VaquitaApp> {
   void initState() {
     super.initState();
     _ownsStore = widget.store == null;
-    store = widget.store ??
-        DemoStore.remote(ApiClient(baseUrl: VaquitaApp.apiBaseUrl));
-    appCubit = AppCubit(store);
-    _authenticated = !_ownsStore;
     if (_ownsStore) {
-      store.apiClient!.onSessionInvalidated = _handleInvalidSession;
-      _restoreSession();
+      _initializeStore();
     } else {
+      store = widget.store!;
+      appCubit = AppCubit(store!);
       _restoringSession = false;
     }
   }
 
-  Future<void> _restoreSession() async {
-    final restored = await store.apiClient!.restoreSession();
+  Future<void> _initializeStore() async {
+    try {
+      final api = ApiClient(baseUrl: VaquitaApp.apiBaseUrl);
+      api.onSessionInvalidated = _handleInvalidSession;
+      final database = kIsWeb ? null : await OfflineDatabase.open();
+      final initializedStore = DemoStore.offline(api, database);
+      final initializedCubit = AppCubit(initializedStore);
+      await initializedStore.initialize();
+      final restored = await api.restoreSession();
+      store = initializedStore;
+      appCubit = initializedCubit;
+      if (restored) {
+        await initializedStore.refreshAuthentication();
+        initializedStore.load();
+      }
+      if (!kIsWeb) _listenForReconnects();
+    } catch (error) {
+      _initializationError = error.toString();
+    }
     if (!mounted) return;
     setState(() {
-      _authenticated = restored;
       _restoringSession = false;
     });
-    if (restored) appCubit.loadGroups();
   }
 
   void _handleInvalidSession() {
     if (!mounted) return;
-    setState(() => _authenticated = false);
+    unawaited(store?.refreshAuthentication());
+  }
+
+  void _listenForReconnects() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      _syncWhenOnline,
+      onError: (Object error, StackTrace stackTrace) {
+        store?.reportConnectivityError();
+      },
+    );
+    unawaited(Connectivity().checkConnectivity().then(_syncWhenOnline));
+  }
+
+  Future<void> _syncWhenOnline(List<ConnectivityResult> results) async {
+    if (results.any((result) => result != ConnectivityResult.none) &&
+        store?.isAuthenticated == true) {
+      await store?.syncLocalGroups();
+    }
   }
 
   Future<void> _signOut(bool allDevices) async {
-    await store.apiClient?.signOut(allDevices: allDevices);
-    if (!mounted) return;
-    setState(() => _authenticated = false);
+    try {
+      await store?.apiClient?.signOut(allDevices: allDevices);
+    } finally {
+      await store?.refreshAuthentication();
+    }
   }
 
   @override
   void dispose() {
-    appCubit.close();
+    unawaited(_connectivitySubscription?.cancel());
+    appCubit?.close();
     if (_ownsStore) {
-      store.dispose();
+      store?.dispose();
     }
     super.dispose();
   }
@@ -104,60 +141,64 @@ class _VaquitaAppState extends State<VaquitaApp> {
       brightness: Brightness.light,
     );
 
-    return BlocProvider.value(
-      value: appCubit,
-      child: MaterialApp(
-        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: _locale,
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: colorScheme,
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF5F7F4),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: colorScheme.surfaceContainerLowest,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
+    final materialApp = MaterialApp(
+      onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: _locale,
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: colorScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF5F7F4),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: colorScheme.surfaceContainerLowest,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
           ),
-          cardTheme: CardThemeData(
-            margin: EdgeInsets.zero,
-            elevation: 0,
-            color: colorScheme.surfaceContainerLowest,
+        ),
+        cardTheme: CardThemeData(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          color: colorScheme.surfaceContainerLowest,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 52),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 52),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
         ),
-        home: _restoringSession
-            ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-            : _authenticated
-                ? AppShell(
-                    store: store,
+      ),
+      home: _restoringSession
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : _initializationError != null
+              ? Scaffold(
+                  body: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(_initializationError!),
+                    ),
+                  ),
+                )
+              : BlocProvider.value(
+                  value: appCubit!,
+                  child: AppShell(
+                    store: store!,
                     onLocaleChanged: _setLocale,
                     onSignOut: _signOut,
-                  )
-                : AuthScreen(
-                    api: store.apiClient!,
-                    onAuthenticated: () {
-                      setState(() => _authenticated = true);
-                      appCubit.loadGroups();
-                    },
                   ),
-      ),
+                ),
     );
+    return appCubit == null
+        ? materialApp
+        : BlocProvider.value(value: appCubit!, child: materialApp);
   }
 }
 
@@ -232,6 +273,60 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Future<void> _authenticate() async {
+    final api = widget.store.apiClient;
+    if (api == null) return;
+    final cubit = context.read<AppCubit>();
+    final navigator = Navigator.of(context);
+    await navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => AuthScreen(
+          api: api,
+          onAuthenticated: () async {
+            await widget.store.refreshAuthentication();
+            await cubit.loadGroups();
+          },
+        ),
+      ),
+    );
+    if (!mounted || !widget.store.isAuthenticated) return;
+    final l10n = AppLocalizations.of(context)!;
+    final shouldSync = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.syncLocalGroupsTitle),
+        content: Text(l10n.syncLocalGroupsDescription),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(l10n.later),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(l10n.syncNow),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || shouldSync != true) return;
+    final synced = await cubit.syncLocalGroups(enable: true);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(synced ? l10n.syncCompleted : l10n.syncFailed)),
+    );
+  }
+
+  Future<void> _syncNow() async {
+    final l10n = AppLocalizations.of(context)!;
+    final cubit = context.read<AppCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+    final synced = await cubit.syncLocalGroups(enable: true);
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(synced ? l10n.syncCompleted : l10n.syncFailed)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -252,6 +347,8 @@ class _AppShellState extends State<AppShell> {
                 store: widget.store,
                 onLocaleChanged: widget.onLocaleChanged,
                 onSignOut: widget.onSignOut,
+                onAuthenticate: _authenticate,
+                onSync: _syncNow,
               ),
             ],
           ),

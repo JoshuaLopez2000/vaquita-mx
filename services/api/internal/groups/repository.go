@@ -123,10 +123,26 @@ func (r *Repository) owner(c context.Context, t *sql.Tx, g, u string) error {
 	return e
 }
 func (r *Repository) member(c context.Context, t *sql.Tx, g string, p int, in MemberInput, shared bool) error {
+	id, e := newID("member")
+	if e != nil {
+		return e
+	}
+	return r.memberWithID(c, t, g, p, id, in, shared)
+}
+
+func (r *Repository) memberWithID(c context.Context, t *sql.Tx, g string, p int, id string, in MemberInput, shared bool) error {
+	return r.memberWithIDAllowUnregistered(c, t, g, p, id, in, shared, false)
+}
+
+func (r *Repository) memberWithIDAllowUnregistered(c context.Context, t *sql.Tx, g string, p int, id string, in MemberInput, shared, allowUnregistered bool) error {
 	in.Name = strings.TrimSpace(in.Name)
-	phone, ok := auth.NormalizePhone(in.Phone)
-	if !ok {
-		return ErrInvalid
+	phone := ""
+	if strings.TrimSpace(in.Phone) != "" {
+		var ok bool
+		phone, ok = auth.NormalizePhone(in.Phone)
+		if !ok {
+			return ErrInvalid
+		}
 	}
 	var uid sql.NullString
 	var known string
@@ -142,18 +158,15 @@ func (r *Repository) member(c context.Context, t *sql.Tx, g string, p int, in Me
 	if in.Name == "" {
 		return ErrInvalid
 	}
-	if shared && !uid.Valid {
+	if shared && !uid.Valid && !allowUnregistered {
 		return ErrInvalid
 	}
-	id, e := newID("member")
+	_, e := t.ExecContext(c, `INSERT INTO members(id,name,phone,user_id)VALUES($1,$2,NULLIF($3,''),$4)`, id, in.Name, phone, uid)
 	if e != nil {
 		return e
 	}
-	_, e = t.ExecContext(c, `INSERT INTO members(id,name,phone,user_id)VALUES($1,$2,NULLIF($3,''),$4)`, id, in.Name, phone, uid)
-	if e != nil {
-		return e
-	}
-	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id,accepted,role)VALUES($1,$2,$3,$4,$5,$6)`, g, id, p, uid, !shared, RoleMember)
+	accepted := !shared || !uid.Valid
+	_, e = t.ExecContext(c, `INSERT INTO group_members(group_id,member_id,position,user_id,accepted,role)VALUES($1,$2,$3,$4,$5,$6)`, g, id, p, uid, accepted, RoleMember)
 	return e
 }
 func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput) (Group, error) {
@@ -397,6 +410,7 @@ func salaryReady(c context.Context, q queryer, groupID string) bool {
 	e := q.QueryRowContext(c, `SELECT COUNT(*) FROM group_members x LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 AND x.removed_at IS NULL AND (NOT x.accepted OR x.declined_at IS NOT NULL OR NOT x.salary_sharing OR COALESCE(u.salary_cents,0)<=0)`, groupID).Scan(&missing)
 	return e == nil && missing == 0
 }
+
 // queryer is the subset of *sql.DB and *sql.Tx that read-only loading needs.
 // It lets a single transaction serve both the authorization read and the
 // validation used by commands that must not write against stale state.
