@@ -410,8 +410,13 @@ class ApiClient {
     return http.Response.fromStream(streamed);
   }
 
-  String _idempotencyKey() =>
-      'mobile-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
+  String _idempotencyKey() {
+    final random = Random.secure();
+    final suffix = List<int>.generate(16, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return 'mobile-${DateTime.now().microsecondsSinceEpoch}-$suffix';
+  }
 
   Future<bool> _refreshAccessToken() {
     final active = _refreshInProgress;
