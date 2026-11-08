@@ -61,6 +61,8 @@ An item may enter Ready when:
 - Acceptance criteria are satisfied with evidence.
 - Relevant Go and Flutter checks pass.
 - Important success and failure paths have tests.
+- Offline and remote paths behave consistently; sync, retry, and merge rules
+  are preserved.
 - Security, privacy, money, migration, and idempotency risks are addressed.
 - Documentation and API contracts reflect behavior changes.
 - Deployment, monitoring, and rollback are understood.

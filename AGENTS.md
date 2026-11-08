@@ -22,6 +22,39 @@ changing product behavior, authorization, money calculations, or payments.
 - Never put secrets or provider credentials in the mobile application or Git.
 - Never describe a simulated payment as a real transfer.
 
+## Offline/online parity
+
+The mobile client is offline-first on supported native platforms: local groups
+and ledger history live in SQLite (`apps/mobile/lib/src/offline_database.dart`,
+`store.dart`) and are usable before sign-in or sync opt-in. Every feature change
+must behave consistently in all supported modes: local-only, offline-first, and
+signed-in/remote. The web build keeps local data in memory only.
+
+- Implement each user-facing mutation in both the local/offline path and the
+  remote path. A mode must never silently no-op or diverge in money math.
+- Keep client and server allocation identical: integer centavos, the same split
+  methods, and the same deterministic remainder assignment.
+- Make new or changed group data round-trip through `ExpenseGroup.toJson`/
+  `fromJson`, the SQLite `groups` payload, `_offlineGroupPayload`, and
+  `OfflineSyncGroupInput`; add the matching server migration and
+  `offline_sync_entries` hash handling.
+- Preserve sync semantics: stable local IDs, local-to-server mappings, pending
+  edits as `revision > synced_revision`, idempotent retry, and rejection of edits
+  to already-synced financial records.
+- Keep `load()` merge-safe: pending local groups stay authoritative over server
+  copies; server data may overwrite only non-pending groups.
+- Any local schema change needs an `OfflineDatabase` version bump and
+  `onUpgrade` migration. Never require users to lose offline data.
+- State the offline behavior of remote-only concepts (contacts, invitations,
+  payment requests, provider callbacks) explicitly: disabled, queued, or
+  surfaced as an error. Never present a simulated or offline action as a real
+  transfer.
+- Update `docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, and `docs/SECURITY.md` when
+  offline behavior or sync scope changes.
+- Add parity tests for persistence across restart, sign-out/sign-in sync, retry
+  idempotency, and pending/conflict merging, in addition to the normal API and
+  Flutter suites.
+
 ## Required verification
 
 For API changes:
