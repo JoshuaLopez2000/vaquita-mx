@@ -18,11 +18,36 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `DELETE` | `/groups/{groupID}/members/{memberID}` | Remove a non-owner member; owner only. |
 | `POST` | `/groups/{groupID}/expenses` | Record an equal, salary-weighted, or exact-split expense, with one or more payers. |
 | `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user, partial or full. |
+| `POST` | `/contacts` | Save the authenticated user's contacts. |
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
 | `POST` | `/group-invitations/{groupID}/response` | Accept or decline the authenticated user's pending invitation. |
 | `POST` | `/payment-requests` | Create a durable **simulated** request for an exact share of an expense paid by the authenticated user. |
 | `POST` | `/payment-requests/{requestID}/simulate` | Confirm a simulator event as the debtor; this is not a real transfer. |
+
+## Idempotent commands
+
+The following commands accept an optional `Idempotency-Key` header containing
+1–128 bytes:
+
+| Command | Key requirement |
+| --- | --- |
+| `POST /groups` | Optional; same key and payload replays the original group result. |
+| `POST /groups/{groupID}/members` | Optional; same key and payload replays the original group result. |
+| `POST /groups/{groupID}/expenses` | Optional; same key and payload replays the original expense result. |
+| `POST /groups/{groupID}/settlements` | Optional; same key and payload replays the original settlement result. |
+| `POST /group-invitations/{groupID}/response` | Optional; same key and payload replays the original response. |
+| `POST /contacts` | Optional; same key and payload replays the original saved-contact result. |
+| `POST /payment-requests` | Required; same key and payload replays the original payment-request result. |
+
+For commands marked optional, omitting the header preserves the previous
+behavior and treats every request as a new intent. Keys are scoped to the
+authenticated user, command, and group when applicable. Reusing a key with a
+different payload returns `409 idempotency_key_conflict`. Successful command
+outcomes are retained for seven days by default; deployments can override this
+with a positive Go duration in `IDEMPOTENCY_RETENTION`. After an outcome expires,
+the same key can create a new command, so clients should use a unique key for
+each user intent and reuse it only for retries.
 
 Every member object returned in a group or invitation includes a persisted
 `role` of `owner` or `member`. See the authorization matrix in
@@ -69,7 +94,7 @@ reduce the derived balances without changing expense history.
 requires a valid session, group access, an expense paid by that user, an active
 participant debtor, and the exact centavo share computed by the ledger. The
 returned deep link is a simulator artifact and does not settle a balance. It
-also requires an `Idempotency-Key` header (1–128 characters). A retry with the
+also requires an `Idempotency-Key` header (1–128 bytes). A retry with the
 same authenticated user, key, and payload returns the original request; a key
 reused with another payload returns `409 idempotency_key_conflict`.
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/idempotency"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/payments"
 )
 
@@ -70,7 +72,24 @@ func (app application) addMember(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddMember(r.Context(), userID(r), r.PathValue("groupID"), input)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash add member", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	result, err := app.intents.Run(r.Context(), userID(r), opAddMember, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.AddMemberTx(r.Context(), tx, userID(r), groupID, input)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if errors.Is(err, groups.ErrInvalid) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a member needs a name or Mexican mobile number", nil)
 		return
@@ -83,7 +102,7 @@ func (app application) addMember(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "add member", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, result)
+	writeJSON(w, result.Status, result.Body)
 }
 
 func (app application) updateMember(w http.ResponseWriter, r *http.Request) {
@@ -255,12 +274,31 @@ func (app application) saveContacts(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	contacts, err := app.auth.SaveContacts(r.Context(), userID(r), input.Contacts)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash save contacts", hashErr)
+		return
+	}
+	result, err := app.intents.Run(r.Context(), userID(r), opSaveContacts, "", key, hash, func(tx *sql.Tx) (int, any, error) {
+		contacts, err := app.auth.SaveContactsTx(r.Context(), tx, userID(r), input.Contacts)
+		if err != nil {
+			return 0, nil, err
+		}
+		return http.StatusOK, map[string]any{"contacts": contacts}, nil
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if err != nil {
 		serverError(w, "save contacts", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"contacts": contacts})
+	writeJSON(w, result.Status, result.Body)
 }
 
 func (app application) removeContact(w http.ResponseWriter, r *http.Request) {
@@ -301,7 +339,26 @@ func (app application) respondInvitation(w http.ResponseWriter, r *http.Request)
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	err := app.groups.RespondInvitation(r.Context(), userID(r), r.PathValue("groupID"), input.Accept)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash invitation response", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	result, err := app.intents.Run(r.Context(), userID(r), opRespondInvitation, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		if err := app.groups.RespondInvitationTx(r.Context(), tx, userID(r), groupID, input.Accept); err != nil {
+			return 0, nil, err
+		}
+		return http.StatusNoContent, nil, nil
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if errors.Is(err, groups.ErrNotFound) {
 		writeAPIError(w, http.StatusNotFound, "resource_not_found", "invitation not found", nil)
 		return
@@ -310,7 +367,7 @@ func (app application) respondInvitation(w http.ResponseWriter, r *http.Request)
 		serverError(w, "respond invitation", err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeOutcome(w, commandOutcome{status: result.Status, body: result.Body})
 }
 
 func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
@@ -318,7 +375,23 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.Create(r.Context(), userID(r), input)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash create group", hashErr)
+		return
+	}
+	result, err := app.intents.Run(r.Context(), userID(r), opCreateGroup, "", key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.CreateTx(r.Context(), tx, userID(r), input)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if errors.Is(err, groups.ErrInvalid) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a name, emoji, and at least one member are required", nil)
 		return
@@ -327,7 +400,7 @@ func (app application) createGroup(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "create group", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, result)
+	writeJSON(w, result.Status, result.Body)
 }
 
 func (app application) syncLocalGroups(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +432,24 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddExpense(r.Context(), userID(r), r.PathValue("groupID"), input)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash add expense", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	result, err := app.intents.Run(r.Context(), userID(r), opAddExpense, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.AddExpenseTx(r.Context(), tx, userID(r), groupID, input)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if errors.Is(err, groups.ErrInvalid) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid expense or group member", nil)
 		return
@@ -372,7 +462,7 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "add expense", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, result)
+	writeJSON(w, result.Status, result.Body)
 }
 
 func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
@@ -383,7 +473,24 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	result, err := app.groups.AddSettlement(r.Context(), userID(r), r.PathValue("groupID"), input.MemberID, input.AmountCents)
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash add settlement", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	result, err := app.intents.Run(r.Context(), userID(r), opAddSettlement, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.AddSettlementTx(r.Context(), tx, userID(r), groupID, input.MemberID, input.AmountCents)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
 	if errors.Is(err, groups.ErrInvalid) {
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "member has no balance to settle", nil)
 		return
@@ -400,7 +507,7 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 		serverError(w, "add settlement", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, result)
+	writeJSON(w, result.Status, result.Body)
 }
 
 func (app application) removeMember(w http.ResponseWriter, r *http.Request) {

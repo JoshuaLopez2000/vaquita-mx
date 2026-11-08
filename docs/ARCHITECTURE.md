@@ -68,7 +68,9 @@ Recommended database rules:
 
 - Prefix endpoints with `/api/v1`.
 - Authenticate with short-lived access tokens and rotated refresh tokens.
-- Require an `Idempotency-Key` for request creation and settlement commands.
+- Require an `Idempotency-Key` for payment-request creation; group, member,
+  expense, settlement, invitation-response, and contact commands accept an
+  optional key to replay a stored outcome while preserving legacy behavior.
 - Return stable machine error codes alongside user-safe messages.
 - Publish an OpenAPI document as endpoints mature.
 - Propagate a request/correlation ID through logs and provider calls.

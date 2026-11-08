@@ -51,17 +51,43 @@ func (r *Repository) List(c context.Context, u string) ([]Group, error) {
 	return out, rows.Err()
 }
 func (r *Repository) Get(c context.Context, u, id string) (Group, error) {
+	return getOn(c, r.db, u, id)
+}
+
+// getOn reads one group for one user through q, so authorization and ledger
+// reads can share the transaction the command writes in.
+func getOn(c context.Context, q queryer, u, id string) (Group, error) {
 	var g Group
-	e := r.db.QueryRowContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g WHERE g.id=$1 AND EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$2 AND x.removed_at IS NULL AND x.accepted AND x.declined_at IS NULL AND (x.role='owner' OR g.visibility='shared'))`, id, u).Scan(&g.ID, &g.Name, &g.Emoji, &g.Visibility, &g.SalarySplitEnabled)
+	e := q.QueryRowContext(c, `SELECT g.id,g.name,g.emoji,g.visibility,g.salary_split_enabled FROM expense_groups g WHERE g.id=$1 AND EXISTS(SELECT 1 FROM group_members x WHERE x.group_id=g.id AND x.user_id=$2 AND x.removed_at IS NULL AND x.accepted AND x.declined_at IS NULL AND (x.role='owner' OR g.visibility='shared'))`, id, u).Scan(&g.ID, &g.Name, &g.Emoji, &g.Visibility, &g.SalarySplitEnabled)
 	if errors.Is(e, sql.ErrNoRows) {
 		return g, ErrNotFound
 	}
 	if e != nil {
 		return g, e
 	}
-	return g, r.load(c, &g)
+	return g, load(c, &g, q)
 }
 func (r *Repository) Create(c context.Context, u string, in CreateGroupInput) (Group, error) {
+	tx, e := r.db.BeginTx(c, nil)
+	if e != nil {
+		return Group{}, e
+	}
+	defer tx.Rollback()
+	g, e := r.CreateTx(c, tx, u, in)
+	if e != nil {
+		return Group{}, e
+	}
+	if e = tx.Commit(); e != nil {
+		return Group{}, e
+	}
+	return g, nil
+}
+
+// CreateTx inserts the group, its owner, and its founding members inside the
+// transaction the caller owns, and returns the group as the client will read
+// it. The idempotency runner calls it so creation and its stored outcome
+// commit together.
+func (r *Repository) CreateTx(c context.Context, tx *sql.Tx, u string, in CreateGroupInput) (Group, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Emoji = strings.TrimSpace(in.Emoji)
 	if len(in.Name) < 2 || in.Emoji == "" {
@@ -79,13 +105,7 @@ func (r *Repository) Create(c context.Context, u string, in CreateGroupInput) (G
 	if e != nil {
 		return Group{}, e
 	}
-	tx, e := r.db.BeginTx(c, nil)
-	if e != nil {
-		return Group{}, e
-	}
-	defer tx.Rollback()
-	_, e = tx.ExecContext(c, `INSERT INTO expense_groups(id,name,emoji,owner_id,visibility,salary_split_enabled)VALUES($1,$2,$3,$4,$5,$6)`, id, in.Name, in.Emoji, u, in.Visibility, in.SalarySplitEnabled)
-	if e != nil {
+	if _, e = tx.ExecContext(c, `INSERT INTO expense_groups(id,name,emoji,owner_id,visibility,salary_split_enabled)VALUES($1,$2,$3,$4,$5,$6)`, id, in.Name, in.Emoji, u, in.Visibility, in.SalarySplitEnabled); e != nil {
 		return Group{}, e
 	}
 	if e = r.owner(c, tx, id, u); e != nil {
@@ -104,10 +124,11 @@ func (r *Repository) Create(c context.Context, u string, in CreateGroupInput) (G
 		}
 		p++
 	}
-	if e = tx.Commit(); e != nil {
+	g := Group{ID: id, Name: in.Name, Emoji: in.Emoji, Visibility: in.Visibility, SalarySplitEnabled: in.SalarySplitEnabled}
+	if e = load(c, &g, tx); e != nil {
 		return Group{}, e
 	}
-	return r.Get(c, u, id)
+	return g, nil
 }
 func (r *Repository) owner(c context.Context, t *sql.Tx, g, u string) error {
 	var n, p string
@@ -170,7 +191,7 @@ func (r *Repository) memberWithIDAllowUnregistered(c context.Context, t *sql.Tx,
 	return e
 }
 func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput) (Group, error) {
-	if e := r.requireRole(c, u, id, RoleOwner); e != nil {
+	if e := requireRoleOn(c, r.db, u, id, RoleOwner); e != nil {
 		return Group{}, e
 	}
 	g, e := r.Get(c, u, id)
@@ -209,30 +230,40 @@ func (r *Repository) Update(c context.Context, u, id string, in UpdateGroupInput
 	return r.Get(c, u, id)
 }
 func (r *Repository) AddMember(c context.Context, u, g string, in MemberInput) (Group, error) {
-	if e := r.requireRole(c, u, g, RoleOwner); e != nil {
+	tx, e := r.db.BeginTx(c, nil)
+	if e != nil {
 		return Group{}, e
 	}
-	group, e := r.Get(c, u, g)
+	defer tx.Rollback()
+	group, e := r.AddMemberTx(c, tx, u, g, in)
+	if e != nil {
+		return Group{}, e
+	}
+	if e = tx.Commit(); e != nil {
+		return Group{}, e
+	}
+	return group, nil
+}
+
+// AddMemberTx adds one member inside the transaction the caller owns, so the
+// role check, the position allocation, and the insert commit together with
+// the command's recorded outcome.
+func (r *Repository) AddMemberTx(c context.Context, tx *sql.Tx, u, g string, in MemberInput) (Group, error) {
+	if e := requireRoleOn(c, tx, u, g, RoleOwner); e != nil {
+		return Group{}, e
+	}
+	group, e := getOn(c, tx, u, g)
 	if e != nil {
 		return Group{}, e
 	}
 	var p int
-	e = r.db.QueryRowContext(c, `SELECT COALESCE(MAX(position),0)+1 FROM group_members WHERE group_id=$1`, g).Scan(&p)
-	if e != nil {
+	if e = tx.QueryRowContext(c, `SELECT COALESCE(MAX(position),0)+1 FROM group_members WHERE group_id=$1`, g).Scan(&p); e != nil {
 		return Group{}, e
 	}
-	t, e := r.db.BeginTx(c, nil)
-	if e != nil {
+	if e = r.member(c, tx, g, p, in, group.Visibility == "shared"); e != nil {
 		return Group{}, e
 	}
-	defer t.Rollback()
-	if e = r.member(c, t, g, p, in, group.Visibility == "shared"); e != nil {
-		return Group{}, e
-	}
-	if e = t.Commit(); e != nil {
-		return Group{}, e
-	}
-	return r.Get(c, u, g)
+	return getOn(c, tx, u, g)
 }
 func (r *Repository) UpdateMember(c context.Context, u, g, id string, in UpdateMemberInput) (Group, error) {
 	_, e := r.Get(c, u, g)
@@ -250,7 +281,7 @@ func (r *Repository) UpdateMember(c context.Context, u, g, id string, in UpdateM
 	}
 	identityChange := in.Name != "" || in.Phone != ""
 	if identityChange {
-		requesterRole, roleErr := r.role(c, u, g)
+		requesterRole, roleErr := roleOn(c, r.db, u, g)
 		if roleErr != nil || requesterRole != RoleOwner {
 			return Group{}, ErrNotFound
 		}
@@ -286,7 +317,7 @@ func (r *Repository) UpdateMember(c context.Context, u, g, id string, in UpdateM
 	return r.Get(c, u, g)
 }
 func (r *Repository) RemoveMember(c context.Context, u, g, id string) error {
-	if e := r.requireRole(c, u, g, RoleOwner); e != nil {
+	if e := requireRoleOn(c, r.db, u, g, RoleOwner); e != nil {
 		return e
 	}
 	var targetRole string
@@ -394,7 +425,22 @@ func (r *Repository) Invitations(c context.Context, u string) ([]Invitation, err
 }
 
 func (r *Repository) RespondInvitation(c context.Context, u, groupID string, accept bool) error {
-	result, e := r.db.ExecContext(c, `UPDATE group_members SET accepted=$1,declined_at=CASE WHEN $1 THEN NULL ELSE now() END WHERE group_id=$2 AND user_id=$3 AND removed_at IS NULL AND NOT accepted AND declined_at IS NULL`, accept, groupID, u)
+	tx, e := r.db.BeginTx(c, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = r.RespondInvitationTx(c, tx, u, groupID, accept); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+
+// RespondInvitationTx applies the invitation decision inside the transaction
+// the caller owns. It only touches rows that are still pending; the recorded
+// outcome lets an identical retry replay instead of returning not-found.
+func (r *Repository) RespondInvitationTx(c context.Context, tx *sql.Tx, u, groupID string, accept bool) error {
+	result, e := tx.ExecContext(c, `UPDATE group_members SET accepted=$1,declined_at=CASE WHEN $1 THEN NULL ELSE now() END WHERE group_id=$2 AND user_id=$3 AND removed_at IS NULL AND NOT accepted AND declined_at IS NULL`, accept, groupID, u)
 	if e != nil {
 		return e
 	}
@@ -592,17 +638,17 @@ func load(c context.Context, g *Group, q queryer) error {
 	return nil
 }
 
-func (r *Repository) role(c context.Context, userID, groupID string) (string, error) {
+func roleOn(c context.Context, q queryer, userID, groupID string) (string, error) {
 	var role string
-	err := r.db.QueryRowContext(c, `SELECT role FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END LIMIT 1`, groupID, userID).Scan(&role)
+	err := q.QueryRowContext(c, `SELECT role FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL ORDER BY CASE role WHEN 'owner' THEN 0 ELSE 1 END LIMIT 1`, groupID, userID).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
 	return role, err
 }
 
-func (r *Repository) requireRole(c context.Context, userID, groupID, required string) error {
-	role, err := r.role(c, userID, groupID)
+func requireRoleOn(c context.Context, q queryer, userID, groupID, required string) error {
+	role, err := roleOn(c, q, userID, groupID)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/database"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/idempotency"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/payments"
 )
 
@@ -744,8 +745,13 @@ func newPostgreSQLApplication(t *testing.T) postgresApplication {
 		t.Fatalf("open payment repository: %v", err)
 	}
 	t.Cleanup(func() { _ = paymentRepository.Close() })
+	idempotencyRepository, err := idempotency.Open(scopedURL.String())
+	if err != nil {
+		t.Fatalf("open command idempotency repository: %v", err)
+	}
+	t.Cleanup(func() { _ = idempotencyRepository.Close() })
 	paymentProvider := payments.NewSimulatedProvider()
-	app := application{auth: authRepository, groups: groupRepository, payments: paymentProvider, requests: paymentRepository}
+	app := application{auth: authRepository, groups: groupRepository, payments: paymentProvider, requests: paymentRepository, intents: idempotencyRepository}
 	server := httptest.NewServer(app.routes("*"))
 	t.Cleanup(server.Close)
 	return postgresApplication{db: db, dbURL: scopedURL.String(), server: server, provider: paymentProvider}
