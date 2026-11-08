@@ -35,6 +35,7 @@ class DemoStore extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
   final Set<String> _syncEnabledInMemory = {};
+  final Set<String> _serverSyncedGroupIds = {};
   bool _syncing = false;
   bool _syncRequested = false;
 
@@ -42,6 +43,16 @@ class DemoStore extends ChangeNotifier {
   bool get isOfflineFirst => _offlineFirst;
   bool get isAuthenticated => _apiClient?.user != null;
   ApiClient? get apiClient => _apiClient;
+
+  bool canUseServerFeatures(ExpenseGroup group) {
+    if (!isAuthenticated) return false;
+    return !_offlineFirst ||
+        !group.id.startsWith('local_') ||
+        _serverSyncedGroupIds.contains(group.id);
+  }
+
+  bool canRequestPayment(ExpenseGroup group) =>
+      group.visibility == 'shared' && canUseServerFeatures(group);
 
   String get currentUserId => _apiClient?.userId ?? seedUserId;
   AppUser? get authenticatedUser => _apiClient?.user;
@@ -53,6 +64,7 @@ class DemoStore extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_offlineDatabase == null) return;
+    _serverSyncedGroupIds.addAll(await _offlineDatabase.syncedGroupIds());
     groups
       ..clear()
       ..addAll(await _offlineDatabase.loadGroups());
@@ -92,6 +104,9 @@ class DemoStore extends ChangeNotifier {
             groups[index] = group;
           } else {
             groups.add(group);
+          }
+          if (group.id.startsWith('local_')) {
+            _serverSyncedGroupIds.add(group.id);
           }
           await _offlineDatabase?.saveGroup(group, needsSync: false);
         }
@@ -151,6 +166,11 @@ class DemoStore extends ChangeNotifier {
           }
           await _offlineDatabase?.markSynced(
               group.id, remoteId, revisions[group.id]!);
+          if (await _offlineDatabase?.isPending(group.id) ?? false) {
+            _serverSyncedGroupIds.remove(group.id);
+          } else {
+            _serverSyncedGroupIds.add(group.id);
+          }
         }
       } while (_offlineDatabase != null &&
           (_syncRequested || await _offlineDatabase.hasPendingGroups()));
@@ -240,6 +260,10 @@ class DemoStore extends ChangeNotifier {
     bool salarySplitEnabled = false,
     List<Map<String, String>>? members,
   }) async {
+    if (!isAuthenticated) {
+      visibility = 'personal';
+      salarySplitEnabled = false;
+    }
     if (_apiClient != null && !_offlineFirst) {
       return _sync(
         () => _apiClient.createGroup(
@@ -462,7 +486,8 @@ class DemoStore extends ChangeNotifier {
     required String memberId,
     int? amountCents,
   }) async {
-    if (_apiClient != null && !_offlineFirst) {
+    final group = groupById(groupId);
+    if (_apiClient != null && canUseServerFeatures(group)) {
       final settled = await _sync(
         () => _apiClient.settleBalance(
           groupId: groupId,
@@ -473,7 +498,6 @@ class DemoStore extends ChangeNotifier {
       if (settled) await loadStatus();
       return settled;
     }
-    final group = groupById(groupId);
     final selfId = _selfMember(group)?.id ?? currentUserId;
     final memberBalance = balances(group)[memberId] ?? 0;
     // The signed-in user settles a bilateral debt: a negative balance means
@@ -489,6 +513,47 @@ class DemoStore extends ChangeNotifier {
             : _nextId('settlement'),
         fromMemberId: memberBalance < 0 ? memberId : selfId,
         toMemberId: memberBalance < 0 ? selfId : memberId,
+        amountCents: amount,
+        createdAt: DateTime.now(),
+      ),
+    );
+    await _persistGroup(group);
+    _refreshLocalStatus();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> confirmReceivedPayment({
+    required String groupId,
+    required String debtorId,
+    int? amountCents,
+  }) async {
+    final group = groupById(groupId);
+    if (_apiClient != null && canUseServerFeatures(group)) {
+      return _sync(() => _apiClient.confirmReceivedPayment(
+            groupId: groupId,
+            debtorId: debtorId,
+            amountCents: amountCents,
+          ));
+    }
+    final selfId = _selfMember(group)?.id ?? currentUserId;
+    final debtorIndex =
+        group.members.indexWhere((member) => member.id == debtorId);
+    if (debtorIndex < 0) return false;
+    final outstanding = balanceWith(
+      group,
+      group.members[debtorIndex],
+    );
+    final amount = amountCents ?? outstanding;
+    if (outstanding <= 0 || amount <= 0 || amount > outstanding) return false;
+    group.settlements.insert(
+      0,
+      Settlement(
+        id: _offlineFirst
+            ? _newLocalId('local_settlement')
+            : _nextId('settlement'),
+        fromMemberId: debtorId,
+        toMemberId: selfId,
         amountCents: amount,
         createdAt: DateTime.now(),
       ),
@@ -535,7 +600,9 @@ class DemoStore extends ChangeNotifier {
     required int amountCents,
   }) {
     final api = _apiClient;
-    if (api == null || api.user == null) return Future.value(false);
+    if (api == null || !canRequestPayment(groupById(groupId))) {
+      return Future.value(false);
+    }
     return _sync(() => api.requestPayment(
           groupId: groupId,
           debtorId: debtorId,
@@ -785,6 +852,7 @@ class DemoStore extends ChangeNotifier {
 
   Future<void> _persistGroup(ExpenseGroup group) async {
     await _offlineDatabase?.saveGroup(group);
+    _serverSyncedGroupIds.remove(group.id);
     if (_offlineFirst && isAuthenticated) {
       unawaited(syncLocalGroups());
     }

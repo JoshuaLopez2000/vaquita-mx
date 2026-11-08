@@ -58,6 +58,32 @@ void main() {
     await client.createGroup(name: 'Roommates', memberNames: ['Ana']);
   });
 
+  test('sends a received-payment confirmation with an idempotency key',
+      () async {
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.path,
+          '/api/v1/groups/group-1/settlements/received',
+        );
+        expect(request.headers['idempotency-key'], isNotEmpty);
+        expect(jsonDecode(request.body), {
+          'debtor_member_id': 'member-2',
+          'amount_cents': 1250,
+        });
+        return http.Response('{}', 201);
+      }),
+    );
+
+    await client.confirmReceivedPayment(
+      groupId: 'group-1',
+      debtorId: 'member-2',
+      amountCents: 1250,
+    );
+  });
+
   test('syncs only supported local group fields and returns ID mappings',
       () async {
     final client = ApiClient(

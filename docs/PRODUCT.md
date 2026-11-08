@@ -24,15 +24,24 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 5. A member records an expense and its payer or payers.
 6. The group chooses equal, percentage, shares, or exact splits.
 7. The server calculates obligations in integer centavos.
-8. A creditor creates one request per debtor.
-9. The debtor opens the request and completes payment externally.
-10. An authenticated provider event, or the demo simulator, records settlement.
+8. In a shared group, a creditor can request payment or record that they
+   received all or part of the outstanding amount. A debtor cannot manually
+   confirm receipt on the creditor's behalf.
+9. The debtor opens a request and completes payment externally; a verified
+   provider event, or the explicitly simulated demo, may record settlement.
+10. In a personal group, its owner controls full or partial bilateral
+    settlements. Local groups offer the same ledger control on-device.
 11. The balance view changes while the original expense remains immutable.
 
 Offline data remains on the device until the user explicitly enables sync for
 the signed-in account. Once enabled, pending changes retry when connectivity
 returns. The app uses SQLite on supported native platforms; web currently keeps
 offline data in memory only.
+
+Without signing in, groups are personal and local-only. Payment requests,
+shared-group invitations, and other server-dependent actions are unavailable.
+Recording a local settlement changes only the group's ledger; it never
+represents or initiates a real transfer.
 
 ## MVP scope
 

@@ -58,12 +58,14 @@ class NewExpenseInput {
 Future<NewGroupInput?> showCreateGroupSheet(
   BuildContext context, {
   List<AppContact> contacts = const [],
+  bool allowShared = false,
 }) {
   return showModalBottomSheet<NewGroupInput>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _CreateGroupSheet(contacts: contacts),
+    builder: (_) =>
+        _CreateGroupSheet(contacts: contacts, allowShared: allowShared),
   );
 }
 

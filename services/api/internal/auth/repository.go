@@ -142,6 +142,20 @@ func (r *Repository) SaveContacts(ctx context.Context, ownerID string, contacts 
 		return nil, err
 	}
 	defer tx.Rollback()
+	saved, err := r.SaveContactsTx(ctx, tx, ownerID, contacts)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return saved, nil
+}
+
+// SaveContactsTx upserts the contacts and reads the resulting list inside the
+// transaction the caller owns, so a retry with the same intent replays one
+// committed snapshot instead of reapplying the upserts.
+func (r *Repository) SaveContactsTx(ctx context.Context, tx *sql.Tx, ownerID string, contacts []Contact) ([]Contact, error) {
 	for _, contact := range contacts {
 		contact.Name = strings.TrimSpace(contact.Name)
 		phone, ok := NormalizePhone(contact.Phone)
@@ -156,13 +170,20 @@ func (r *Repository) SaveContacts(ctx context.Context, ownerID string, contacts 
 			return nil, err
 		}
 	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-	return r.ListContacts(ctx, ownerID)
+	return listContacts(ctx, tx, ownerID)
 }
 func (r *Repository) ListContacts(ctx context.Context, ownerID string) ([]Contact, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,name,phone,COALESCE(linked_user_id,'') FROM contacts WHERE owner_id=$1 ORDER BY name`, ownerID)
+	return listContacts(ctx, r.db, ownerID)
+}
+
+// contactQueryer is the subset of *sql.DB and *sql.Tx the contact reads need;
+// it lets the saved list be projected inside the write transaction.
+type contactQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func listContacts(ctx context.Context, q contactQueryer, ownerID string) ([]Contact, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id,name,phone,COALESCE(linked_user_id,'') FROM contacts WHERE owner_id=$1 ORDER BY name`, ownerID)
 	if err != nil {
 		return nil, err
 	}

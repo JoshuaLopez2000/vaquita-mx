@@ -34,6 +34,34 @@ void main() {
     expect(find.text('Movimientos'), findsOneWidget);
     expect(find.text('Contactos'), findsOneWidget);
     expect(find.text('Perfil'), findsOneWidget);
+    expect(
+      find.byKey(const Key('group-visibility-cdmx-weekend')),
+      findsOneWidget,
+    );
+    expect(find.text('Grupo personal'), findsWidgets);
+  });
+
+  testWidgets('identifies group visibility in group details', (tester) async {
+    final store = DemoStore.seeded();
+    store.groups.insert(
+      0,
+      ExpenseGroup(
+        id: 'shared-test',
+        name: 'Shared trip',
+        emoji: 'T',
+        visibility: 'shared',
+        members: const [
+          Member(id: 'me', name: 'You'),
+          Member(id: 'ana', name: 'Ana'),
+        ],
+      ),
+    );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.byKey(const Key('group-shared-test')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('group-visibility-label')), findsOneWidget);
+    expect(find.text('Grupo compartido'), findsOneWidget);
   });
 
   testWidgets('shows an empty state in the inbox tab', (tester) async {
@@ -83,7 +111,8 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
   });
 
-  testWidgets('opens balance details from an inbox card', (tester) async {
+  testWidgets('does not offer server payment requests without authentication',
+      (tester) async {
     final store = DemoStore.seeded();
     store.contactStatus.add(const ContactStatus(
       member: Member(id: 'ana', name: 'Ana'),
@@ -100,11 +129,45 @@ void main() {
     expect(find.text('Weekend in CDMX'), findsOneWidget);
     expect(find.text('Tacos and drinks'), findsOneWidget);
     expect(
-        find.byKey(const Key('request-payment-cdmx-weekend')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('request-payment-cdmx-weekend')));
+      find.byKey(const Key('request-payment-cdmx-weekend')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('settlement-cdmx-weekend')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('hides shared-group options when creating without a session',
+      (tester) async {
+    await tester.pumpWidget(VaquitaApp(store: DemoStore.seeded()));
+    await tester.tap(find.byKey(const Key('create-group-button')));
     await tester.pumpAndSettle();
-    expect(find.text('Solicitar a Ana'), findsOneWidget);
+
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+  });
+
+  testWidgets('records a received payment locally without a server request',
+      (tester) async {
+    final store = DemoStore.seeded();
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    await tester.tap(find.byKey(const Key('group-cdmx-weekend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-settlement-ana')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('request-ana')), findsNothing);
     expect(find.byKey(const Key('settle-ana')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('settle-ana')));
+    await tester.tap(find.byKey(const Key('settle-ana')));
+    await tester.pumpAndSettle();
+
+    final group = store.groupById('cdmx-weekend');
+    expect(group.settlements.first.fromMemberId, 'ana');
+    expect(group.settlements.first.toMemberId, DemoStore.seedUserId);
+    expect(group.settlements.first.amountCents, 20000);
   });
 
   testWidgets('creates a new group from the home screen', (tester) async {
@@ -113,9 +176,7 @@ void main() {
     await tester.tap(find.byKey(const Key('create-group-button')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('salary-inference-notice')), findsNothing);
-    await tester.tap(find.byType(SwitchListTile));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('salary-inference-notice')), findsOneWidget);
+    expect(find.byType(SwitchListTile), findsNothing);
     await tester.enterText(
       find.byKey(const Key('group-name-field')),
       'Birthday dinner',
@@ -132,7 +193,7 @@ void main() {
       find.byKey(const Key('group-members-field')),
       'Laura',
     );
-    await tester.enterText(find.byType(TextField).at(3), '55 0000 0099');
+    await tester.enterText(find.byType(TextField).last, '55 0000 0099');
     await tester.ensureVisible(find.byKey(const Key('create-group-submit')));
     await tester.tap(find.byKey(const Key('create-group-submit')));
     await tester.pumpAndSettle();

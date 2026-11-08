@@ -17,12 +17,39 @@ session token after registration or login as `Authorization: Bearer <token>`.
 | `PATCH` | `/groups/{groupID}/members/{memberID}` | Edit owner-managed identity data or the authenticated member's own salary consent. |
 | `DELETE` | `/groups/{groupID}/members/{memberID}` | Remove a non-owner member; owner only. |
 | `POST` | `/groups/{groupID}/expenses` | Record an equal, salary-weighted, or exact-split expense, with one or more payers. |
-| `POST` | `/groups/{groupID}/settlements` | Record a **simulated** settlement for the current user, partial or full. |
+| `POST` | `/groups/{groupID}/settlements` | Record a manual settlement for the owner in a personal group. |
+| `POST` | `/groups/{groupID}/settlements/received` | Confirm a full or partial payment received by the authenticated creditor. |
+| `POST` | `/contacts` | Save the authenticated user's contacts. |
 | `GET` | `/groups/{groupID}/unpaid` | Load projected group balances. |
 | `GET` | `/group-invitations` | List the authenticated user's pending invitations. |
 | `POST` | `/group-invitations/{groupID}/response` | Accept or decline the authenticated user's pending invitation. |
 | `POST` | `/payment-requests` | Create a durable **simulated** request for an exact share of an expense paid by the authenticated user. |
 | `POST` | `/payment-requests/{requestID}/simulate` | Confirm a simulator event as the debtor; this is not a real transfer. |
+
+## Idempotent commands
+
+The following commands accept an optional `Idempotency-Key` header containing
+1–128 bytes:
+
+| Command | Key requirement |
+| --- | --- |
+| `POST /groups` | Optional; same key and payload replays the original group result. |
+| `POST /groups/{groupID}/members` | Optional; same key and payload replays the original group result. |
+| `POST /groups/{groupID}/expenses` | Optional; same key and payload replays the original expense result. |
+| `POST /groups/{groupID}/settlements` | Optional; same key and payload replays the original settlement result. |
+| `POST /groups/{groupID}/settlements/received` | Optional; same key and payload replays the original received-payment result. |
+| `POST /group-invitations/{groupID}/response` | Optional; same key and payload replays the original response. |
+| `POST /contacts` | Optional; same key and payload replays the original saved-contact result. |
+| `POST /payment-requests` | Required; same key and payload replays the original payment-request result. |
+
+For commands marked optional, omitting the header preserves the previous
+behavior and treats every request as a new intent. Keys are scoped to the
+authenticated user, command, and group when applicable. Reusing a key with a
+different payload returns `409 idempotency_key_conflict`. Successful command
+outcomes are retained for seven days by default; deployments can override this
+with a positive Go duration in `IDEMPOTENCY_RETENTION`. After an outcome expires,
+the same key can create a new command, so clients should use a unique key for
+each user intent and reuse it only for retries.
 
 Every member object returned in a group or invitation includes a persisted
 `role` of `owner` or `member`. See the authorization matrix in
@@ -50,12 +77,13 @@ centavo of the entered expense total. The server rejects duplicate,
 missing, inactive, negative, under-allocated, and over-allocated shares.
 
 `POST /groups/{groupID}/settlements` records an immutable settlement from the
-authenticated member (`from`) to another member (`to`). The body takes
-`member_id` to name the recipient and an optional integer `amount_cents`:
+authenticated group owner (`from`) to another member (`to`) in a personal
+group. The body takes `member_id` to name the recipient and an optional
+integer `amount_cents`:
 
-- without `amount_cents`, the debtor settles the entire current bilateral
-  obligation (the previous behavior, still supported);
-- with `amount_cents`, the debtor may record any positive MXN centavo amount
+- without `amount_cents`, the owner records the entire current bilateral
+  obligation they owe the named member (the previous behavior, still supported);
+- with `amount_cents`, the owner may record any positive MXN centavo amount
   up to the current obligation. Zero, negative, and fractional amounts are
   rejected, an amount above the outstanding balance returns
   `422 validation_failed` ("amount exceeds the outstanding balance"), and the
@@ -65,11 +93,22 @@ authenticated member (`from`) to another member (`to`). The body takes
 Each accepted amount creates a new immutable settlement row; repeated payments
 reduce the derived balances without changing expense history.
 
+`POST /groups/{groupID}/settlements/received` records money the authenticated
+user says they received from a debtor. The body takes `debtor_member_id` and an
+optional positive integer `amount_cents`; omitting the amount confirms the
+entire outstanding bilateral amount. In a shared group, the authenticated
+member must be the creditor for that exact relation. In a personal group, only
+the owner may record the receipt. Requests are serialized per group and
+revalidated against the current ledger before an immutable settlement is
+written. An optional `Idempotency-Key` replays the original result safely.
+This is a manual ledger confirmation, not evidence that a bank transfer
+occurred.
+
 `POST /payment-requests` is intentionally not a real payment operation. It
-requires a valid session, group access, an expense paid by that user, an active
+requires a valid session, shared-group access, an expense paid by that user, an active
 participant debtor, and the exact centavo share computed by the ledger. The
 returned deep link is a simulator artifact and does not settle a balance. It
-also requires an `Idempotency-Key` header (1–128 characters). A retry with the
+also requires an `Idempotency-Key` header (1–128 bytes). A retry with the
 same authenticated user, key, and payload returns the original request; a key
 reused with another payload returns `409 idempotency_key_conflict`.
 

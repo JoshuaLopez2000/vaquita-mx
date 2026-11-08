@@ -6,6 +6,7 @@ class _MemberBalanceTile extends StatelessWidget {
     required this.balance,
     required this.relationshipBalance,
     required this.isCurrentUser,
+    required this.sharedServerGroup,
     required this.onSettle,
   });
 
@@ -13,6 +14,7 @@ class _MemberBalanceTile extends StatelessWidget {
   final int balance;
   final int relationshipBalance;
   final bool isCurrentUser;
+  final bool sharedServerGroup;
   final VoidCallback onSettle;
 
   @override
@@ -46,11 +48,21 @@ class _MemberBalanceTile extends StatelessWidget {
           ? Icon(Icons.hourglass_empty_rounded, color: colors.secondary)
           : isCurrentUser || relationshipBalance == 0
               ? Icon(Icons.check_circle_rounded, color: colors.primary)
-              : TextButton(
-                  onPressed: onSettle,
-                  child:
-                      Text(relationshipBalance < 0 ? l10n.pay : l10n.request),
-                ),
+              : sharedServerGroup && relationshipBalance < 0
+                  ? Tooltip(
+                      message: l10n.waitingForCreditorConfirmation,
+                      child: Icon(Icons.hourglass_top_rounded,
+                          color: colors.secondary),
+                    )
+                  : TextButton(
+                      key: Key('open-settlement-${member.id}'),
+                      onPressed: onSettle,
+                      child: Text(sharedServerGroup
+                          ? l10n.request
+                          : relationshipBalance < 0
+                              ? l10n.pay
+                              : l10n.confirmPaymentReceived),
+                    ),
     );
   }
 }
