@@ -122,6 +122,7 @@
   ,"groupCreated": "Se creó {name}."
   ,"@groupCreated": {"placeholders":{"name":{"type":"String"}}}
   ,"couldNotCreateGroup": "No se pudo crear el grupo."
+  ,"couldNotUpdateGroup": "No se pudo guardar el grupo. Comprueba tu conexión y que tengas permiso para editarlo."
   ,"goodAfternoon": "Buenas tardes 👋"
   ,"memberNeedsNamePhone": "Cada miembro necesita un nombre y número mexicano."
   ,"addAtLeastOneMember": "Agrega al menos un miembro."
@@ -274,4 +275,6 @@
   ,"syncLocalGroupsButton": "Sincronizar grupos locales"
   ,"syncCompleted": "Grupos locales sincronizados"
   ,"syncFailed": "No se pudo sincronizar. Tus datos locales están seguros; inténtalo de nuevo."
+  ,"groupStoredLocally": "Local"
+  ,"groupStoredOnServer": "Servidor"
 }

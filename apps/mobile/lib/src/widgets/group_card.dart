@@ -3,11 +3,13 @@ part of '../app.dart';
 class _GroupCard extends StatelessWidget {
   const _GroupCard({
     required this.group,
+    required this.serverBacked,
     required this.balance,
     required this.onTap,
   });
 
   final ExpenseGroup group;
+  final bool serverBacked;
   final int balance;
   final VoidCallback onTap;
 
@@ -82,6 +84,11 @@ class _GroupCard extends StatelessWidget {
                       l10n.groupSummary(
                           group.members.length, group.expenses.length),
                       style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 6),
+                    GroupStorageBadge(
+                      key: Key('group-storage-${group.id}'),
+                      serverBacked: serverBacked,
                     ),
                   ],
                 ),

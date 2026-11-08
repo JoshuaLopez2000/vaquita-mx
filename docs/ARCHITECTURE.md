@@ -21,10 +21,12 @@ Go API ---- PostgreSQL
 The mobile app stores offline groups and ledger history in a local SQLite
 database on supported native platforms. It can be used before authentication;
 the user chooses from Profile whether to upload local groups after logging in
-or signing up. The web build currently keeps local data in memory only. The
-mobile application never connects directly to PostgreSQL or holds provider
-secrets. The API remains authoritative for synced calculations and state
-transitions.
+or signing up. Mutations to groups already stored on the server use the
+authenticated API while online; local-only groups and their ledger history
+remain on-device until sync is explicitly enabled. The web build currently
+keeps local data in memory only. The mobile application never connects
+directly to PostgreSQL or holds provider secrets. The API remains authoritative
+for synced calculations and state transitions.
 
 ## Proposed modules
 
@@ -98,6 +100,10 @@ rejected. Existing account groups are preserved and merged rather than
 replaced. Each group is committed transactionally, so a failed multi-group
 request can be retried without duplicating already-committed groups. Group
 invitations are created only as part of this explicit sync operation.
+
+An authenticated mutation to a group that is already server-backed uses its
+API endpoint directly. Mutations to local-only groups are persisted locally
+and uploaded only after the account's explicit sync opt-in.
 
 Manual payment requests are available only for authenticated shared groups.
 In shared groups, `POST /groups/{id}/settlements/received` records a full or

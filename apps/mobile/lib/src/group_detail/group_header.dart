@@ -3,11 +3,13 @@ part of '../group_detail_screen.dart';
 class _GroupHeader extends StatelessWidget {
   const _GroupHeader({
     required this.group,
+    required this.serverBacked,
     required this.balance,
     required this.onTap,
   });
 
   final ExpenseGroup group;
+  final bool serverBacked;
   final int balance;
   final VoidCallback onTap;
 
@@ -31,32 +33,42 @@ class _GroupHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    key: const Key('group-visibility-label'),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: colors.surface.withValues(alpha: 0.65),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          group.visibility == 'shared'
-                              ? Icons.groups_outlined
-                              : Icons.lock_outline_rounded,
-                          size: 14,
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      Container(
+                        key: const Key('group-visibility-label'),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: colors.surface.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          group.visibility == 'shared'
-                              ? l10n.sharedGroup
-                              : l10n.personalGroup,
-                          style: Theme.of(context).textTheme.labelSmall,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              group.visibility == 'shared'
+                                  ? Icons.groups_outlined
+                                  : Icons.lock_outline_rounded,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              group.visibility == 'shared'
+                                  ? l10n.sharedGroup
+                                  : l10n.personalGroup,
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      GroupStorageBadge(
+                        key: Key('group-storage-${group.id}'),
+                        serverBacked: serverBacked,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(

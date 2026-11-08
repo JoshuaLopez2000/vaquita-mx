@@ -44,11 +44,15 @@ class DemoStore extends ChangeNotifier {
   bool get isAuthenticated => _apiClient?.user != null;
   ApiClient? get apiClient => _apiClient;
 
-  bool canUseServerFeatures(ExpenseGroup group) {
-    if (!isAuthenticated) return false;
+  bool isServerBacked(ExpenseGroup group) {
+    if (_apiClient == null) return false;
     return !_offlineFirst ||
         !group.id.startsWith('local_') ||
         _serverSyncedGroupIds.contains(group.id);
+  }
+
+  bool canUseServerFeatures(ExpenseGroup group) {
+    return isAuthenticated && isServerBacked(group);
   }
 
   bool canRequestPayment(ExpenseGroup group) =>
@@ -105,9 +109,7 @@ class DemoStore extends ChangeNotifier {
           } else {
             groups.add(group);
           }
-          if (group.id.startsWith('local_')) {
-            _serverSyncedGroupIds.add(group.id);
-          }
+          _serverSyncedGroupIds.add(group.id);
           await _offlineDatabase?.saveGroup(group, needsSync: false);
         }
       } else {
@@ -316,11 +318,12 @@ class DemoStore extends ChangeNotifier {
   }
 
   Future<bool> updateGroup(String groupId, Map<String, dynamic> input) async {
-    if (_apiClient != null && !_offlineFirst) {
-      return _sync(() => _apiClient.updateGroup(groupId, input));
+    final api = _apiClient;
+    final group = groupById(groupId);
+    if (api != null && canUseServerFeatures(group)) {
+      return _sync(() => api.updateGroup(groupId, input));
     }
     if (!_offlineFirst) return false;
-    final group = groupById(groupId);
     final index = groups.indexOf(group);
     groups[index] = ExpenseGroup(
       id: group.id,
@@ -420,9 +423,11 @@ class DemoStore extends ChangeNotifier {
     List<ExpenseShare> shares = const [],
     bool splitOverpayment = true,
   }) async {
-    if (_apiClient != null && !_offlineFirst) {
+    final api = _apiClient;
+    final group = groupById(groupId);
+    if (api != null && canUseServerFeatures(group)) {
       return _sync(
-        () => _apiClient.addExpense(
+        () => api.addExpense(
           groupId: groupId,
           description: description,
           amountCents: amountCents,
@@ -435,7 +440,7 @@ class DemoStore extends ChangeNotifier {
         ),
       );
     }
-    groupById(groupId).expenses.insert(
+    group.expenses.insert(
           0,
           Expense(
             id: _offlineFirst
@@ -454,7 +459,7 @@ class DemoStore extends ChangeNotifier {
             createdAt: DateTime.now(),
           ),
         );
-    await _persistGroup(groupById(groupId));
+    await _persistGroup(group);
     notifyListeners();
     return true;
   }
@@ -852,7 +857,6 @@ class DemoStore extends ChangeNotifier {
 
   Future<void> _persistGroup(ExpenseGroup group) async {
     await _offlineDatabase?.saveGroup(group);
-    _serverSyncedGroupIds.remove(group.id);
     if (_offlineFirst && isAuthenticated) {
       unawaited(syncLocalGroups());
     }
