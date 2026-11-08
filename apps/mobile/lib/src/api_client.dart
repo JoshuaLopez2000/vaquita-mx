@@ -374,8 +374,26 @@ class ApiClient {
     final response = await _request(
       'POST',
       '/api/v1/groups/$groupId/settlements',
+      headers: {'Idempotency-Key': _idempotencyKey()},
       body: {
         'member_id': memberId,
+        if (amountCents != null) 'amount_cents': amountCents,
+      },
+    );
+    _decode(response);
+  }
+
+  Future<void> confirmReceivedPayment({
+    required String groupId,
+    required String debtorId,
+    int? amountCents,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/api/v1/groups/$groupId/settlements/received',
+      headers: {'Idempotency-Key': _idempotencyKey()},
+      body: {
+        'debtor_member_id': debtorId,
         if (amountCents != null) 'amount_cents': amountCents,
       },
     );

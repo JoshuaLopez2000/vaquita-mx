@@ -147,6 +147,7 @@ class GroupDetailScreen extends StatelessWidget {
                                     .elementAt(index)
                                     .id ==
                                 store.currentUserId,
+                        sharedServerGroup: store.canRequestPayment(group),
                         onSettle: () => _showSettlement(
                           context,
                           group,
@@ -210,7 +211,7 @@ class GroupDetailScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                  '${group.visibility == 'shared' ? l10n.sharedGroup : l10n.personalGroup} Â· ${group.members.map((member) => member.name).join(', ')}'),
+                  '${group.visibility == 'shared' && store.canUseServerFeatures(group) ? l10n.sharedGroup : l10n.personalGroup} · ${group.members.map((member) => member.name).join(', ')}'),
               const SizedBox(height: 20),
               OutlinedButton.icon(
                   onPressed: () {
@@ -235,6 +236,8 @@ class GroupDetailScreen extends StatelessWidget {
 
   Future<void> _editGroup(BuildContext context, ExpenseGroup group) async {
     final l10n = AppLocalizations.of(context)!;
+    final serverSharedGroup =
+        group.visibility == 'shared' && store.canUseServerFeatures(group);
     final self = group.members
         .where((member) => member.userId == store.currentUserId)
         .toList();
@@ -287,7 +290,7 @@ class GroupDetailScreen extends StatelessWidget {
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
                 )
-              else if (group.visibility == 'shared')
+              else if (serverSharedGroup)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(l10n.salarySplitsUnlock),
@@ -306,7 +309,7 @@ class GroupDetailScreen extends StatelessWidget {
                   keyboardType: TextInputType.phone,
                   decoration:
                       InputDecoration(labelText: l10n.mexicanMobileNumber)),
-              if (group.visibility == 'shared')
+              if (serverSharedGroup)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
@@ -335,17 +338,17 @@ class GroupDetailScreen extends StatelessWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(group.visibility == 'shared'
+                          content: Text(serverSharedGroup
                               ? l10n.invitationSent(member.text.trim())
                               : l10n.contactAdded),
                         ),
                       );
                     }
                   },
-                  child: Text(group.visibility == 'shared'
+                  child: Text(serverSharedGroup
                       ? l10n.sendInvitation
                       : l10n.addContact)),
-              if (group.visibility == 'shared' && self.isNotEmpty)
+              if (serverSharedGroup && self.isNotEmpty)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: self.single.salarySharing,

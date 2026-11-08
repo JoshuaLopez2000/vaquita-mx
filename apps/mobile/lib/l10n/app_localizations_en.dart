@@ -316,6 +316,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get requestPayment => 'Request payment';
 
   @override
+  String get confirmPaymentReceived => 'Confirm payment received';
+
+  @override
+  String get recordPayment => 'Record payment';
+
+  @override
+  String get waitingForCreditorConfirmation =>
+      'The creditor must confirm the payment.';
+
+  @override
+  String get sharedCreditorSettlementDescription =>
+      'In demo mode you can request payment; confirming receipt only updates the ledger and does not verify a transfer.';
+
+  @override
   String payContact(String name) {
     return 'Pay $name';
   }
@@ -558,11 +572,26 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String confirmReceivedFrom(String name) {
+    return 'Confirm payment received from $name';
+  }
+
+  @override
   String get demoPaymentDescription =>
       'Demo mode: this simulates a confirmed provider callback. No real money moves.';
 
   @override
+  String get manualSettlementDescription =>
+      'Record the agreed amount. This does not initiate a transfer.';
+
+  @override
   String get paymentConfirmed => 'Simulated payment confirmed.';
+
+  @override
+  String get paymentReceivedRecorded => 'Payment received recorded.';
+
+  @override
+  String get settlementRecorded => 'Settlement recorded.';
 
   @override
   String get paymentRequestCreated => 'Payment request created.';

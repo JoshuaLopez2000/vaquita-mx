@@ -150,8 +150,8 @@ func TestAPIWorkflowWithPostgreSQL(t *testing.T) {
 	}
 
 	var settled groups.Group
-	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/settlements", memberLogin.Token, map[string]string{
-		"member_id": ownerMember.ID,
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/settlements/received", owner.Token, map[string]string{
+		"debtor_member_id": invitedMember.ID,
 	}, http.StatusCreated, &settled)
 	assertBalance(t, settled, ownerMember.ID, 0)
 	assertBalance(t, settled, invitedMember.ID, 0)
@@ -401,13 +401,13 @@ func TestGroupAuthorizationMatrixWithPostgreSQL(t *testing.T) {
 		})
 	}
 
-	// The two equal expenses cancel each other, so add one owner-paid expense
-	// before exercising member settlement and one member-paid expense before
-	// exercising owner settlement.
+	// The two equal expenses cancel each other. In shared groups only the
+	// creditor records a manual receipt.
 	createExpense(owner, ownerMember.ID, "Member settles", http.StatusCreated)
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", member.Token, map[string]string{"member_id": ownerMember.ID}, http.StatusCreated, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", member.Token, map[string]string{"member_id": ownerMember.ID}, http.StatusNotFound, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements/received", owner.Token, map[string]string{"debtor_member_id": acceptedMember.ID}, http.StatusCreated, nil)
 	createExpense(member, acceptedMember.ID, "Owner settles", http.StatusCreated)
-	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", owner.Token, map[string]string{"member_id": acceptedMember.ID}, http.StatusCreated, nil)
+	doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements/received", member.Token, map[string]string{"debtor_member_id": ownerMember.ID}, http.StatusCreated, nil)
 	for name, session := range map[string]auth.Session{"pending": pending, "removed": removed, "declined": declined} {
 		t.Run("settlement_denied_"+name, func(t *testing.T) {
 			doJSON(t, client, http.MethodPost, baseURL+"/api/v1/groups/"+group.ID+"/settlements", session.Token, map[string]string{"member_id": ownerMember.ID}, http.StatusNotFound, nil)

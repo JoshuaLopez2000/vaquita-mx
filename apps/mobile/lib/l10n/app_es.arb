@@ -103,6 +103,10 @@
   ,"youOweMember": "Le debes a {name}"
   ,"@youOweMember": {"placeholders":{"name":{"type":"String"}}}
   ,"requestPayment": "Solicitar pago"
+  ,"confirmPaymentReceived": "Confirmar pago recibido"
+  ,"recordPayment": "Registrar pago"
+  ,"waitingForCreditorConfirmation": "La persona acreedora debe confirmar el pago."
+  ,"sharedCreditorSettlementDescription": "En modo demo puedes solicitar el pago; confirmar que lo recibiste solo actualiza el registro y no verifica una transferencia."
   ,"payContact": "Pagar a {name}"
   ,"@payContact": {"placeholders":{"name":{"type":"String"}}}
   ,"genericMember": "Un miembro"
@@ -184,8 +188,13 @@
   ,"@invitationSent": {"placeholders":{"name":{"type":"String"}}}
   ,"requestFrom": "Solicitar a {name}"
   ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
+  ,"confirmReceivedFrom": "Confirmar pago recibido de {name}"
+  ,"@confirmReceivedFrom": {"placeholders":{"name":{"type":"String"}}}
   ,"demoPaymentDescription": "Modo demo: simula una confirmación del proveedor. No se mueve dinero real."
+  ,"manualSettlementDescription": "Registra el monto acordado. No inicia una transferencia."
   ,"paymentConfirmed": "Pago simulado confirmado."
+  ,"paymentReceivedRecorded": "Pago recibido registrado."
+  ,"settlementRecorded": "Liquidación registrada."
   ,"paymentRequestCreated": "Solicitud de pago creada."
   ,"couldNotConfirmPayment": "No se pudo confirmar el pago."
   ,"settlementAmount": "Monto a liquidar"

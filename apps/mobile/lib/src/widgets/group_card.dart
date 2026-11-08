@@ -53,6 +53,31 @@ class _GroupCard extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(height: 3),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          group.visibility == 'shared'
+                              ? Icons.groups_outlined
+                              : Icons.lock_outline_rounded,
+                          size: 13,
+                          color: colors.secondary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          group.visibility == 'shared'
+                              ? l10n.sharedGroup
+                              : l10n.personalGroup,
+                          key: Key('group-visibility-${group.id}'),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: colors.secondary,
+                                  ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
                     Text(
                       l10n.groupSummary(
                           group.members.length, group.expenses.length),

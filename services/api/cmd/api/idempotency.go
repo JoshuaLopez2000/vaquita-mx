@@ -16,6 +16,7 @@ const (
 	opAddMember         = "POST /groups/{groupID}/members"
 	opAddExpense        = "POST /groups/{groupID}/expenses"
 	opAddSettlement     = "POST /groups/{groupID}/settlements"
+	opConfirmReceived   = "POST /groups/{groupID}/settlements/received"
 	opRespondInvitation = "POST /group-invitations/{groupID}/response"
 	opSaveContacts      = "POST /contacts"
 )
