@@ -31,6 +31,34 @@ class _GroupHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    key: const Key('group-visibility-label'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.surface.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          group.visibility == 'shared'
+                              ? Icons.groups_outlined
+                              : Icons.lock_outline_rounded,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          group.visibility == 'shared'
+                              ? l10n.sharedGroup
+                              : l10n.personalGroup,
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     balance >= 0 ? l10n.yourGroupBalance : l10n.youCurrentlyOwe,
                     style: Theme.of(context).textTheme.bodyMedium,

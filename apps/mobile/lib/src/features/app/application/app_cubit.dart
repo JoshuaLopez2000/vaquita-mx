@@ -52,6 +52,17 @@ class AppCubit extends Cubit<AppState> {
         amountCents: amountCents,
       );
 
+  Future<bool> confirmReceivedPayment({
+    required String groupId,
+    required String debtorId,
+    int? amountCents,
+  }) =>
+      store.confirmReceivedPayment(
+        groupId: groupId,
+        debtorId: debtorId,
+        amountCents: amountCents,
+      );
+
   Future<bool> requestPayment({
     required String groupId,
     required String debtorId,

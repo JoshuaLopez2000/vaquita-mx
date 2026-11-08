@@ -183,12 +183,19 @@ func (r *Repository) AddSettlementTx(c context.Context, tx *sql.Tx, u, g, id str
 	if e := lockGroup(c, tx, g); e != nil {
 		return Group{}, e
 	}
-	var selfID string
-	if e := tx.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
+	var selfID, role, visibility string
+	if e := tx.QueryRowContext(c, `
+SELECT m.member_id,m.role,g.visibility
+FROM group_members m JOIN expense_groups g ON g.id=m.group_id
+WHERE m.group_id=$1 AND m.user_id=$2 AND m.removed_at IS NULL
+  AND m.accepted AND m.declined_at IS NULL`, g, u).Scan(&selfID, &role, &visibility); e != nil {
 		if errors.Is(e, sql.ErrNoRows) {
 			return Group{}, ErrNotFound
 		}
 		return Group{}, e
+	}
+	if visibility == "shared" || role != RoleOwner {
+		return Group{}, ErrNotFound
 	}
 	if id == selfID {
 		return Group{}, ErrInvalid
@@ -231,6 +238,67 @@ func (r *Repository) AddSettlementTx(c context.Context, tx *sql.Tx, u, g, id str
 	return getOn(c, tx, u, g)
 }
 
+// ConfirmReceivedSettlementTx records a receipt from debtorID to the
+// authenticated member. Shared-group members can only confirm money owed to
+// themselves; the owner controls bilateral settlements in personal groups.
+func (r *Repository) ConfirmReceivedSettlementTx(c context.Context, tx *sql.Tx, u, g, debtorID string, amountCents *int64) (Group, error) {
+	if e := lockGroup(c, tx, g); e != nil {
+		return Group{}, e
+	}
+	var creditorID, role, visibility string
+	e := tx.QueryRowContext(c, `
+SELECT x.member_id,x.role,g.visibility
+FROM group_members x JOIN expense_groups g ON g.id=x.group_id
+WHERE x.group_id=$1 AND x.user_id=$2 AND x.removed_at IS NULL
+  AND x.accepted AND x.declined_at IS NULL`,
+		g, u).Scan(&creditorID, &role, &visibility)
+	if errors.Is(e, sql.ErrNoRows) {
+		return Group{}, ErrNotFound
+	}
+	if e != nil {
+		return Group{}, e
+	}
+	if visibility == "personal" && role != RoleOwner {
+		return Group{}, ErrNotFound
+	}
+	if debtorID == creditorID {
+		return Group{}, ErrInvalid
+	}
+
+	x := Group{ID: g}
+	if e := load(c, &x, tx); e != nil {
+		return Group{}, e
+	}
+	var outstanding int64
+	for _, relation := range x.PaymentRelations {
+		if relation.FromMemberID == debtorID && relation.ToMemberID == creditorID {
+			outstanding = relation.AmountCents
+			break
+		}
+	}
+	amount := outstanding
+	if amountCents != nil {
+		amount = *amountCents
+		if amount < 0 {
+			return Group{}, ErrInvalid
+		}
+		if amount > outstanding {
+			return Group{}, ErrOverpayment
+		}
+	}
+	if amount == 0 {
+		return Group{}, ErrInvalid
+	}
+	sid, e := newID("settlement")
+	if e != nil {
+		return Group{}, e
+	}
+	if _, e = tx.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, debtorID, creditorID, amount); e != nil {
+		return Group{}, e
+	}
+	return getOn(c, tx, u, g)
+}
+
 // lockGroup serializes concurrent writers for one group for the whole
 // transaction, so every concurrent payment validates against committed state.
 func lockGroup(c context.Context, q queryer, groupID string) error {
@@ -255,7 +323,7 @@ func (r *Repository) ValidatePaymentRequest(c context.Context, userID, groupID, 
 // storage, so the financial authorization invariant has fast regression tests.
 
 func ValidatePaymentRequestData(g Group, userID, debtorID string, amountCents int64) error {
-	if amountCents <= 0 {
+	if g.Visibility != "shared" || amountCents <= 0 {
 		return ErrInvalid
 	}
 	var requesterID string

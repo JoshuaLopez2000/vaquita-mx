@@ -109,6 +109,15 @@ class OfflineDatabase {
     return rows.single['revision']! as int;
   }
 
+  Future<Set<String>> syncedGroupIds() async {
+    final rows = await _database.query(
+      'groups',
+      columns: ['id'],
+      where: 'remote_id IS NOT NULL AND synced_revision >= revision',
+    );
+    return rows.map((row) => row['id']! as String).toSet();
+  }
+
   Future<bool> syncEnabled(String accountId) async {
     final rows = await _database.query(
       'settings',

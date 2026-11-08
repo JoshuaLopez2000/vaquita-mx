@@ -13,8 +13,8 @@ void showSettlementSheet(
       balance == 0) {
     return;
   }
-  // Positive means this contact owes the signed-in user; the debtor flow
-  // (partial or full settlement) runs when the signed-in user owes instead.
+  final sharedServerGroup = store.canRequestPayment(group);
+  if (sharedServerGroup && balance < 0) return;
   final memberOwes = balance > 0;
   showModalBottomSheet<void>(
     context: context,
@@ -26,6 +26,7 @@ void showSettlementSheet(
           member: member,
           outstandingCents: balance.abs(),
           memberOwes: memberOwes,
+          canRequestPayment: sharedServerGroup,
           onSettled: onSettled,
         ),
       ),
@@ -40,6 +41,7 @@ class _SettlementSheet extends StatefulWidget {
     required this.member,
     required this.outstandingCents,
     required this.memberOwes,
+    required this.canRequestPayment,
     this.onSettled,
   });
 
@@ -48,6 +50,7 @@ class _SettlementSheet extends StatefulWidget {
   final Member member;
   final int outstandingCents;
   final bool memberOwes;
+  final bool canRequestPayment;
   final VoidCallback? onSettled;
 
   @override
@@ -104,22 +107,34 @@ class _SettlementSheetState extends State<_SettlementSheet> {
     });
   }
 
-  Future<void> _submit() async {
+  Future<void> _requestPayment() async {
     final l10n = AppLocalizations.of(context)!;
-    int? amount;
-    if (widget.memberOwes) {
-      // Requesting payment stays a full-obligation operation.
-      amount = widget.outstandingCents;
-    } else {
-      amount = _amount;
-      if (amount == null) {
-        setState(() => _errorText = l10n.settlementAmountError);
-        return;
-      }
+    final settled = await context.read<AppCubit>().requestPayment(
+          groupId: widget.group.id,
+          debtorId: widget.member.id,
+          amountCents: widget.outstandingCents,
+        );
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            settled ? l10n.paymentRequestCreated : l10n.couldNotConfirmPayment),
+      ),
+    );
+    if (settled) widget.onSettled?.call();
+  }
+
+  Future<void> _submitSettlement() async {
+    final l10n = AppLocalizations.of(context)!;
+    final amount = _amount;
+    if (amount == null) {
+      setState(() => _errorText = l10n.settlementAmountError);
+      return;
     }
     final cubit = context.read<AppCubit>();
     final settled = widget.memberOwes
-        ? await cubit.requestPayment(
+        ? await cubit.confirmReceivedPayment(
             groupId: widget.group.id,
             debtorId: widget.member.id,
             amountCents: amount,
@@ -135,9 +150,9 @@ class _SettlementSheetState extends State<_SettlementSheet> {
       SnackBar(
         content: Text(
           settled
-              ? (widget.memberOwes
-                  ? l10n.paymentRequestCreated
-                  : l10n.paymentConfirmed)
+              ? widget.memberOwes
+                  ? l10n.paymentReceivedRecorded
+                  : l10n.settlementRecorded
               : l10n.couldNotConfirmPayment,
         ),
       ),
@@ -161,9 +176,11 @@ class _SettlementSheetState extends State<_SettlementSheet> {
           ),
           const SizedBox(height: 14),
           Text(
-            widget.memberOwes
+            widget.memberOwes && widget.canRequestPayment
                 ? l10n.requestFrom(widget.member.name)
-                : l10n.payContact(widget.member.name),
+                : widget.memberOwes
+                    ? l10n.confirmReceivedFrom(widget.member.name)
+                    : l10n.payContact(widget.member.name),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -177,11 +194,15 @@ class _SettlementSheetState extends State<_SettlementSheet> {
           ),
           const SizedBox(height: 8),
           Text(
-            l10n.demoPaymentDescription,
+            widget.canRequestPayment && widget.memberOwes
+                ? l10n.sharedCreditorSettlementDescription
+                : widget.canRequestPayment
+                    ? l10n.demoPaymentDescription
+                    : l10n.manualSettlementDescription,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          if (!widget.memberOwes) ...[
+          if (!widget.canRequestPayment || widget.memberOwes) ...[
             const SizedBox(height: 22),
             TextField(
               key: const Key('settlement-amount'),
@@ -202,20 +223,30 @@ class _SettlementSheetState extends State<_SettlementSheet> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 key: const Key('settle-all'),
-                onPressed:
-                    _amount == widget.outstandingCents ? null : _settleEverything,
+                onPressed: _amount == widget.outstandingCents
+                    ? null
+                    : _settleEverything,
                 child: Text(l10n.settleAll),
               ),
             ),
           ],
           const SizedBox(height: 22),
+          if (widget.canRequestPayment) ...[
+            OutlinedButton.icon(
+              key: Key('request-${widget.member.id}'),
+              onPressed: () async => _requestPayment(),
+              icon: const Icon(Icons.qr_code_2_rounded),
+              label: Text(l10n.requestPayment),
+            ),
+            const SizedBox(height: 8),
+          ],
           FilledButton.icon(
             key: Key('settle-${widget.member.id}'),
-            onPressed: () async => _submit(),
+            onPressed: () async => _submitSettlement(),
             icon: const Icon(Icons.check_circle_outline_rounded),
             label: Text(widget.memberOwes
-                ? l10n.requestPayment
-                : l10n.simulatePayment),
+                ? l10n.confirmPaymentReceived
+                : l10n.recordPayment),
           ),
         ],
       ),

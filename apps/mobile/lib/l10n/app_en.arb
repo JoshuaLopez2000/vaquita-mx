@@ -103,6 +103,10 @@
   ,"youOweMember": "You owe {name}"
   ,"@youOweMember": {"placeholders":{"name":{"type":"String"}}}
   ,"requestPayment": "Request payment"
+  ,"confirmPaymentReceived": "Confirm payment received"
+  ,"recordPayment": "Record payment"
+  ,"waitingForCreditorConfirmation": "The creditor must confirm the payment."
+  ,"sharedCreditorSettlementDescription": "In demo mode you can request payment; confirming receipt only updates the ledger and does not verify a transfer."
   ,"payContact": "Pay {name}"
   ,"@payContact": {"placeholders":{"name":{"type":"String"}}}
   ,"genericMember": "A member"
@@ -184,8 +188,13 @@
   ,"@invitationSent": {"placeholders":{"name":{"type":"String"}}}
   ,"requestFrom": "Request from {name}"
   ,"@requestFrom": {"placeholders":{"name":{"type":"String"}}}
+  ,"confirmReceivedFrom": "Confirm payment received from {name}"
+  ,"@confirmReceivedFrom": {"placeholders":{"name":{"type":"String"}}}
   ,"demoPaymentDescription": "Demo mode: this simulates a confirmed provider callback. No real money moves."
+  ,"manualSettlementDescription": "Record the agreed amount. This does not initiate a transfer."
   ,"paymentConfirmed": "Simulated payment confirmed."
+  ,"paymentReceivedRecorded": "Payment received recorded."
+  ,"settlementRecorded": "Settlement recorded."
   ,"paymentRequestCreated": "Payment request created."
   ,"couldNotConfirmPayment": "Could not confirm the payment."
   ,"settlementAmount": "Amount to settle"

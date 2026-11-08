@@ -318,6 +318,20 @@ class AppLocalizationsEs extends AppLocalizations {
   String get requestPayment => 'Solicitar pago';
 
   @override
+  String get confirmPaymentReceived => 'Confirmar pago recibido';
+
+  @override
+  String get recordPayment => 'Registrar pago';
+
+  @override
+  String get waitingForCreditorConfirmation =>
+      'La persona acreedora debe confirmar el pago.';
+
+  @override
+  String get sharedCreditorSettlementDescription =>
+      'En modo demo puedes solicitar el pago; confirmar que lo recibiste solo actualiza el registro y no verifica una transferencia.';
+
+  @override
   String payContact(String name) {
     return 'Pagar a $name';
   }
@@ -561,11 +575,26 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String confirmReceivedFrom(String name) {
+    return 'Confirmar pago recibido de $name';
+  }
+
+  @override
   String get demoPaymentDescription =>
       'Modo demo: simula una confirmación del proveedor. No se mueve dinero real.';
 
   @override
+  String get manualSettlementDescription =>
+      'Registra el monto acordado. No inicia una transferencia.';
+
+  @override
   String get paymentConfirmed => 'Pago simulado confirmado.';
+
+  @override
+  String get paymentReceivedRecorded => 'Pago recibido registrado.';
+
+  @override
+  String get settlementRecorded => 'Liquidación registrada.';
 
   @override
   String get paymentRequestCreated => 'Solicitud de pago creada.';

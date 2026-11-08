@@ -106,28 +106,35 @@ class ContactBalanceDetailsScreen extends StatelessWidget {
                           trailing: Text(formatMoney(expense.amountCents)),
                         ),
                     ],
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.icon(
-                          key: Key('request-payment-${balance.group.id}'),
-                          onPressed: () => showSettlementSheet(
-                              context,
-                              store,
-                              balance.group,
-                              balance.member,
-                              balance.amount, onSettled: () {
-                            if (context.mounted) Navigator.of(context).pop();
-                            context.read<AppCubit>().showMovements();
-                          }),
-                          icon: const Icon(Icons.qr_code_2_rounded),
-                          label: Text(balance.amount > 0
-                              ? l10n.requestPayment
-                              : l10n.payContact(status.member.name)),
+                    if (!(balance.group.visibility == 'shared' &&
+                        store.canRequestPayment(balance.group) &&
+                        balance.amount < 0))
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.icon(
+                            key: Key(store.canRequestPayment(balance.group)
+                                ? 'request-payment-${balance.group.id}'
+                                : 'settlement-${balance.group.id}'),
+                            onPressed: () => showSettlementSheet(
+                                context,
+                                store,
+                                balance.group,
+                                balance.member,
+                                balance.amount, onSettled: () {
+                              if (context.mounted) Navigator.of(context).pop();
+                              context.read<AppCubit>().showMovements();
+                            }),
+                            icon: const Icon(Icons.qr_code_2_rounded),
+                            label: Text(store.canRequestPayment(balance.group)
+                                ? l10n.requestPayment
+                                : balance.amount > 0
+                                    ? l10n.confirmPaymentReceived
+                                    : l10n.payContact(status.member.name)),
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
