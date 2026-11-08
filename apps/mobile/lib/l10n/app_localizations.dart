@@ -656,6 +656,30 @@ abstract class AppLocalizations {
   /// **'Solicitar pago'**
   String get requestPayment;
 
+  /// No description provided for @confirmPaymentReceived.
+  ///
+  /// In es, this message translates to:
+  /// **'Confirmar pago recibido'**
+  String get confirmPaymentReceived;
+
+  /// No description provided for @recordPayment.
+  ///
+  /// In es, this message translates to:
+  /// **'Registrar pago'**
+  String get recordPayment;
+
+  /// No description provided for @waitingForCreditorConfirmation.
+  ///
+  /// In es, this message translates to:
+  /// **'La persona acreedora debe confirmar el pago.'**
+  String get waitingForCreditorConfirmation;
+
+  /// No description provided for @sharedCreditorSettlementDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'En modo demo puedes solicitar el pago; confirmar que lo recibiste solo actualiza el registro y no verifica una transferencia.'**
+  String get sharedCreditorSettlementDescription;
+
   /// No description provided for @payContact.
   ///
   /// In es, this message translates to:
@@ -1082,17 +1106,41 @@ abstract class AppLocalizations {
   /// **'Solicitar a {name}'**
   String requestFrom(String name);
 
+  /// No description provided for @confirmReceivedFrom.
+  ///
+  /// In es, this message translates to:
+  /// **'Confirmar pago recibido de {name}'**
+  String confirmReceivedFrom(String name);
+
   /// No description provided for @demoPaymentDescription.
   ///
   /// In es, this message translates to:
   /// **'Modo demo: simula una confirmación del proveedor. No se mueve dinero real.'**
   String get demoPaymentDescription;
 
+  /// No description provided for @manualSettlementDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Registra el monto acordado. No inicia una transferencia.'**
+  String get manualSettlementDescription;
+
   /// No description provided for @paymentConfirmed.
   ///
   /// In es, this message translates to:
   /// **'Pago simulado confirmado.'**
   String get paymentConfirmed;
+
+  /// No description provided for @paymentReceivedRecorded.
+  ///
+  /// In es, this message translates to:
+  /// **'Pago recibido registrado.'**
+  String get paymentReceivedRecorded;
+
+  /// No description provided for @settlementRecorded.
+  ///
+  /// In es, this message translates to:
+  /// **'Liquidación registrada.'**
+  String get settlementRecorded;
 
   /// No description provided for @paymentRequestCreated.
   ///

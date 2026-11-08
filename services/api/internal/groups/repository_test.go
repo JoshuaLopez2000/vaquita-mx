@@ -230,6 +230,7 @@ func TestBalancesSplitsBySalary(t *testing.T) {
 
 func TestValidatePaymentRequestDataRequiresExactCreditorDebtorRelation(t *testing.T) {
 	group := Group{
+		Visibility: "shared",
 		Members: []Member{
 			{ID: "ana", UserID: "user-ana", Active: true, Accepted: true},
 			{ID: "diego", UserID: "user-diego", Active: true, Accepted: true},

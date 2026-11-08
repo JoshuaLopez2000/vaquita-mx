@@ -83,7 +83,8 @@ Recommended database rules:
 | `GET` | `/api/v1/groups` | Load groups, members, expenses, and settlements |
 | `POST` | `/api/v1/groups` | Create a group and its members |
 | `POST` | `/api/v1/groups/{id}/expenses` | Add an equally split expense |
-| `POST` | `/api/v1/groups/{id}/settlements` | Record a simulated settlement |
+| `POST` | `/api/v1/groups/{id}/settlements` | Record a manual settlement in a personal group |
+| `POST` | `/api/v1/groups/{id}/settlements/received` | Authenticated creditor confirmation of a full or partial received payment |
 | `POST` | `/api/v1/offline-sync/groups` | Authenticated, opt-in merge of local groups and ledger history |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
@@ -97,6 +98,20 @@ rejected. Existing account groups are preserved and merged rather than
 replaced. Each group is committed transactionally, so a failed multi-group
 request can be retried without duplicating already-committed groups. Group
 invitations are created only as part of this explicit sync operation.
+
+Manual payment requests are available only for authenticated shared groups.
+In shared groups, `POST /groups/{id}/settlements/received` records a full or
+partial receipt only for the authenticated creditor's exact bilateral
+receivable. Personal-group owners may record settlements in either direction.
+Unauthenticated local groups are always personal; their full or partial
+settlements are stored locally and do not call the server or imply a transfer.
+
+Manual payment requests are available only for authenticated shared groups.
+In shared groups, `POST /groups/{id}/settlements/received` records a full or
+partial receipt only for the authenticated creditor's exact bilateral
+receivable. Personal-group owners may record settlements in either direction.
+Unauthenticated local groups are always personal; their full or partial
+settlements are stored locally and do not call the server or imply a transfer.
 
 Simulated payment completion revalidates the bilateral ledger inside the
 completion transaction and stores the outstanding debtor/creditor balance in

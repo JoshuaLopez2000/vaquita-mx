@@ -66,11 +66,11 @@ func requestPayment(t *testing.T, setup paymentRevalidationSetup, key string, am
 	return request
 }
 
-func settleRequested(t *testing.T, setup paymentRevalidationSetup, fromToken string, amount int64) {
+func settleRequested(t *testing.T, setup paymentRevalidationSetup, amount int64) {
 	t.Helper()
-	doJSON(t, setup.client, http.MethodPost, setup.baseURL+"/api/v1/groups/"+setup.group.ID+"/settlements", fromToken, map[string]any{
-		"member_id":    setup.creditor.ID,
-		"amount_cents": amount,
+	doJSON(t, setup.client, http.MethodPost, setup.baseURL+"/api/v1/groups/"+setup.group.ID+"/settlements/received", setup.creditorTok, map[string]any{
+		"debtor_member_id": setup.debtor.ID,
+		"amount_cents":     amount,
 	}, http.StatusCreated, nil)
 }
 
@@ -126,7 +126,7 @@ func TestPaymentAboveOutstandingCompletesWithInvertedDebt(t *testing.T) {
 	setup := paymentRevalidationFixture(t)
 	request := requestPayment(t, setup, "revalid-over-1", 50)
 	// The debt shrinks to 20 before the callback arrives.
-	settleRequested(t, setup, setup.debtorTok, 30)
+	settleRequested(t, setup, 30)
 	partiallyComplete(t, setup, setup.debtorTok, request.ID, "revalid-event-over")
 	if annotated, present := outstandingAnnotation(t, setup, request.ID); !present || annotated != 20 {
 		t.Fatalf("outstanding annotation = (%d, %v), want (20, true)", annotated, present)
@@ -153,7 +153,7 @@ func TestPaymentAfterFullManualSettlementCompletesWithZeroOutstanding(t *testing
 	t.Parallel()
 	setup := paymentRevalidationFixture(t)
 	request := requestPayment(t, setup, "revalid-full-1", 50)
-	settleRequested(t, setup, setup.debtorTok, 50)
+	settleRequested(t, setup, 50)
 	partiallyComplete(t, setup, setup.debtorTok, request.ID, "revalid-event-full")
 	if annotated, present := outstandingAnnotation(t, setup, request.ID); !present || annotated != 0 {
 		t.Fatalf("outstanding annotation = (%d, %v), want (0, true)", annotated, present)
