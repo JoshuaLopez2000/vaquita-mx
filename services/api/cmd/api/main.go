@@ -11,14 +11,16 @@ import (
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/database"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/idempotency"
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/payments"
 )
 
 type application struct {
-	auth     *auth.Repository
-	payments payments.Provider
-	requests *payments.Repository
-	groups   *groups.Repository
+	auth        *auth.Repository
+	payments    payments.Provider
+	requests    *payments.Repository
+	groups      *groups.Repository
+	intents     *idempotency.Repository
 }
 
 const (
@@ -78,16 +80,36 @@ func main() {
 		os.Exit(1)
 	}
 	defer paymentRepository.Close()
+	idempotencyRepository, err := idempotency.Open(databaseURL)
+	if err != nil {
+		slog.Error("connect command idempotency database", "error", err)
+		os.Exit(1)
+	}
+	defer idempotencyRepository.Close()
+	idempotencyRetention := idempotency.DefaultRetention
+	if raw := getenv("IDEMPOTENCY_RETENTION", ""); raw != "" {
+		parsed, parseErr := time.ParseDuration(raw)
+		if parseErr != nil || parsed <= 0 {
+			if parseErr == nil {
+				parseErr = errors.New("retention must be positive")
+			}
+			slog.Error("parse idempotency retention", "error", parseErr)
+			os.Exit(1)
+		}
+		idempotencyRetention = parsed
+	}
 	paymentProvider := payments.NewSimulatedProvider()
 	reconciler := payments.NewReconciler(paymentProvider, paymentRepository)
 	jobContext, stopJobs := context.WithCancel(context.Background())
 	defer stopJobs()
 	go reconciler.Run(jobContext)
+	go idempotencyRepository.RunCleanup(jobContext, idempotencyRetention)
 	app := application{
 		auth:     authRepository,
 		payments: paymentProvider,
 		requests: paymentRepository,
 		groups:   repository,
+		intents:  idempotencyRepository,
 	}
 
 	server := &http.Server{

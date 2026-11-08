@@ -9,7 +9,27 @@ import (
 )
 
 func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseInput) (Group, error) {
-	g, e := r.Get(c, u, gid)
+	t, e := r.db.BeginTx(c, nil)
+	if e != nil {
+		return Group{}, e
+	}
+	defer t.Rollback()
+	g, e := r.AddExpenseTx(c, t, u, gid, in)
+	if e != nil {
+		return Group{}, e
+	}
+	if e = t.Commit(); e != nil {
+		return Group{}, e
+	}
+	return g, nil
+}
+
+// AddExpenseTx validates and inserts the expense inside the transaction the
+// caller owns. The authorization read, the ledger validation, the insert, and
+// the response projection share one snapshot, so the recorded outcome always
+// matches the rows that committed.
+func (r *Repository) AddExpenseTx(c context.Context, tx *sql.Tx, u, gid string, in AddExpenseInput) (Group, error) {
+	g, e := getOn(c, tx, u, gid)
 	if e != nil {
 		return g, e
 	}
@@ -18,20 +38,12 @@ func (r *Repository) AddExpense(c context.Context, u, gid string, in AddExpenseI
 	}
 	id, e := newID("expense")
 	if e != nil {
-		return g, e
+		return Group{}, e
 	}
-	t, e := r.db.BeginTx(c, nil)
-	if e != nil {
-		return g, e
+	if e = insertExpense(c, tx, gid, id, in, time.Time{}); e != nil {
+		return Group{}, e
 	}
-	defer t.Rollback()
-	if e = insertExpense(c, t, gid, id, in, time.Time{}); e != nil {
-		return g, e
-	}
-	if e = t.Commit(); e != nil {
-		return g, e
-	}
-	return r.Get(c, u, gid)
+	return getOn(c, tx, u, gid)
 }
 
 func prepareExpense(g Group, in *AddExpenseInput) error {
@@ -151,13 +163,28 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string, amountCen
 		return Group{}, e
 	}
 	defer t.Rollback()
+	group, e := r.AddSettlementTx(c, t, u, g, id, amountCents)
+	if e != nil {
+		return Group{}, e
+	}
+	if e = t.Commit(); e != nil {
+		return Group{}, e
+	}
+	return group, nil
+}
+
+// AddSettlementTx writes the settlement inside the transaction the caller
+// owns. It serializes through the group lock and reads the ledger in the
+// same transaction that records the payment, so a concurrent partial payment
+// can never overpay.
+func (r *Repository) AddSettlementTx(c context.Context, tx *sql.Tx, u, g, id string, amountCents *int64) (Group, error) {
 	// Serialize settlement writes per group so two concurrent payments can
 	// never both validate against the same outstanding balance.
-	if e = lockGroup(c, t, g); e != nil {
+	if e := lockGroup(c, tx, g); e != nil {
 		return Group{}, e
 	}
 	var selfID string
-	if e = t.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
+	if e := tx.QueryRowContext(c, `SELECT member_id FROM group_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL AND accepted AND declined_at IS NULL`, g, u).Scan(&selfID); e != nil {
 		if errors.Is(e, sql.ErrNoRows) {
 			return Group{}, ErrNotFound
 		}
@@ -169,7 +196,7 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string, amountCen
 	// Read the ledger inside the same transaction that records the payment,
 	// so the outstanding amount is protected by the lock above.
 	x := Group{ID: g}
-	if e = load(c, &x, t); e != nil {
+	if e := load(c, &x, tx); e != nil {
 		return Group{}, e
 	}
 	var outstanding int64
@@ -198,14 +225,10 @@ func (r *Repository) AddSettlement(c context.Context, u, g, id string, amountCen
 	if e != nil {
 		return Group{}, e
 	}
-	_, e = t.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, selfID, id, amount)
-	if e != nil {
+	if _, e = tx.ExecContext(c, `INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents)VALUES($1,$2,$3,$4,$5)`, sid, g, selfID, id, amount); e != nil {
 		return Group{}, e
 	}
-	if e = t.Commit(); e != nil {
-		return Group{}, e
-	}
-	return r.Get(c, u, g)
+	return getOn(c, tx, u, g)
 }
 
 // lockGroup serializes concurrent writers for one group for the whole
