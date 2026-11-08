@@ -131,9 +131,9 @@ func TestCommandIdempotencyReplaysStoredOutcomes(t *testing.T) {
 	}
 	// State so far: owner is owed 350, debtor owes 350.
 	var partial, partialReplay groups.Group
-	postCommand(t, client, groupURL+"/settlements", f.debtorToken, "settlement-intent", map[string]any{"member_id": f.ownerMember.ID, "amount_cents": 100}, http.StatusCreated, &partial)
+	postCommand(t, client, groupURL+"/settlements/received", f.ownerToken, "settlement-intent", map[string]any{"debtor_member_id": f.debtorMember.ID, "amount_cents": 100}, http.StatusCreated, &partial)
 	assertBalance(t, partial, f.ownerMember.ID, 250)
-	postCommand(t, client, groupURL+"/settlements", f.debtorToken, "settlement-intent", map[string]any{"member_id": f.ownerMember.ID, "amount_cents": 100}, http.StatusCreated, &partialReplay)
+	postCommand(t, client, groupURL+"/settlements/received", f.ownerToken, "settlement-intent", map[string]any{"debtor_member_id": f.debtorMember.ID, "amount_cents": 100}, http.StatusCreated, &partialReplay)
 	assertBalance(t, partialReplay, f.ownerMember.ID, 250)
 	assertBalance(t, partialReplay, f.debtorMember.ID, -250)
 	if len(partialReplay.Settlements) != 1 || partialReplay.Settlements[0].ID != partial.Settlements[0].ID {
@@ -146,13 +146,13 @@ func TestCommandIdempotencyReplaysStoredOutcomes(t *testing.T) {
 	// Settle the remainder; the stored outcome reconstructs even after the
 	// ledger changed underneath it.
 	var full, fullReplay, freshFull groups.Group
-	postCommand(t, client, groupURL+"/settlements", f.debtorToken, "settlement-full-intent", map[string]any{"member_id": f.ownerMember.ID}, http.StatusCreated, &full)
+	postCommand(t, client, groupURL+"/settlements/received", f.ownerToken, "settlement-full-intent", map[string]any{"debtor_member_id": f.debtorMember.ID}, http.StatusCreated, &full)
 	assertBalance(t, full, f.ownerMember.ID, 0)
 	doJSON(t, client, http.MethodPost, groupURL+"/expenses", f.ownerToken, expensePayload(f.ownerMember.ID, f.debtorMember.ID, 400), http.StatusCreated, nil)
 	if count := f.settlementCount(t); count != 2 {
 		t.Fatalf("settlement rows before replay = %d, want 2", count)
 	}
-	postCommand(t, client, groupURL+"/settlements", f.debtorToken, "settlement-full-intent", map[string]any{"member_id": f.ownerMember.ID}, http.StatusCreated, &fullReplay)
+	postCommand(t, client, groupURL+"/settlements/received", f.ownerToken, "settlement-full-intent", map[string]any{"debtor_member_id": f.debtorMember.ID}, http.StatusCreated, &fullReplay)
 	assertBalance(t, fullReplay, f.ownerMember.ID, 0)
 	assertBalance(t, fullReplay, f.debtorMember.ID, 0)
 	if len(fullReplay.Settlements) != len(full.Settlements) {
@@ -162,7 +162,7 @@ func TestCommandIdempotencyReplaysStoredOutcomes(t *testing.T) {
 		t.Fatalf("replay wrote settlement rows; rows = %d, want 2", count)
 	}
 	// A fresh request without a key revalidates against the current ledger.
-	doJSON(t, client, http.MethodPost, groupURL+"/settlements", f.debtorToken, map[string]any{"member_id": f.ownerMember.ID}, http.StatusCreated, &freshFull)
+	doJSON(t, client, http.MethodPost, groupURL+"/settlements/received", f.ownerToken, map[string]any{"debtor_member_id": f.debtorMember.ID}, http.StatusCreated, &freshFull)
 	assertBalance(t, freshFull, f.ownerMember.ID, 0)
 	assertBalance(t, freshFull, f.debtorMember.ID, 0)
 	if count := f.settlementCount(t); count != 3 {
@@ -284,12 +284,12 @@ func TestCommandIdempotencyConflictsAndScoping(t *testing.T) {
 
 	// A rejected attempt stores nothing: the same key claims a valid intent.
 	var overpaymentError apiError
-	doJSONHeaders(t, client, http.MethodPost, groupURL+"/settlements", f.debtorToken, map[string]any{"member_id": f.ownerMember.ID, "amount_cents": 5000}, map[string]string{"Idempotency-Key": "failed-first"}, http.StatusUnprocessableEntity, &overpaymentError)
+	doJSONHeaders(t, client, http.MethodPost, groupURL+"/settlements/received", f.ownerToken, map[string]any{"debtor_member_id": f.debtorMember.ID, "amount_cents": 5000}, map[string]string{"Idempotency-Key": "failed-first"}, http.StatusUnprocessableEntity, &overpaymentError)
 	if overpaymentError.Code != "validation_failed" {
 		t.Fatalf("overpayment error = %#v", overpaymentError)
 	}
 	var validSettlement groups.Group
-	postCommand(t, client, groupURL+"/settlements", f.debtorToken, "failed-first", map[string]any{"member_id": f.ownerMember.ID, "amount_cents": 100}, http.StatusCreated, &validSettlement)
+	postCommand(t, client, groupURL+"/settlements/received", f.ownerToken, "failed-first", map[string]any{"debtor_member_id": f.debtorMember.ID, "amount_cents": 100}, http.StatusCreated, &validSettlement)
 	if count := f.countRows(t, `SELECT COUNT(*) FROM settlements WHERE group_id=$1`, f.group.ID); count != 1 {
 		t.Fatalf("settlement rows after failed first attempt = %d, want 1", count)
 	}

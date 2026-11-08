@@ -25,6 +25,13 @@ requirements are defined in [Security scanning](SECURITY_SCANNING.md).
 - Process events transactionally and make retries safe.
 - Match amount, currency, receiver, and correlation ID before settlement.
 - Never accept a client-side `paid: true` value as proof of payment.
+- In a shared group, only the authenticated creditor for an exact outstanding
+  debtor/creditor relation may manually record a received payment. The API
+  locks the group and revalidates the integer-centavo balance in the same
+  transaction as the immutable settlement insert.
+- In personal groups, only the owner may record a manual settlement. Local
+  groups are personal and their settlement history remains on-device until
+  the user opts in to sync.
 - Reconciliation (issue #27) asks the provider adapter for its own record of
   pending requests through authenticated server-side credentials. A settled
   result is applied once per provider event, transactionally; divergent
@@ -49,13 +56,14 @@ response so callers cannot enumerate group or member records.
 | Change salary-sharing consent | Own membership only | Own membership only | Deny |
 | Create an expense | Allow | Allow | Deny |
 | Create a payment request | Exact creditor/debtor relation only | Exact creditor/debtor relation only | Deny |
-| Record a settlement | Own accepted membership only | Own accepted membership only | Deny |
+| Record a manual settlement in a personal group | Owner only | Deny | Deny |
+| Confirm received payment in a shared group | Exact creditor relation only | Exact creditor relation only | Deny |
 | Accept or decline an invitation | Not applicable | Pending invitee only | Removed or declined: deny |
 
 The owner role cannot be removed. Payment requests must match the exact
 MXN-centavo amount in the server-derived creditor/debtor relation for active,
-accepted members. Settlement commands may only settle the authenticated
-member's relationship with another member.
+accepted members. A received-payment confirmation must also match the
+authenticated member's creditor relationship with the named debtor.
 
 ## Mobile controls
 

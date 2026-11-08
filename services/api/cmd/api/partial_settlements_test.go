@@ -20,6 +20,7 @@ type partialSettlementSetup struct {
 	group        groups.Group
 	ownerMember  groups.Member
 	debtorMember groups.Member
+	ownerToken   string
 	debtorToken  string
 }
 
@@ -45,14 +46,18 @@ func partialSettlementFixture(t *testing.T) partialSettlementSetup {
 		"participant_ids": []string{ownerMember.ID, debtorMember.ID},
 		"split_mode":      "equal",
 	}, http.StatusCreated, nil)
-	return partialSettlementSetup{test, client, baseURL, group, ownerMember, debtorMember, debtor.Token}
+	return partialSettlementSetup{
+		pg: test, client: client, baseURL: baseURL, group: group,
+		ownerMember: ownerMember, debtorMember: debtorMember,
+		ownerToken: owner.Token, debtorToken: debtor.Token,
+	}
 }
 
 // settle posts one settlement command exactly as encoded and returns the raw
 // outcome, without the helper's status assertion — concurrent tests need to
 // classify non-deterministic statuses themselves.
 func settle(setup partialSettlementSetup, amount any) (int, string) {
-	payload := map[string]any{"member_id": setup.ownerMember.ID}
+	payload := map[string]any{"debtor_member_id": setup.debtorMember.ID}
 	if amount != nil {
 		payload["amount_cents"] = amount
 	}
@@ -60,12 +65,12 @@ func settle(setup partialSettlementSetup, amount any) (int, string) {
 	if err != nil {
 		return 0, err.Error()
 	}
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, setup.baseURL+"/api/v1/groups/"+setup.group.ID+"/settlements", bytes.NewReader(encoded))
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodPost, setup.baseURL+"/api/v1/groups/"+setup.group.ID+"/settlements/received", bytes.NewReader(encoded))
 	if err != nil {
 		return 0, err.Error()
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer "+setup.debtorToken)
+	request.Header.Set("Authorization", "Bearer "+setup.ownerToken)
 	response, err := setup.client.Do(request)
 	if err != nil {
 		return 0, err.Error()
@@ -81,12 +86,12 @@ func settle(setup partialSettlementSetup, amount any) (int, string) {
 func TestPartialSettlementsRecordExactAmountsAndRejectExcess(t *testing.T) {
 	t.Parallel()
 	setup := partialSettlementFixture(t)
-	groupURL := setup.baseURL + "/api/v1/groups/" + setup.group.ID + "/settlements"
+	groupURL := setup.baseURL + "/api/v1/groups/" + setup.group.ID + "/settlements/received"
 
 	// A partial payment records exactly the requested centavos.
 	var partial groups.Group
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": 30,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": 30,
 	}, http.StatusCreated, &partial)
 	assertBalance(t, partial, setup.ownerMember.ID, 20)
 	assertBalance(t, partial, setup.debtorMember.ID, -20)
@@ -97,24 +102,24 @@ func TestPartialSettlementsRecordExactAmountsAndRejectExcess(t *testing.T) {
 	// Overpayment, explicit zero, and negative amounts are all refused; the
 	// non-integer body never reaches the command at all.
 	var overpayment apiError
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": 21,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": 21,
 	}, http.StatusUnprocessableEntity, &overpayment)
 	if overpayment.Message != "amount exceeds the outstanding balance" {
 		t.Fatalf("overpayment error = %#v", overpayment)
 	}
 	var invalid apiError
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": 0,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": 0,
 	}, http.StatusUnprocessableEntity, &invalid)
 	if invalid.Message != "member has no balance to settle" {
 		t.Fatalf("zero-centavo error = %#v", invalid)
 	}
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": -1,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": -1,
 	}, http.StatusUnprocessableEntity, nil)
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": 1.5,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": 1.5,
 	}, http.StatusBadRequest, nil)
 
 	var settledRows int
@@ -124,8 +129,8 @@ func TestPartialSettlementsRecordExactAmountsAndRejectExcess(t *testing.T) {
 
 	// The back-compatible body settles the remainder deterministically.
 	var cleared groups.Group
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]string{
-		"member_id": setup.ownerMember.ID,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]string{
+		"debtor_member_id": setup.debtorMember.ID,
 	}, http.StatusCreated, &cleared)
 	assertBalance(t, cleared, setup.ownerMember.ID, 0)
 	assertBalance(t, cleared, setup.debtorMember.ID, 0)
@@ -138,11 +143,11 @@ func TestPartialSettlementsRecordExactAmountsAndRejectExcess(t *testing.T) {
 	}
 
 	// With the obligation cleared, nothing remains to settle.
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]any{
-		"member_id": setup.ownerMember.ID, "amount_cents": 1,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]any{
+		"debtor_member_id": setup.debtorMember.ID, "amount_cents": 1,
 	}, http.StatusUnprocessableEntity, nil)
-	doJSON(t, setup.client, http.MethodPost, groupURL, setup.debtorToken, map[string]string{
-		"member_id": setup.ownerMember.ID,
+	doJSON(t, setup.client, http.MethodPost, groupURL, setup.ownerToken, map[string]string{
+		"debtor_member_id": setup.debtorMember.ID,
 	}, http.StatusUnprocessableEntity, nil)
 }
 

@@ -253,6 +253,7 @@ class _AppShellState extends State<AppShell> {
     final input = await showCreateGroupSheet(
       context,
       contacts: context.read<AppCubit>().state.contacts,
+      allowShared: widget.store.isAuthenticated,
     );
     if (input == null || !mounted) return;
     final created = await context.read<AppCubit>().createGroup(

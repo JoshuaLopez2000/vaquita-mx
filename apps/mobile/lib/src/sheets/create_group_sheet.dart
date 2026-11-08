@@ -1,9 +1,13 @@
 part of '../sheets.dart';
 
 class _CreateGroupSheet extends StatefulWidget {
-  const _CreateGroupSheet({required this.contacts});
+  const _CreateGroupSheet({
+    required this.contacts,
+    required this.allowShared,
+  });
 
   final List<AppContact> contacts;
+  final bool allowShared;
 
   @override
   State<_CreateGroupSheet> createState() => _CreateGroupSheetState();
@@ -157,23 +161,26 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                   value == null || value.trim().isEmpty ? l10n.groupIcon : null,
             ),
             const SizedBox(height: 10),
-            SegmentedButton<String>(
-                segments: [
-                  ButtonSegment(value: 'personal', label: Text(l10n.personal)),
-                  ButtonSegment(value: 'shared', label: Text(l10n.shared))
-                ],
-                selected: {
-                  _visibility
-                },
-                onSelectionChanged: (value) =>
-                    setState(() => _visibility = value.first)),
-            SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _salarySplits,
-                title: Text(l10n.allowSalarySplits),
-                subtitle: Text(l10n.salaryOptInOnly),
-                onChanged: (value) => setState(() => _salarySplits = value)),
-            if (_salarySplits) const SalaryInferenceNotice(),
+            if (widget.allowShared) ...[
+              SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                        value: 'personal', label: Text(l10n.personal)),
+                    ButtonSegment(value: 'shared', label: Text(l10n.shared))
+                  ],
+                  selected: {
+                    _visibility
+                  },
+                  onSelectionChanged: (value) =>
+                      setState(() => _visibility = value.first)),
+              SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _salarySplits,
+                  title: Text(l10n.allowSalarySplits),
+                  subtitle: Text(l10n.salaryOptInOnly),
+                  onChanged: (value) => setState(() => _salarySplits = value)),
+              if (_salarySplits) const SalaryInferenceNotice(),
+            ],
             if (widget.contacts.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(l10n.addSavedContacts,

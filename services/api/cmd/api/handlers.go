@@ -510,6 +510,51 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result.Status, result.Body)
 }
 
+func (app application) confirmReceivedSettlement(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		DebtorMemberID string `json:"debtor_member_id"`
+		AmountCents    *int64 `json:"amount_cents"`
+	}
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash received settlement", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	result, err := app.intents.Run(r.Context(), userID(r), opConfirmReceived, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.ConfirmReceivedSettlementTx(r.Context(), tx, userID(r), groupID, input.DebtorMemberID, input.AmountCents)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
+	if errors.Is(err, groups.ErrInvalid) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "member has no balance to settle", nil)
+		return
+	}
+	if errors.Is(err, groups.ErrOverpayment) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "amount exceeds the outstanding balance", nil)
+		return
+	}
+	if errors.Is(err, groups.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or receivable balance not found", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "confirm received settlement", err)
+		return
+	}
+	writeJSON(w, result.Status, result.Body)
+}
+
 func (app application) removeMember(w http.ResponseWriter, r *http.Request) {
 	err := app.groups.RemoveMember(r.Context(), userID(r), r.PathValue("groupID"), r.PathValue("memberID"))
 	if errors.Is(err, groups.ErrInvalid) {
