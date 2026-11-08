@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"sort"
 	"testing"
 
 	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/groups"
@@ -48,8 +49,13 @@ func TestSharedCreditorCanConfirmReceivedPaymentIdempotently(t *testing.T) {
 	}, map[string]string{"Idempotency-Key": "received-remainder"}, http.StatusCreated, &full)
 	assertBalance(t, full, setup.ownerMember.ID, 0)
 	assertBalance(t, full, setup.debtorMember.ID, 0)
-	if len(full.Settlements) != 2 || full.Settlements[1].AmountCents != 20 {
-		t.Fatalf("full settlement history = %#v, want the 30-centavo payment and 20-centavo remainder", full.Settlements)
+	amounts := make([]int64, len(full.Settlements))
+	for i, settlement := range full.Settlements {
+		amounts[i] = settlement.AmountCents
+	}
+	sort.Slice(amounts, func(i, j int) bool { return amounts[i] < amounts[j] })
+	if len(amounts) != 2 || amounts[0] != 20 || amounts[1] != 30 {
+		t.Fatalf("full settlement amounts = %v, want the 30-centavo payment and 20-centavo remainder", amounts)
 	}
 }
 
