@@ -850,4 +850,33 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupStoredOnServer => 'Server';
+
+  @override
+  String get savedOfflineWillSync => 'Saved offline. Will sync when online.';
+
+  @override
+  String pendingSyncCount(int count) {
+    return '$count pending';
+  }
+
+  @override
+  String pendingSyncBannerTitle(int count) {
+    return '$count offline changes waiting to sync';
+  }
+
+  @override
+  String get pendingSyncBannerDescription =>
+      'Saved on this device. They will sync automatically when your connection returns.';
+
+  @override
+  String failedSyncBannerTitle(int count) {
+    return '$count offline changes could not sync';
+  }
+
+  @override
+  String get discard => 'Discard';
+
+  @override
+  String get paymentRequestsRequireInternet =>
+      'Payment requests require an internet connection.';
 }

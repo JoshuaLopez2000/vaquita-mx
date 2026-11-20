@@ -36,13 +36,55 @@ class DemoStore extends ChangeNotifier {
   String? errorMessage;
   final Set<String> _syncEnabledInMemory = {};
   final Set<String> _serverSyncedGroupIds = {};
+  final List<PendingMutation> _queuedMutations = [];
   bool _syncing = false;
   bool _syncRequested = false;
+  bool _flushingMutations = false;
+  bool _flushRequested = false;
+  bool _isOnline = true;
+  bool _lastMutationQueuedOffline = false;
 
   bool get isRemote => _apiClient != null;
   bool get isOfflineFirst => _offlineFirst;
   bool get isAuthenticated => _apiClient?.user != null;
+  bool get isOnline => _isOnline;
+  bool get lastMutationQueuedOffline => _lastMutationQueuedOffline;
   ApiClient? get apiClient => _apiClient;
+
+  List<PendingMutation> get pendingMutations {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return const [];
+    return List.unmodifiable(
+      _queuedMutations
+          .where((m) => m.accountId == accountId && m.isPending),
+    );
+  }
+
+  List<PendingMutation> get failedMutations {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return const [];
+    return List.unmodifiable(
+      _queuedMutations
+          .where((m) => m.accountId == accountId && m.isFailed),
+    );
+  }
+
+  int pendingMutationCountForGroup(String groupId) {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return 0;
+    return _queuedMutations
+        .where((m) => m.accountId == accountId && m.groupId == groupId)
+        .length;
+  }
+
+  bool hasPendingMutationsForGroup(String groupId) =>
+      pendingMutationCountForGroup(groupId) > 0;
+
+  void setConnectivityOnline(bool online) {
+    if (_isOnline == online) return;
+    _isOnline = online;
+    notifyListeners();
+  }
 
   bool isServerBacked(ExpenseGroup group) {
     if (_apiClient == null) return false;
@@ -72,6 +114,10 @@ class DemoStore extends ChangeNotifier {
     groups
       ..clear()
       ..addAll(await _offlineDatabase.loadGroups());
+    final accountId = _apiClient?.userId;
+    if (accountId != null) {
+      await _reloadQueuedMutations(accountId);
+    }
     notifyListeners();
   }
 
@@ -98,10 +144,15 @@ class DemoStore extends ChangeNotifier {
     try {
       final loaded = await api.listGroups();
       if (_offlineFirst) {
+        final accountId = api.userId;
+        if (accountId != null) {
+          await _reloadQueuedMutations(accountId);
+        }
         for (final group in loaded) {
           final index = groups.indexWhere((local) => local.id == group.id);
           final hasPendingChanges =
-              await _offlineDatabase?.isPending(group.id) ?? false;
+              (await _offlineDatabase?.isPending(group.id) ?? false) ||
+                  hasPendingMutationsForGroup(group.id);
           if (index >= 0 && hasPendingChanges) {
             continue;
           } else if (index >= 0) {
@@ -110,7 +161,11 @@ class DemoStore extends ChangeNotifier {
             groups.add(group);
           }
           _serverSyncedGroupIds.add(group.id);
-          await _offlineDatabase?.saveGroup(group, needsSync: false);
+          await _offlineDatabase?.saveGroup(
+            group,
+            needsSync: false,
+            remoteId: group.id,
+          );
         }
       } else {
         groups
@@ -191,6 +246,207 @@ class DemoStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> syncPendingMutations({bool retryFailed = false}) async {
+    final api = _apiClient;
+    final accountId = api?.userId;
+    if (api == null || accountId == null || !_offlineFirst) return false;
+    if (_flushingMutations) {
+      _flushRequested = true;
+      return true;
+    }
+    _flushingMutations = true;
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    var syncedAny = false;
+    var syncedSettlement = false;
+    var allSucceeded = true;
+    try {
+      if (_offlineDatabase != null) {
+        if (retryFailed) {
+          await _offlineDatabase.retryFailedMutations(accountId);
+        }
+        await _reloadQueuedMutations(accountId);
+      } else if (retryFailed) {
+        for (var i = 0; i < _queuedMutations.length; i++) {
+          final item = _queuedMutations[i];
+          if (item.accountId == accountId && item.isFailed) {
+            _queuedMutations[i] = item.copyWith(
+              status: PendingMutation.statusPending,
+              clearError: true,
+            );
+          }
+        }
+      }
+
+      do {
+        _flushRequested = false;
+        final batch = _queuedMutations
+            .where((m) => m.accountId == accountId && m.isPending)
+            .toList();
+        if (batch.isEmpty) break;
+        var stoppedOnTransient = false;
+        for (final mutation in batch) {
+          try {
+            await _replayMutation(api, mutation);
+            await _offlineDatabase?.deleteMutation(mutation.id);
+            _queuedMutations.removeWhere((m) => m.id == mutation.id);
+            syncedAny = true;
+            if (mutation.operation == PendingMutation.opSettleBalance ||
+                mutation.operation ==
+                    PendingMutation.opConfirmReceivedPayment) {
+              syncedSettlement = true;
+            }
+          } on ApiException catch (error) {
+            if (_isTransientApiError(error)) {
+              errorMessage = error.code;
+              allSucceeded = false;
+              stoppedOnTransient = true;
+              break;
+            }
+            await _offlineDatabase?.markMutationFailed(mutation.id, error.code);
+            final index =
+                _queuedMutations.indexWhere((m) => m.id == mutation.id);
+            if (index >= 0) {
+              _queuedMutations[index] = _queuedMutations[index].copyWith(
+                status: PendingMutation.statusFailed,
+                lastError: error.code,
+              );
+            }
+            errorMessage = error.code;
+            allSucceeded = false;
+          } catch (_) {
+            errorMessage = 'server_unavailable';
+            allSucceeded = false;
+            stoppedOnTransient = true;
+            break;
+          }
+        }
+        if (stoppedOnTransient) break;
+      } while (_flushRequested ||
+          _queuedMutations.any((m) => m.accountId == accountId && m.isPending));
+
+      if (syncedAny) {
+        await load();
+        if (syncedSettlement) {
+          try {
+            await loadStatus();
+          } catch (_) {
+            // Keep synced group ledger even if status refresh fails transiently.
+          }
+        }
+      }
+      return allSucceeded;
+    } finally {
+      _flushingMutations = false;
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> discardFailedMutation(String mutationId) async {
+    final index = _queuedMutations.indexWhere((m) => m.id == mutationId);
+    if (index < 0) return;
+    final mutation = _queuedMutations.removeAt(index);
+    await _offlineDatabase?.deleteMutation(mutation.id);
+    final groupIndex = groups.indexWhere((g) => g.id == mutation.groupId);
+    if (groupIndex >= 0) {
+      final group = groups[groupIndex];
+      if (mutation.operation == PendingMutation.opAddExpense) {
+        group.expenses.removeWhere((e) => e.id == mutation.localEntityId);
+      } else {
+        group.settlements.removeWhere((s) => s.id == mutation.localEntityId);
+      }
+      await _offlineDatabase?.saveGroup(
+        group,
+        needsSync: false,
+        remoteId: group.id,
+      );
+    }
+    _refreshLocalStatus();
+    if (_queuedMutations
+        .where((m) => m.accountId == _apiClient?.userId && m.isFailed)
+        .isEmpty) {
+      errorMessage = null;
+    }
+    notifyListeners();
+    if (_isOnline && isAuthenticated) {
+      await load();
+    }
+  }
+
+  Future<void> _replayMutation(ApiClient api, PendingMutation mutation) async {
+    final payload = mutation.payload;
+    switch (mutation.operation) {
+      case PendingMutation.opAddExpense:
+        final rawPayers = (payload['payers'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
+        final rawShares = (payload['shares'] as List<dynamic>? ?? const [])
+            .cast<Map<String, dynamic>>();
+        await api.addExpense(
+          groupId: mutation.groupId,
+          description: payload['description'] as String,
+          amountCents: payload['amount_cents'] as int,
+          payerId: payload['payer_id'] as String,
+          payers: [
+            for (final payer in rawPayers)
+              ExpensePayer(
+                memberId: payer['member_id'] as String,
+                amountCents: payer['amount_cents'] as int,
+              ),
+          ],
+          participantIds:
+              (payload['participant_ids'] as List<dynamic>).cast<String>(),
+          splitMode: payload['split_mode'] as String? ?? 'equal',
+          shares: [
+            for (final share in rawShares)
+              ExpenseShare(
+                memberId: share['member_id'] as String,
+                amountCents: share['amount_cents'] as int,
+              ),
+          ],
+          splitOverpayment: payload['split_overpayment'] as bool? ?? true,
+          idempotencyKey: mutation.idempotencyKey,
+        );
+      case PendingMutation.opSettleBalance:
+        await api.settleBalance(
+          groupId: mutation.groupId,
+          memberId: payload['member_id'] as String,
+          amountCents: payload['amount_cents'] as int?,
+          idempotencyKey: mutation.idempotencyKey,
+        );
+      case PendingMutation.opConfirmReceivedPayment:
+        await api.confirmReceivedPayment(
+          groupId: mutation.groupId,
+          debtorId: payload['debtor_member_id'] as String,
+          amountCents: payload['amount_cents'] as int?,
+          idempotencyKey: mutation.idempotencyKey,
+        );
+      default:
+        throw StateError('Unsupported offline mutation: ${mutation.operation}');
+    }
+  }
+
+  bool _isTransientApiError(ApiException error) {
+    final status = error.statusCode;
+    if (status != null) {
+      if (status >= 500 || status == 408 || status == 429) return true;
+      if (status == 401 && isAuthenticated) return true;
+      return false;
+    }
+    return error.code == 'server_unavailable' ||
+        error.code == 'service_unavailable';
+  }
+
+  Future<void> _reloadQueuedMutations(String accountId) async {
+    final database = _offlineDatabase;
+    if (database == null) return;
+    final stored = await database.mutationsForAccount(accountId);
+    _queuedMutations
+      ..removeWhere((m) => m.accountId == accountId)
+      ..addAll(stored);
+  }
+
   Future<void> findContacts(List<String> phones) async {
     final api = _apiClient;
     if (api == null || api.user == null) return;
@@ -203,10 +459,15 @@ class DemoStore extends ChangeNotifier {
   Future<void> loadContacts() async {
     final api = _apiClient;
     if (api == null || api.user == null) return;
-    contacts
-      ..clear()
-      ..addAll(await api.listContacts());
-    notifyListeners();
+    if (_offlineFirst && !_isOnline) return;
+    try {
+      contacts
+        ..clear()
+        ..addAll(await api.listContacts());
+      notifyListeners();
+    } catch (_) {
+      // Keep cached contacts when offline or unreachable.
+    }
   }
 
   Future<bool> saveContact(String name, String phone) async {
@@ -388,20 +649,37 @@ class DemoStore extends ChangeNotifier {
   Future<void> loadStatus() async {
     final api = _apiClient;
     if (api == null || api.user == null) return;
-    final rows = await api.status();
-    contactStatus
-      ..clear()
-      ..addAll(rows.map(ContactStatus.fromJson));
-    notifyListeners();
+    if (_offlineFirst && !_isOnline) {
+      _refreshLocalStatus();
+      notifyListeners();
+      return;
+    }
+    try {
+      final rows = await api.status();
+      contactStatus
+        ..clear()
+        ..addAll(rows.map(ContactStatus.fromJson));
+      notifyListeners();
+    } catch (_) {
+      if (_offlineFirst) {
+        _refreshLocalStatus();
+        notifyListeners();
+      }
+    }
   }
 
   Future<void> loadInvitations() async {
     final api = _apiClient;
     if (api == null || api.user == null) return;
-    invitations
-      ..clear()
-      ..addAll(await api.invitations());
-    notifyListeners();
+    if (_offlineFirst && !_isOnline) return;
+    try {
+      invitations
+        ..clear()
+        ..addAll(await api.invitations());
+      notifyListeners();
+    } catch (_) {
+      // Keep cached invitations when offline or unreachable.
+    }
   }
 
   Future<bool> respondInvitation(String groupId, bool accept) async {
@@ -423,11 +701,46 @@ class DemoStore extends ChangeNotifier {
     List<ExpenseShare> shares = const [],
     bool splitOverpayment = true,
   }) async {
+    _lastMutationQueuedOffline = false;
     final api = _apiClient;
     final group = groupById(groupId);
     if (api != null && canUseServerFeatures(group)) {
-      return _sync(
-        () => api.addExpense(
+      if (!_offlineFirst) {
+        return _sync(
+          () => api.addExpense(
+            groupId: groupId,
+            description: description,
+            amountCents: amountCents,
+            payerId: payerId,
+            payers: payers,
+            participantIds: participantIds,
+            splitMode: splitMode,
+            shares: shares,
+            splitOverpayment: splitOverpayment,
+          ),
+        );
+      }
+      final idempotencyKey = api.newIdempotencyKey();
+      if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
+        final queued = await _queueExpenseForServerGroup(
+          group: group,
+          description: description,
+          amountCents: amountCents,
+          payerId: payerId,
+          payers: payers,
+          participantIds: participantIds,
+          splitMode: splitMode,
+          shares: shares,
+          splitOverpayment: splitOverpayment,
+          idempotencyKey: idempotencyKey,
+        );
+        if (queued && _isOnline) {
+          unawaited(syncPendingMutations());
+        }
+        return queued;
+      }
+      return _executeServerMutation(
+        send: () => api.addExpense(
           groupId: groupId,
           description: description,
           amountCents: amountCents,
@@ -437,6 +750,19 @@ class DemoStore extends ChangeNotifier {
           splitMode: splitMode,
           shares: shares,
           splitOverpayment: splitOverpayment,
+          idempotencyKey: idempotencyKey,
+        ),
+        onTransientFallback: () => _queueExpenseForServerGroup(
+          group: group,
+          description: description,
+          amountCents: amountCents,
+          payerId: payerId,
+          payers: payers,
+          participantIds: participantIds,
+          splitMode: splitMode,
+          shares: shares,
+          splitOverpayment: splitOverpayment,
+          idempotencyKey: idempotencyKey,
         ),
       );
     }
@@ -461,6 +787,77 @@ class DemoStore extends ChangeNotifier {
         );
     await _persistGroup(group);
     notifyListeners();
+    return true;
+  }
+
+  Future<bool> _queueExpenseForServerGroup({
+    required ExpenseGroup group,
+    required String description,
+    required int amountCents,
+    required String payerId,
+    required List<ExpensePayer> payers,
+    required List<String> participantIds,
+    required String splitMode,
+    required List<ExpenseShare> shares,
+    required bool splitOverpayment,
+    required String idempotencyKey,
+  }) async {
+    final accountId = _apiClient?.userId;
+    final trimmed = description.trim();
+    if (accountId == null ||
+        trimmed.isEmpty ||
+        amountCents <= 0 ||
+        participantIds.isEmpty) {
+      return false;
+    }
+    final localId = _newLocalId('local_expense');
+    final now = DateTime.now().toUtc();
+    final effectivePayers = payers.isEmpty
+        ? [ExpensePayer(memberId: payerId, amountCents: amountCents)]
+        : payers;
+    group.expenses.insert(
+      0,
+      Expense(
+        id: localId,
+        description: trimmed,
+        amountCents: amountCents,
+        payerId: effectivePayers.first.memberId,
+        payers: List.unmodifiable(effectivePayers),
+        participantIds: List.unmodifiable(participantIds),
+        splitMode: splitMode,
+        shares: {
+          for (final share in shares) share.memberId: share.amountCents,
+        },
+        splitOverpayment: splitOverpayment,
+        createdAt: now,
+      ),
+    );
+    final mutation = PendingMutation(
+      id: _newLocalId('mutation'),
+      accountId: accountId,
+      groupId: group.id,
+      operation: PendingMutation.opAddExpense,
+      idempotencyKey: idempotencyKey,
+      localEntityId: localId,
+      createdAt: now,
+      payload: {
+        'description': trimmed,
+        'amount_cents': amountCents,
+        'payer_id': effectivePayers.first.memberId,
+        'payers': [
+          for (final payer in effectivePayers)
+            {'member_id': payer.memberId, 'amount_cents': payer.amountCents},
+        ],
+        'participant_ids': List<String>.from(participantIds),
+        'split_mode': splitMode,
+        'split_overpayment': splitOverpayment,
+        'shares': [
+          for (final share in shares)
+            {'member_id': share.memberId, 'amount_cents': share.amountCents},
+        ],
+      },
+    );
+    await _persistQueuedServerMutation(group, mutation);
     return true;
   }
 
@@ -491,17 +888,49 @@ class DemoStore extends ChangeNotifier {
     required String memberId,
     int? amountCents,
   }) async {
+    _lastMutationQueuedOffline = false;
+    final api = _apiClient;
     final group = groupById(groupId);
-    if (_apiClient != null && canUseServerFeatures(group)) {
-      final settled = await _sync(
-        () => _apiClient.settleBalance(
+    if (api != null && canUseServerFeatures(group)) {
+      if (!_offlineFirst) {
+        final settled = await _sync(
+          () => api.settleBalance(
+            groupId: groupId,
+            memberId: memberId,
+            amountCents: amountCents,
+          ),
+        );
+        if (settled) await loadStatus();
+        return settled;
+      }
+      final idempotencyKey = api.newIdempotencyKey();
+      if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
+        final queued = await _queueSettlementForServerGroup(
+          group: group,
+          memberId: memberId,
+          amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
+        );
+        if (queued && _isOnline) {
+          unawaited(syncPendingMutations());
+        }
+        return queued;
+      }
+      return _executeServerMutation(
+        send: () => api.settleBalance(
           groupId: groupId,
           memberId: memberId,
           amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
+        ),
+        refreshStatus: true,
+        onTransientFallback: () => _queueSettlementForServerGroup(
+          group: group,
+          memberId: memberId,
+          amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
         ),
       );
-      if (settled) await loadStatus();
-      return settled;
     }
     final selfId = _selfMember(group)?.id ?? currentUserId;
     final memberBalance = balances(group)[memberId] ?? 0;
@@ -528,18 +957,95 @@ class DemoStore extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> _queueSettlementForServerGroup({
+    required ExpenseGroup group,
+    required String memberId,
+    required int? amountCents,
+    required String idempotencyKey,
+  }) async {
+    final accountId = _apiClient?.userId;
+    if (accountId == null || group.visibility == 'shared') return false;
+    final selfId = _selfMember(group)?.id ?? currentUserId;
+    final memberIndex =
+        group.members.indexWhere((member) => member.id == memberId);
+    if (memberIndex < 0) return false;
+    final relationBalance = balanceWith(group, group.members[memberIndex]);
+    if (relationBalance >= 0) return false;
+    final outstanding = -relationBalance;
+    final amount = amountCents ?? outstanding;
+    if (amount <= 0 || amount > outstanding) return false;
+    final localId = _newLocalId('local_settlement');
+    final now = DateTime.now().toUtc();
+    group.settlements.insert(
+      0,
+      Settlement(
+        id: localId,
+        fromMemberId: selfId,
+        toMemberId: memberId,
+        amountCents: amount,
+        createdAt: now,
+      ),
+    );
+    final mutation = PendingMutation(
+      id: _newLocalId('mutation'),
+      accountId: accountId,
+      groupId: group.id,
+      operation: PendingMutation.opSettleBalance,
+      idempotencyKey: idempotencyKey,
+      localEntityId: localId,
+      createdAt: now,
+      payload: {
+        'member_id': memberId,
+        'amount_cents': amount,
+      },
+    );
+    await _persistQueuedServerMutation(group, mutation);
+    return true;
+  }
+
   Future<bool> confirmReceivedPayment({
     required String groupId,
     required String debtorId,
     int? amountCents,
   }) async {
+    _lastMutationQueuedOffline = false;
+    final api = _apiClient;
     final group = groupById(groupId);
-    if (_apiClient != null && canUseServerFeatures(group)) {
-      return _sync(() => _apiClient.confirmReceivedPayment(
-            groupId: groupId,
-            debtorId: debtorId,
-            amountCents: amountCents,
-          ));
+    if (api != null && canUseServerFeatures(group)) {
+      if (!_offlineFirst) {
+        return _sync(() => api.confirmReceivedPayment(
+              groupId: groupId,
+              debtorId: debtorId,
+              amountCents: amountCents,
+            ));
+      }
+      final idempotencyKey = api.newIdempotencyKey();
+      if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
+        final queued = await _queueReceivedPaymentForServerGroup(
+          group: group,
+          debtorId: debtorId,
+          amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
+        );
+        if (queued && _isOnline) {
+          unawaited(syncPendingMutations());
+        }
+        return queued;
+      }
+      return _executeServerMutation(
+        send: () => api.confirmReceivedPayment(
+          groupId: groupId,
+          debtorId: debtorId,
+          amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
+        ),
+        onTransientFallback: () => _queueReceivedPaymentForServerGroup(
+          group: group,
+          debtorId: debtorId,
+          amountCents: amountCents,
+          idempotencyKey: idempotencyKey,
+        ),
+      );
     }
     final selfId = _selfMember(group)?.id ?? currentUserId;
     final debtorIndex =
@@ -567,6 +1073,106 @@ class DemoStore extends ChangeNotifier {
     _refreshLocalStatus();
     notifyListeners();
     return true;
+  }
+
+  Future<bool> _queueReceivedPaymentForServerGroup({
+    required ExpenseGroup group,
+    required String debtorId,
+    required int? amountCents,
+    required String idempotencyKey,
+  }) async {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return false;
+    final selfId = _selfMember(group)?.id ?? currentUserId;
+    final debtorIndex =
+        group.members.indexWhere((member) => member.id == debtorId);
+    if (debtorIndex < 0) return false;
+    final outstanding = balanceWith(group, group.members[debtorIndex]);
+    final amount = amountCents ?? outstanding;
+    if (outstanding <= 0 || amount <= 0 || amount > outstanding) return false;
+    final localId = _newLocalId('local_settlement');
+    final now = DateTime.now().toUtc();
+    group.settlements.insert(
+      0,
+      Settlement(
+        id: localId,
+        fromMemberId: debtorId,
+        toMemberId: selfId,
+        amountCents: amount,
+        createdAt: now,
+      ),
+    );
+    final mutation = PendingMutation(
+      id: _newLocalId('mutation'),
+      accountId: accountId,
+      groupId: group.id,
+      operation: PendingMutation.opConfirmReceivedPayment,
+      idempotencyKey: idempotencyKey,
+      localEntityId: localId,
+      createdAt: now,
+      payload: {
+        'debtor_member_id': debtorId,
+        'amount_cents': amount,
+      },
+    );
+    await _persistQueuedServerMutation(group, mutation);
+    return true;
+  }
+
+  Future<bool> _executeServerMutation({
+    required Future<void> Function() send,
+    required Future<bool> Function() onTransientFallback,
+    bool refreshStatus = false,
+  }) async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      await send();
+      await load();
+      if (refreshStatus) {
+        try {
+          await loadStatus();
+        } catch (_) {
+          // Keep committed ledger update even if status refresh fails transiently.
+        }
+      }
+      return true;
+    } on ApiException catch (error) {
+      if (_isTransientApiError(error) && isAuthenticated) {
+        final queued = await onTransientFallback();
+        if (queued) return true;
+      }
+      errorMessage = error.code;
+      return false;
+    } catch (_) {
+      if (isAuthenticated) {
+        final queued = await onTransientFallback();
+        if (queued) return true;
+      }
+      errorMessage = 'server_request_failed';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _persistQueuedServerMutation(
+    ExpenseGroup group,
+    PendingMutation mutation,
+  ) async {
+    await _offlineDatabase?.saveGroup(
+      group,
+      needsSync: false,
+      remoteId: group.id,
+    );
+    await _offlineDatabase?.enqueueMutation(mutation);
+    _queuedMutations.add(mutation);
+    _lastMutationQueuedOffline = true;
+    errorMessage = null;
+    _refreshLocalStatus();
+    notifyListeners();
   }
 
   void _refreshLocalStatus() {
@@ -608,6 +1214,11 @@ class DemoStore extends ChangeNotifier {
     if (api == null || !canRequestPayment(groupById(groupId))) {
       return Future.value(false);
     }
+    if (_offlineFirst && !_isOnline) {
+      errorMessage = 'server_unavailable';
+      notifyListeners();
+      return Future.value(false);
+    }
     return _sync(() => api.requestPayment(
           groupId: groupId,
           debtorId: debtorId,
@@ -641,6 +1252,11 @@ class DemoStore extends ChangeNotifier {
           : _localPaymentRelations(group);
 
   List<PaymentRelation> _localPaymentRelations(ExpenseGroup group) {
+    if (group.expenses.isEmpty &&
+        group.settlements.isEmpty &&
+        group.paymentRelations.isNotEmpty) {
+      return group.paymentRelations;
+    }
     final edges = <String, Map<String, int>>{};
     void add(String from, String to, int amount) {
       if (from == to || amount == 0) return;
@@ -865,6 +1481,7 @@ class DemoStore extends ChangeNotifier {
   Future<void> refreshAuthentication() async {
     final user = _apiClient?.user;
     if (_offlineFirst && user != null) {
+      await _reloadQueuedMutations(user.id);
       for (final group in groups) {
         final index = group.members.indexWhere(
           (member) => member.id == seedUserId || member.userId == user.id,
@@ -883,6 +1500,8 @@ class DemoStore extends ChangeNotifier {
         );
         await _persistGroup(group);
       }
+    } else if (_offlineFirst && user == null && _offlineDatabase != null) {
+      _queuedMutations.clear();
     }
     notifyListeners();
   }

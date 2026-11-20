@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class AppUser {
   const AppUser({
     required this.id,
@@ -346,6 +348,86 @@ class ExpenseGroup {
   int get totalSpentCents => expenses.fold(
         0,
         (total, expense) => total + expense.amountCents,
+      );
+}
+
+class PendingMutation {
+  const PendingMutation({
+    required this.id,
+    required this.accountId,
+    required this.groupId,
+    required this.operation,
+    required this.idempotencyKey,
+    required this.payload,
+    required this.localEntityId,
+    required this.createdAt,
+    this.status = statusPending,
+    this.lastError,
+  });
+
+  static const opAddExpense = 'add_expense';
+  static const opSettleBalance = 'settle_balance';
+  static const opConfirmReceivedPayment = 'confirm_received_payment';
+
+  static const statusPending = 'pending';
+  static const statusFailed = 'failed';
+
+  final String id;
+  final String accountId;
+  final String groupId;
+  final String operation;
+  final String idempotencyKey;
+  final Map<String, dynamic> payload;
+  final String localEntityId;
+  final String status;
+  final String? lastError;
+  final DateTime createdAt;
+
+  bool get isPending => status == statusPending;
+  bool get isFailed => status == statusFailed;
+
+  PendingMutation copyWith({
+    String? status,
+    String? lastError,
+    bool clearError = false,
+  }) =>
+      PendingMutation(
+        id: id,
+        accountId: accountId,
+        groupId: groupId,
+        operation: operation,
+        idempotencyKey: idempotencyKey,
+        payload: payload,
+        localEntityId: localEntityId,
+        createdAt: createdAt,
+        status: status ?? this.status,
+        lastError: clearError ? null : (lastError ?? this.lastError),
+      );
+
+  Map<String, Object?> toRow() => {
+        'id': id,
+        'account_id': accountId,
+        'group_id': groupId,
+        'operation': operation,
+        'idempotency_key': idempotencyKey,
+        'payload': jsonEncode(payload),
+        'local_entity_id': localEntityId,
+        'status': status,
+        'last_error': lastError,
+        'created_at': createdAt.toUtc().toIso8601String(),
+      };
+
+  factory PendingMutation.fromRow(Map<String, Object?> row) => PendingMutation(
+        id: row['id']! as String,
+        accountId: row['account_id']! as String,
+        groupId: row['group_id']! as String,
+        operation: row['operation']! as String,
+        idempotencyKey: row['idempotency_key']! as String,
+        payload: jsonDecode(row['payload']! as String) as Map<String, dynamic>,
+        localEntityId: row['local_entity_id']! as String,
+        status: row['status']! as String,
+        lastError: row['last_error'] as String?,
+        createdAt: DateTime.parse(row['created_at']! as String),
       );
 }
 

@@ -277,4 +277,14 @@
   ,"syncFailed": "No se pudo sincronizar. Tus datos locales están seguros; inténtalo de nuevo."
   ,"groupStoredLocally": "Local"
   ,"groupStoredOnServer": "Servidor"
+  ,"savedOfflineWillSync": "Guardado sin conexión. Se sincronizará al volver internet."
+  ,"pendingSyncCount": "{count} pendiente(s)"
+  ,"@pendingSyncCount": {"placeholders":{"count":{"type":"int"}}}
+  ,"pendingSyncBannerTitle": "{count} cambios sin conexión pendientes de sincronizar"
+  ,"@pendingSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
+  ,"pendingSyncBannerDescription": "Guardados en este dispositivo. Se sincronizarán automáticamente al volver tu conexión."
+  ,"failedSyncBannerTitle": "{count} cambios sin conexión no pudieron sincronizarse"
+  ,"@failedSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
+  ,"discard": "Descartar"
+  ,"paymentRequestsRequireInternet": "Las solicitudes de pago requieren conexión a internet."
 }

@@ -18,15 +18,20 @@ Go API ---- PostgreSQL
         `-- CoDiProvider (requires registration and certification)
 ```
 
-The mobile app stores offline groups and ledger history in a local SQLite
-database on supported native platforms. It can be used before authentication;
-the user chooses from Profile whether to upload local groups after logging in
-or signing up. Mutations to groups already stored on the server use the
-authenticated API while online; local-only groups and their ledger history
-remain on-device until sync is explicitly enabled. The web build currently
-keeps local data in memory only. The mobile application never connects
-directly to PostgreSQL or holds provider secrets. The API remains authoritative
-for synced calculations and state transitions.
+The mobile app stores offline groups, cached server-backed groups, and an
+account-scoped `pending_mutations` outbox in a local SQLite database
+(`OfflineDatabase` v2) on supported native platforms. It can be used before
+authentication; the user chooses from Profile whether to upload local-only
+groups after logging in or signing up. Mutations to groups already stored on
+the server use the authenticated API while online, and queue expenses,
+personal-group settlements, and shared-group received-payment confirmations in
+SQLite when offline or on transient transport errors for automatic FIFO replay
+with stable `Idempotency-Key` headers when connectivity returns. Local-only
+groups and their ledger history remain on-device until sync is explicitly
+enabled. The web build currently keeps local data and queued mutations in
+memory only. The mobile application never connects directly to PostgreSQL or
+holds provider secrets. The API remains authoritative for synced calculations
+and state transitions.
 
 ## Proposed modules
 
@@ -102,8 +107,20 @@ request can be retried without duplicating already-committed groups. Group
 invitations are created only as part of this explicit sync operation.
 
 An authenticated mutation to a group that is already server-backed uses its
-API endpoint directly. Mutations to local-only groups are persisted locally
-and uploaded only after the account's explicit sync opt-in.
+idempotent API endpoint (`POST /groups/{id}/expenses`,
+`POST /groups/{id}/settlements`, `POST /groups/{id}/settlements/received`)
+directly when online. When offline, when the group already has queued mutations
+(preserving FIFO order), or when a transient transport/5xx failure leaves the
+outcome unknown, the client applies the optimistic integer-centavo entry
+locally and persists a `pending_mutations` outbox row scoped to the signed-in
+`account_id` with a stable `Idempotency-Key`. On reconnect, queued mutations
+replay in FIFO order independently of the pre-login local-group sync opt-in;
+`load()` preserves groups with pending mutations until their outbox drains,
+then refreshes authoritative server state (including server-computed salary
+shares). Permanent 4xx rejections mark the entry `failed` without blocking
+other queued mutations, allowing explicit retry or discard. Mutations to
+local-only groups remain persisted locally and are uploaded only after the
+account's explicit sync opt-in.
 
 Manual payment requests are available only for authenticated shared groups.
 In shared groups, `POST /groups/{id}/settlements/received` records a full or

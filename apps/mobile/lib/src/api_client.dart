@@ -9,12 +9,14 @@ class ApiException implements Exception {
   const ApiException({
     required this.code,
     required this.message,
+    this.statusCode,
     this.correlationId,
     this.fields = const <String, String>{},
   });
 
   final String code;
   final String message;
+  final int? statusCode;
   final String? correlationId;
   final Map<String, String> fields;
 
@@ -342,10 +344,12 @@ class ApiClient {
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
     bool splitOverpayment = true,
+    String? idempotencyKey,
   }) async {
     final response = await _request(
       'POST',
       '/api/v1/groups/$groupId/expenses',
+      headers: {'Idempotency-Key': idempotencyKey ?? _idempotencyKey()},
       body: {
         'description': description,
         'amount_cents': amountCents,
@@ -370,11 +374,12 @@ class ApiClient {
     required String groupId,
     required String memberId,
     int? amountCents,
+    String? idempotencyKey,
   }) async {
     final response = await _request(
       'POST',
       '/api/v1/groups/$groupId/settlements',
-      headers: {'Idempotency-Key': _idempotencyKey()},
+      headers: {'Idempotency-Key': idempotencyKey ?? _idempotencyKey()},
       body: {
         'member_id': memberId,
         if (amountCents != null) 'amount_cents': amountCents,
@@ -387,11 +392,12 @@ class ApiClient {
     required String groupId,
     required String debtorId,
     int? amountCents,
+    String? idempotencyKey,
   }) async {
     final response = await _request(
       'POST',
       '/api/v1/groups/$groupId/settlements/received',
-      headers: {'Idempotency-Key': _idempotencyKey()},
+      headers: {'Idempotency-Key': idempotencyKey ?? _idempotencyKey()},
       body: {
         'debtor_member_id': debtorId,
         if (amountCents != null) 'amount_cents': amountCents,
@@ -496,6 +502,8 @@ class ApiClient {
     return http.Response.fromStream(streamed);
   }
 
+  String newIdempotencyKey() => _idempotencyKey();
+
   String _idempotencyKey() {
     final random = Random.secure();
     final suffix = List<int>.generate(16, (_) => random.nextInt(256))
@@ -577,6 +585,7 @@ class ApiClient {
     return ApiException(
       code: code,
       message: body['message'] as String? ?? legacyMessage ?? 'request failed',
+      statusCode: response.statusCode,
       correlationId: response.headers['x-correlation-id'],
       fields: fields,
     );

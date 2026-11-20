@@ -72,12 +72,16 @@ authenticated member's creditor relationship with the named debtor.
 - Use Android App Links or verified deep links in production.
 - Redact sensitive content from screenshots and push notifications.
 - Consider Play Integrity signals as risk input, not authentication.
-- Offline group and financial history is stored in app-private SQLite storage on
-  supported native platforms. It is not encrypted at the application layer;
-  treat it as sensitive, and assess database encryption and backup exclusions
-  before public deployment. Offline sync is opt-in per account and requires
-  authenticated API access. Mutations to server-backed groups use authenticated
-  API endpoints; local-only group data remains on-device until sync is enabled.
+- Offline group history, cached server-backed groups, and queued server
+  mutations (`pending_mutations`) are stored in app-private SQLite storage on
+  supported native platforms. Queued mutations are scoped by `account_id`,
+  replayed only while authenticated for that account with stable
+  `Idempotency-Key` headers, and still enforced by server-side authorization
+  (for example, shared-group creditor-only receipt confirmation). Server-only
+  payment requests are disabled offline and never queued. Local SQLite storage
+  is not encrypted at the application layer; treat it as sensitive, and assess
+  database encryption and backup exclusions before public deployment. Local-only
+  group upload remains opt-in per account and requires authenticated API access.
 
 ## Privacy
 

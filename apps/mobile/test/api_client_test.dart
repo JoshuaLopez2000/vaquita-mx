@@ -84,6 +84,46 @@ void main() {
     );
   });
 
+  test('forwards caller-supplied idempotency keys on expense and settlements',
+      () async {
+    final received = <String, String?>{};
+    final client = ApiClient(
+      baseUrl: 'http://example.test',
+      client: MockClient((request) async {
+        received[request.url.path] = request.headers['idempotency-key'];
+        return http.Response('{}', 201);
+      }),
+    );
+
+    await client.addExpense(
+      groupId: 'group-1',
+      description: 'Coffee',
+      amountCents: 900,
+      payerId: 'user-1',
+      payers: const [ExpensePayer(memberId: 'user-1', amountCents: 900)],
+      participantIds: const ['user-1', 'member-2'],
+      idempotencyKey: 'stable-expense-key',
+    );
+    await client.settleBalance(
+      groupId: 'group-1',
+      memberId: 'member-2',
+      amountCents: 450,
+      idempotencyKey: 'stable-settlement-key',
+    );
+    await client.confirmReceivedPayment(
+      groupId: 'group-1',
+      debtorId: 'member-2',
+      amountCents: 450,
+      idempotencyKey: 'stable-received-key',
+    );
+
+    expect(received, {
+      '/api/v1/groups/group-1/expenses': 'stable-expense-key',
+      '/api/v1/groups/group-1/settlements': 'stable-settlement-key',
+      '/api/v1/groups/group-1/settlements/received': 'stable-received-key',
+    });
+  });
+
   test('syncs only supported local group fields and returns ID mappings',
       () async {
     final client = ApiClient(

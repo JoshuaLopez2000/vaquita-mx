@@ -34,11 +34,20 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 11. The balance view changes while the original expense remains immutable.
 
 Local-only data remains on the device until the user explicitly enables sync
-for the signed-in account. Mutations to groups already stored on the server use
-the authenticated API when online. Once local sync is enabled, pending local
-changes retry when connectivity returns. The app uses SQLite on supported
-native platforms; web currently keeps offline data in memory only. Group lists
-and group details label each group as local or server-backed.
+for the signed-in account. On sign-in, server-backed groups are fetched and
+cached locally in SQLite so they remain usable offline and across restarts.
+Expenses, personal-group manual settlements, and shared-group received-payment
+confirmations on server-backed groups use the authenticated API when online;
+when the device is offline or a transient transport failure occurs, they are
+saved optimistically on-device and queued in a durable outbox that replays
+automatically with stable idempotency keys when connectivity returns. Payment
+requests require an active internet connection and are disabled offline.
+Permanent server rejections surface visibly so the user can retry or discard
+the failed entry. Once local sync is enabled, pending local-only group changes
+also retry when connectivity returns. The app uses SQLite on supported native
+platforms; web currently keeps offline data and queued mutations in memory
+only. Group lists and group details label each group as local or server-backed
+and show pending offline sync counts.
 
 Without signing in, groups are personal and local-only. Payment requests,
 shared-group invitations, and other server-dependent actions are unavailable.

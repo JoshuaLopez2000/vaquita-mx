@@ -150,9 +150,11 @@ class _SettlementSheetState extends State<_SettlementSheet> {
       SnackBar(
         content: Text(
           settled
-              ? widget.memberOwes
-                  ? l10n.paymentReceivedRecorded
-                  : l10n.settlementRecorded
+              ? widget.store.lastMutationQueuedOffline
+                  ? l10n.savedOfflineWillSync
+                  : widget.memberOwes
+                      ? l10n.paymentReceivedRecorded
+                      : l10n.settlementRecorded
               : l10n.couldNotConfirmPayment,
         ),
       ),
@@ -234,10 +236,19 @@ class _SettlementSheetState extends State<_SettlementSheet> {
           if (widget.canRequestPayment) ...[
             OutlinedButton.icon(
               key: Key('request-${widget.member.id}'),
-              onPressed: () async => _requestPayment(),
+              onPressed:
+                  widget.store.isOnline ? () async => _requestPayment() : null,
               icon: const Icon(Icons.qr_code_2_rounded),
               label: Text(l10n.requestPayment),
             ),
+            if (!widget.store.isOnline) ...[
+              const SizedBox(height: 6),
+              Text(
+                l10n.paymentRequestsRequireInternet,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 8),
           ],
           FilledButton.icon(

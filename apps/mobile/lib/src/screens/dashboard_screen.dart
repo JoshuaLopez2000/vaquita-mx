@@ -96,6 +96,98 @@ class DashboardScreen extends StatelessWidget {
                 padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
                 sliver: SliverToBoxAdapter(child: LinearProgressIndicator()),
               ),
+            if (store.pendingMutations.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Card(
+                    key: const Key('pending-sync-banner'),
+                    color: Theme.of(context).colorScheme.tertiaryContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.cloud_upload_outlined),
+                      title: Text(
+                        l10n.pendingSyncBannerTitle(
+                          store.pendingMutations.length,
+                        ),
+                      ),
+                      subtitle: Text(l10n.pendingSyncBannerDescription),
+                      trailing: TextButton(
+                        key: const Key('sync-pending-mutations-button'),
+                        onPressed: store.isLoading
+                            ? null
+                            : () => context
+                                .read<AppCubit>()
+                                .syncPendingMutations(),
+                        child: Text(l10n.syncNow),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (store.failedMutations.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Card(
+                    key: const Key('failed-sync-banner'),
+                    color: Theme.of(context).colorScheme.errorContainer,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.sync_problem_rounded),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  l10n.failedSyncBannerTitle(
+                                    store.failedMutations.length,
+                                  ),
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                key: const Key('discard-failed-sync-button'),
+                                onPressed: store.isLoading
+                                    ? null
+                                    : () async {
+                                        final cubit = context.read<AppCubit>();
+                                        for (final failed in List.of(
+                                            store.failedMutations)) {
+                                          await cubit
+                                              .discardFailedMutation(failed.id);
+                                        }
+                                      },
+                                child: Text(l10n.discard),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton.tonal(
+                                key: const Key('retry-failed-sync-button'),
+                                onPressed: store.isLoading
+                                    ? null
+                                    : () => context
+                                        .read<AppCubit>()
+                                        .syncPendingMutations(
+                                          retryFailed: true,
+                                        ),
+                                child: Text(l10n.retry),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (store.errorMessage != null)
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
@@ -141,6 +233,7 @@ class DashboardScreen extends StatelessWidget {
                   return _GroupCard(
                     group: group,
                     serverBacked: store.isServerBacked(group),
+                    pendingCount: store.pendingMutationCountForGroup(group.id),
                     balance: store.currentUserBalance(group),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(

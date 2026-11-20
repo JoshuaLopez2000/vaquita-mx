@@ -17,6 +17,10 @@ class AppCubit extends Cubit<AppState> {
   Future<void> loadGroups() => store.load();
   Future<bool> syncLocalGroups({bool enable = false}) =>
       store.syncLocalGroups(enable: enable);
+  Future<bool> syncPendingMutations({bool retryFailed = false}) =>
+      store.syncPendingMutations(retryFailed: retryFailed);
+  Future<void> discardFailedMutation(String mutationId) =>
+      store.discardFailedMutation(mutationId);
   Future<void> loadInbox() async {
     await Future.wait([store.loadStatus(), store.loadInvitations()]);
   }

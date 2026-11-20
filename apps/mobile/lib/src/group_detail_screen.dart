@@ -52,7 +52,9 @@ class GroupDetailScreen extends StatelessWidget {
       SnackBar(
         content: Text(
           created
-              ? l10n.expenseAdded(input.description)
+              ? (store.lastMutationQueuedOffline
+                  ? l10n.savedOfflineWillSync
+                  : l10n.expenseAdded(input.description))
               : l10n.couldNotAddExpense,
         ),
       ),
@@ -96,6 +98,7 @@ class GroupDetailScreen extends StatelessWidget {
               _GroupHeader(
                 group: group,
                 serverBacked: store.isServerBacked(group),
+                pendingCount: store.pendingMutationCountForGroup(group.id),
                 balance: store.currentUserBalance(group),
                 onTap: () => showPendingPaymentsSheet(
                   context,
