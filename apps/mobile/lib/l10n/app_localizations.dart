@@ -1592,6 +1592,48 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Servidor'**
   String get groupStoredOnServer;
+
+  /// No description provided for @savedOfflineWillSync.
+  ///
+  /// In es, this message translates to:
+  /// **'Guardado sin conexión. Se sincronizará al volver internet.'**
+  String get savedOfflineWillSync;
+
+  /// No description provided for @pendingSyncCount.
+  ///
+  /// In es, this message translates to:
+  /// **'{count} pendiente(s)'**
+  String pendingSyncCount(int count);
+
+  /// No description provided for @pendingSyncBannerTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'{count} cambios sin conexión pendientes de sincronizar'**
+  String pendingSyncBannerTitle(int count);
+
+  /// No description provided for @pendingSyncBannerDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Guardados en este dispositivo. Se sincronizarán automáticamente al volver tu conexión.'**
+  String get pendingSyncBannerDescription;
+
+  /// No description provided for @failedSyncBannerTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'{count} cambios sin conexión no pudieron sincronizarse'**
+  String failedSyncBannerTitle(int count);
+
+  /// No description provided for @discard.
+  ///
+  /// In es, this message translates to:
+  /// **'Descartar'**
+  String get discard;
+
+  /// No description provided for @paymentRequestsRequireInternet.
+  ///
+  /// In es, this message translates to:
+  /// **'Las solicitudes de pago requieren conexión a internet.'**
+  String get paymentRequestsRequireInternet;
 }
 
 class _AppLocalizationsDelegate

@@ -277,4 +277,14 @@
   ,"syncFailed": "Sync failed. Your local data is safe; try again."
   ,"groupStoredLocally": "Local"
   ,"groupStoredOnServer": "Server"
+  ,"savedOfflineWillSync": "Saved offline. Will sync when online."
+  ,"pendingSyncCount": "{count} pending"
+  ,"@pendingSyncCount": {"placeholders":{"count":{"type":"int"}}}
+  ,"pendingSyncBannerTitle": "{count} offline changes waiting to sync"
+  ,"@pendingSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
+  ,"pendingSyncBannerDescription": "Saved on this device. They will sync automatically when your connection returns."
+  ,"failedSyncBannerTitle": "{count} offline changes could not sync"
+  ,"@failedSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
+  ,"discard": "Discard"
+  ,"paymentRequestsRequireInternet": "Payment requests require an internet connection."
 }

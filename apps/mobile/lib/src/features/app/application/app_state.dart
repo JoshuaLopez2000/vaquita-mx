@@ -9,6 +9,9 @@ class AppState {
     required this.contacts,
     required this.contactStatus,
     required this.invitations,
+    required this.pendingMutations,
+    required this.failedMutations,
+    required this.isOnline,
     required this.isLoading,
     required this.errorMessage,
     required this.user,
@@ -20,6 +23,9 @@ class AppState {
         contacts: List.unmodifiable(store.contacts),
         contactStatus: List.unmodifiable(store.contactStatus),
         invitations: List.unmodifiable(store.invitations),
+        pendingMutations: store.pendingMutations,
+        failedMutations: store.failedMutations,
+        isOnline: store.isOnline,
         isLoading: store.isLoading,
         errorMessage: store.errorMessage,
         user: store.authenticatedUser,
@@ -30,6 +36,9 @@ class AppState {
   final List<AppContact> contacts;
   final List<ContactStatus> contactStatus;
   final List<GroupInvitation> invitations;
+  final List<PendingMutation> pendingMutations;
+  final List<PendingMutation> failedMutations;
+  final bool isOnline;
   final bool isLoading;
   final String? errorMessage;
   final AppUser? user;

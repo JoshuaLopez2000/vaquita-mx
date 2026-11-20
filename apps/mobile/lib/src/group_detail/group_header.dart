@@ -6,10 +6,12 @@ class _GroupHeader extends StatelessWidget {
     required this.serverBacked,
     required this.balance,
     required this.onTap,
+    this.pendingCount = 0,
   });
 
   final ExpenseGroup group;
   final bool serverBacked;
+  final int pendingCount;
   final int balance;
   final VoidCallback onTap;
 
@@ -67,6 +69,7 @@ class _GroupHeader extends StatelessWidget {
                       GroupStorageBadge(
                         key: Key('group-storage-${group.id}'),
                         serverBacked: serverBacked,
+                        pendingCount: pendingCount,
                       ),
                     ],
                   ),

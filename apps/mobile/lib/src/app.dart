@@ -110,8 +110,10 @@ class _VaquitaAppState extends State<VaquitaApp> {
   }
 
   Future<void> _syncWhenOnline(List<ConnectivityResult> results) async {
-    if (results.any((result) => result != ConnectivityResult.none) &&
-        store?.isAuthenticated == true) {
+    final online = results.any((result) => result != ConnectivityResult.none);
+    store?.setConnectivityOnline(online);
+    if (online && store?.isAuthenticated == true) {
+      await store?.syncPendingMutations();
       await store?.syncLocalGroups();
     }
   }
@@ -287,6 +289,7 @@ class _AppShellState extends State<AppShell> {
           onAuthenticated: () async {
             await widget.store.refreshAuthentication();
             await cubit.loadGroups();
+            await cubit.syncPendingMutations();
           },
         ),
       ),
@@ -322,7 +325,9 @@ class _AppShellState extends State<AppShell> {
     final l10n = AppLocalizations.of(context)!;
     final cubit = context.read<AppCubit>();
     final messenger = ScaffoldMessenger.of(context);
-    final synced = await cubit.syncLocalGroups(enable: true);
+    final pendingSynced = await cubit.syncPendingMutations(retryFailed: true);
+    final localSynced = await cubit.syncLocalGroups(enable: true);
+    final synced = pendingSynced && localSynced;
     if (!mounted) return;
     messenger.showSnackBar(
       SnackBar(content: Text(synced ? l10n.syncCompleted : l10n.syncFailed)),
