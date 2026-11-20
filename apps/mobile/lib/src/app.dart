@@ -17,6 +17,7 @@ import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
+import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
 
 part 'screens/dashboard_screen.dart';
 part 'screens/inbox_screen.dart';

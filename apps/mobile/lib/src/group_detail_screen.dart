@@ -9,6 +9,7 @@ import 'package:vaquita_mx/src/store.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
 import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
+import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
 
 part 'group_detail/settlement_sheet.dart';
 part 'group_detail/salary_split_card.dart';
@@ -94,6 +95,7 @@ class GroupDetailScreen extends StatelessWidget {
             children: [
               _GroupHeader(
                 group: group,
+                serverBacked: store.isServerBacked(group),
                 balance: store.currentUserBalance(group),
                 onTap: () => showPendingPaymentsSheet(
                   context,
@@ -273,8 +275,16 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 8),
               FilledButton(
                   onPressed: () async {
-                    await context.read<AppCubit>().updateGroup(
+                    final updated = await context.read<AppCubit>().updateGroup(
                         group.id, {'name': name.text, 'emoji': emoji.text});
+                    if (!updated) {
+                      if (sheet.mounted) {
+                        ScaffoldMessenger.of(sheet).showSnackBar(
+                          SnackBar(content: Text(l10n.couldNotUpdateGroup)),
+                        );
+                      }
+                      return;
+                    }
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
                   child: Text(l10n.saveGroup)),
@@ -285,8 +295,16 @@ class GroupDetailScreen extends StatelessWidget {
                   title: Text(l10n.enableSalarySplits),
                   subtitle: Text(l10n.everyMemberConsented),
                   onChanged: (value) async {
-                    await store
-                        .updateGroup(group.id, {'salary_split_enabled': value});
+                    final updated = await store.updateGroup(
+                        group.id, {'salary_split_enabled': value});
+                    if (!updated) {
+                      if (sheet.mounted) {
+                        ScaffoldMessenger.of(sheet).showSnackBar(
+                          SnackBar(content: Text(l10n.couldNotUpdateGroup)),
+                        );
+                      }
+                      return;
+                    }
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
                 )

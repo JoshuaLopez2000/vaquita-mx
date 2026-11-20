@@ -122,6 +122,7 @@
   ,"groupCreated": "{name} created."
   ,"@groupCreated": {"placeholders":{"name":{"type":"String"}}}
   ,"couldNotCreateGroup": "Could not create the group."
+  ,"couldNotUpdateGroup": "Could not save the group. Check your connection and your permission to edit it."
   ,"goodAfternoon": "Good afternoon 👋"
   ,"memberNeedsNamePhone": "Each member needs a name and Mexican phone number."
   ,"addAtLeastOneMember": "Add at least one member."
@@ -274,4 +275,6 @@
   ,"syncLocalGroupsButton": "Sync local groups"
   ,"syncCompleted": "Local groups synced"
   ,"syncFailed": "Sync failed. Your local data is safe; try again."
+  ,"groupStoredLocally": "Local"
+  ,"groupStoredOnServer": "Server"
 }

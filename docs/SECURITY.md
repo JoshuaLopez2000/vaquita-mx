@@ -76,7 +76,8 @@ authenticated member's creditor relationship with the named debtor.
   supported native platforms. It is not encrypted at the application layer;
   treat it as sensitive, and assess database encryption and backup exclusions
   before public deployment. Offline sync is opt-in per account and requires
-  authenticated API access.
+  authenticated API access. Mutations to server-backed groups use authenticated
+  API endpoints; local-only group data remains on-device until sync is enabled.
 
 ## Privacy
 

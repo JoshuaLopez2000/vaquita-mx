@@ -38,7 +38,31 @@ void main() {
       find.byKey(const Key('group-visibility-cdmx-weekend')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('group-storage-cdmx-weekend')),
+      findsOneWidget,
+    );
+    expect(find.text('Local'), findsWidgets);
     expect(find.text('Grupo personal'), findsWidgets);
+  });
+
+  testWidgets('labels server-backed groups on the dashboard', (tester) async {
+    final store = DemoStore.remote(
+      ApiClient(baseUrl: 'http://example.test'),
+    );
+    store.groups.add(
+      ExpenseGroup(
+        id: 'server-group',
+        name: 'Server trip',
+        emoji: 'T',
+        members: const [Member(id: 'user-1', name: 'You')],
+      ),
+    );
+    await tester.pumpWidget(VaquitaApp(store: store));
+
+    expect(find.byKey(const Key('group-storage-server-group')), findsOneWidget);
+    expect(find.text('Servidor'), findsOneWidget);
+    store.dispose();
   });
 
   testWidgets('identifies group visibility in group details', (tester) async {
@@ -62,6 +86,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('group-visibility-label')), findsOneWidget);
     expect(find.text('Grupo compartido'), findsOneWidget);
+    expect(find.text('Local'), findsOneWidget);
   });
 
   testWidgets('shows an empty state in the inbox tab', (tester) async {

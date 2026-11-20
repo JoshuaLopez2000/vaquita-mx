@@ -140,6 +140,7 @@ class DashboardScreen extends StatelessWidget {
                   final group = store.groups[index];
                   return _GroupCard(
                     group: group,
+                    serverBacked: store.isServerBacked(group),
                     balance: store.currentUserBalance(group),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(

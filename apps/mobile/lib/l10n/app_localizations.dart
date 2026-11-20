@@ -740,6 +740,12 @@ abstract class AppLocalizations {
   /// **'No se pudo crear el grupo.'**
   String get couldNotCreateGroup;
 
+  /// No description provided for @couldNotUpdateGroup.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo guardar el grupo. Comprueba tu conexión y que tengas permiso para editarlo.'**
+  String get couldNotUpdateGroup;
+
   /// No description provided for @goodAfternoon.
   ///
   /// In es, this message translates to:
@@ -1574,6 +1580,18 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'No se pudo sincronizar. Tus datos locales están seguros; inténtalo de nuevo.'**
   String get syncFailed;
+
+  /// No description provided for @groupStoredLocally.
+  ///
+  /// In es, this message translates to:
+  /// **'Local'**
+  String get groupStoredLocally;
+
+  /// No description provided for @groupStoredOnServer.
+  ///
+  /// In es, this message translates to:
+  /// **'Servidor'**
+  String get groupStoredOnServer;
 }
 
 class _AppLocalizationsDelegate

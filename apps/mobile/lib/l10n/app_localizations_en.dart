@@ -370,6 +370,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get couldNotCreateGroup => 'Could not create the group.';
 
   @override
+  String get couldNotUpdateGroup =>
+      'Could not save the group. Check your connection and your permission to edit it.';
+
+  @override
   String get goodAfternoon => 'Good afternoon 👋';
 
   @override
@@ -840,4 +844,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get syncFailed => 'Sync failed. Your local data is safe; try again.';
+
+  @override
+  String get groupStoredLocally => 'Local';
+
+  @override
+  String get groupStoredOnServer => 'Server';
 }
