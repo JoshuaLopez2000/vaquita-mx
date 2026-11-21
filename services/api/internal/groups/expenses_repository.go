@@ -192,9 +192,12 @@ func insertExpense(c context.Context, t *sql.Tx, gid, id string, in AddExpenseIn
 		}
 	}
 	for p, share := range in.Shares {
-		var percentageBps sql.NullInt32
+		var percentageBps sql.NullInt64
 		if bps, ok := percentageByMember[share.MemberID]; ok {
-			percentageBps = sql.NullInt32{Int32: int32(bps), Valid: true}
+			if bps <= 0 || bps > PercentageBasisPointsTotal {
+				return ErrInvalid
+			}
+			percentageBps = sql.NullInt64{Int64: int64(bps), Valid: true}
 		}
 		if _, e = t.ExecContext(c, `INSERT INTO expense_shares(expense_id,member_id,position,amount_cents,percentage_bps)VALUES($1,$2,$3,$4,$5)`, id, share.MemberID, p, share.AmountCents, percentageBps); e != nil {
 			return e
