@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/models.dart';
@@ -385,6 +386,9 @@ class DemoStore extends ChangeNotifier {
             .cast<Map<String, dynamic>>();
         final rawShares = (payload['shares'] as List<dynamic>? ?? const [])
             .cast<Map<String, dynamic>>();
+        final rawPercentages =
+            (payload['percentages'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
         await api.addExpense(
           groupId: mutation.groupId,
           description: payload['description'] as String,
@@ -406,6 +410,10 @@ class DemoStore extends ChangeNotifier {
                 memberId: share['member_id'] as String,
                 amountCents: share['amount_cents'] as int,
               ),
+          ],
+          percentages: [
+            for (final entry in rawPercentages)
+              ExpensePercentage.fromJson(entry),
           ],
           splitOverpayment: payload['split_overpayment'] as bool? ?? true,
           idempotencyKey: mutation.idempotencyKey,
@@ -704,6 +712,7 @@ class DemoStore extends ChangeNotifier {
     required List<String> participantIds,
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
+    List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
   }) async {
     _lastMutationQueuedOffline = false;
@@ -721,6 +730,7 @@ class DemoStore extends ChangeNotifier {
             participantIds: participantIds,
             splitMode: splitMode,
             shares: shares,
+            percentages: percentages,
             splitOverpayment: splitOverpayment,
           ),
         );
@@ -736,6 +746,7 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
           idempotencyKey: idempotencyKey,
         );
@@ -754,6 +765,7 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
           idempotencyKey: idempotencyKey,
         ),
@@ -766,33 +778,116 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
           idempotencyKey: idempotencyKey,
         ),
       );
     }
-    group.expenses.insert(
-          0,
-          Expense(
-            id: _offlineFirst
-                ? _newLocalId('local_expense')
-                : _nextId('expense'),
-            description: description.trim(),
-            amountCents: amountCents,
-            payerId: payerId,
-            payers: List.unmodifiable(payers),
-            participantIds: List.unmodifiable(participantIds),
-            splitMode: splitMode,
-            shares: {
-              for (final share in shares) share.memberId: share.amountCents
-            },
-            splitOverpayment: splitOverpayment,
-            createdAt: DateTime.now(),
-          ),
-        );
+    final localExpense = _buildLocalExpense(
+      id: _offlineFirst ? _newLocalId('local_expense') : _nextId('expense'),
+      description: description,
+      amountCents: amountCents,
+      payerId: payerId,
+      payers: payers,
+      participantIds: participantIds,
+      splitMode: splitMode,
+      shares: shares,
+      percentages: percentages,
+      splitOverpayment: splitOverpayment,
+      createdAt: DateTime.now(),
+    );
+    if (localExpense == null) return false;
+    group.expenses.insert(0, localExpense);
     await _persistGroup(group);
     notifyListeners();
     return true;
+  }
+
+  Expense? _buildLocalExpense({
+    required String id,
+    required String description,
+    required int amountCents,
+    required String payerId,
+    required List<ExpensePayer> payers,
+    required List<String> participantIds,
+    required String splitMode,
+    required List<ExpenseShare> shares,
+    required List<ExpensePercentage> percentages,
+    required bool splitOverpayment,
+    required DateTime createdAt,
+  }) {
+    final trimmed = description.trim();
+    if (trimmed.isEmpty || amountCents <= 0 || participantIds.isEmpty) {
+      return null;
+    }
+    final effectivePayers = payers.isEmpty
+        ? [ExpensePayer(memberId: payerId, amountCents: amountCents)]
+        : payers;
+    final paidAmount = effectivePayers.fold<int>(
+      0,
+      (sum, payer) => sum + payer.amountCents,
+    );
+    if (paidAmount < amountCents) return null;
+
+    var resolvedShares = {
+      for (final share in shares) share.memberId: share.amountCents,
+    };
+    var resolvedPercentages = const <String, int>{};
+    var consumptionShares = const <String, int>{};
+    var overpaymentShares = const <String, int>{};
+    final overpaymentCents = paidAmount - amountCents;
+
+    if (splitMode == 'percentage') {
+      if (shares.isNotEmpty || percentages.length != participantIds.length) {
+        return null;
+      }
+      final pctMap = <String, int>{};
+      for (final entry in percentages) {
+        if (pctMap.containsKey(entry.memberId)) return null;
+        pctMap[entry.memberId] = entry.percentageBps;
+      }
+      final consumption = ExpenseAllocation.percentageShares(
+        allocationTotalCents: amountCents,
+        participantIds: participantIds,
+        percentagesBps: pctMap,
+      );
+      final finalShares = ExpenseAllocation.percentageFinalShares(
+        amountCents: amountCents,
+        paidAmountCents: paidAmount,
+        splitOverpayment: splitOverpayment,
+        participantIds: participantIds,
+        percentagesBps: pctMap,
+      );
+      if (consumption == null || finalShares == null) return null;
+      resolvedShares = finalShares;
+      resolvedPercentages = Map.unmodifiable(pctMap);
+      if (splitOverpayment && overpaymentCents > 0) {
+        consumptionShares = Map.unmodifiable(consumption);
+        overpaymentShares = Map.unmodifiable({
+          for (final memberId in participantIds)
+            memberId: finalShares[memberId]! - consumption[memberId]!,
+        });
+      }
+    }
+
+    return Expense(
+      id: id,
+      description: trimmed,
+      amountCents: amountCents,
+      payerId: effectivePayers.first.memberId,
+      payers: List.unmodifiable(effectivePayers),
+      participantIds: List.unmodifiable(participantIds),
+      splitMode: splitMode,
+      shares: Map.unmodifiable(resolvedShares),
+      percentages: resolvedPercentages,
+      paidAmountCents: paidAmount,
+      consumptionShares: consumptionShares,
+      overpaymentCents: overpaymentCents,
+      overpaymentShares: overpaymentShares,
+      splitOverpayment: splitOverpayment,
+      createdAt: createdAt,
+    );
   }
 
   Future<bool> _queueExpenseForServerGroup({
@@ -804,39 +899,29 @@ class DemoStore extends ChangeNotifier {
     required List<String> participantIds,
     required String splitMode,
     required List<ExpenseShare> shares,
+    required List<ExpensePercentage> percentages,
     required bool splitOverpayment,
     required String idempotencyKey,
   }) async {
     final accountId = _apiClient?.userId;
-    final trimmed = description.trim();
-    if (accountId == null ||
-        trimmed.isEmpty ||
-        amountCents <= 0 ||
-        participantIds.isEmpty) {
-      return false;
-    }
+    if (accountId == null) return false;
     final localId = _newLocalId('local_expense');
     final now = DateTime.now().toUtc();
-    final effectivePayers = payers.isEmpty
-        ? [ExpensePayer(memberId: payerId, amountCents: amountCents)]
-        : payers;
-    group.expenses.insert(
-      0,
-      Expense(
-        id: localId,
-        description: trimmed,
-        amountCents: amountCents,
-        payerId: effectivePayers.first.memberId,
-        payers: List.unmodifiable(effectivePayers),
-        participantIds: List.unmodifiable(participantIds),
-        splitMode: splitMode,
-        shares: {
-          for (final share in shares) share.memberId: share.amountCents,
-        },
-        splitOverpayment: splitOverpayment,
-        createdAt: now,
-      ),
+    final localExpense = _buildLocalExpense(
+      id: localId,
+      description: description,
+      amountCents: amountCents,
+      payerId: payerId,
+      payers: payers,
+      participantIds: participantIds,
+      splitMode: splitMode,
+      shares: shares,
+      percentages: percentages,
+      splitOverpayment: splitOverpayment,
+      createdAt: now,
     );
+    if (localExpense == null) return false;
+    group.expenses.insert(0, localExpense);
     final mutation = PendingMutation(
       id: _newLocalId('mutation'),
       accountId: accountId,
@@ -846,11 +931,11 @@ class DemoStore extends ChangeNotifier {
       localEntityId: localId,
       createdAt: now,
       payload: {
-        'description': trimmed,
+        'description': localExpense.description,
         'amount_cents': amountCents,
-        'payer_id': effectivePayers.first.memberId,
+        'payer_id': localExpense.payerId,
         'payers': [
-          for (final payer in effectivePayers)
+          for (final payer in localExpense.payers)
             {'member_id': payer.memberId, 'amount_cents': payer.amountCents},
         ],
         'participant_ids': List<String>.from(participantIds),
@@ -860,6 +945,10 @@ class DemoStore extends ChangeNotifier {
           for (final share in shares)
             {'member_id': share.memberId, 'amount_cents': share.amountCents},
         ],
+        if (percentages.isNotEmpty)
+          'percentages': [
+            for (final entry in percentages) entry.toJson(),
+          ],
       },
     );
     await _persistQueuedServerMutation(group, mutation);
@@ -1366,6 +1455,27 @@ class DemoStore extends ChangeNotifier {
   }
 
   Map<String, int> _localExpenseShares(Expense expense) {
+    if (expense.splitMode == 'percentage') {
+      if (expense.shares.isNotEmpty) return expense.shares;
+      final paidAmount = expense.payers.isEmpty
+          ? expense.amountCents
+          : expense.payers
+              .fold<int>(0, (sum, payer) => sum + payer.amountCents);
+      final computed = ExpenseAllocation.percentageFinalShares(
+        amountCents: expense.amountCents,
+        paidAmountCents: paidAmount > expense.amountCents
+            ? paidAmount
+            : expense.amountCents,
+        splitOverpayment: expense.splitOverpayment,
+        participantIds: expense.participantIds,
+        percentagesBps: expense.percentages,
+      );
+      if (computed != null) return computed;
+      return _equalShares(
+        _allocatedExpenseAmount(expense),
+        expense.participantIds,
+      );
+    }
     if (expense.splitMode != 'exact') {
       if (expense.shares.isNotEmpty &&
           (expense.splitMode == 'salary' ||

@@ -119,6 +119,7 @@ class Expense {
     required this.createdAt,
     this.splitMode = 'equal',
     this.shares = const {},
+    this.percentages = const {},
     this.paidAmountCents = 0,
     this.consumptionShares = const {},
     this.overpaymentCents = 0,
@@ -136,6 +137,7 @@ class Expense {
   final DateTime createdAt;
   final String splitMode;
   final Map<String, int> shares;
+  final Map<String, int> percentages;
   final int paidAmountCents;
   final Map<String, int> consumptionShares;
   final int overpaymentCents;
@@ -158,6 +160,9 @@ class Expense {
         splitMode: json['split_mode'] as String? ?? 'equal',
         shares: ((json['shares'] as Map<String, dynamic>?) ?? const {})
             .map((key, value) => MapEntry(key, value as int)),
+        percentages:
+            ((json['percentages'] as Map<String, dynamic>?) ?? const {})
+                .map((key, value) => MapEntry(key, value as int)),
         paidAmountCents: json['paid_amount_cents'] as int? ?? 0,
         consumptionShares:
             ((json['consumption_shares'] as Map<String, dynamic>?) ?? const {})
@@ -184,6 +189,7 @@ class Expense {
         'created_at': createdAt.toIso8601String(),
         'split_mode': splitMode,
         'shares': shares,
+        if (percentages.isNotEmpty) 'percentages': percentages,
         'paid_amount_cents': paidAmountCents,
         'consumption_shares': consumptionShares,
         'overpayment_cents': overpaymentCents,
@@ -216,6 +222,27 @@ class ExpenseShare {
 
   final String memberId;
   final int amountCents;
+}
+
+class ExpensePercentage {
+  const ExpensePercentage({
+    required this.memberId,
+    required this.percentageBps,
+  });
+
+  final String memberId;
+  final int percentageBps;
+
+  factory ExpensePercentage.fromJson(Map<String, dynamic> json) =>
+      ExpensePercentage(
+        memberId: json['member_id'] as String,
+        percentageBps: json['percentage_bps'] as int,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'member_id': memberId,
+        'percentage_bps': percentageBps,
+      };
 }
 
 class Settlement {

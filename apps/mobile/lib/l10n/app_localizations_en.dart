@@ -879,4 +879,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get paymentRequestsRequireInternet =>
       'Payment requests require an internet connection.';
+
+  @override
+  String get byPercentage => 'Percentage';
+
+  @override
+  String get percentageSplit => 'Percentage split';
+
+  @override
+  String get percentageSplitBetween => 'Enter each person\'s percentage';
+
+  @override
+  String get percentageSplitExplanation =>
+      'Each percentage uses fixed two-decimal precision and sums to 100.00%. Remaining centavos go to the largest remainder, breaking ties in participant order.';
+
+  @override
+  String percentageRemaining(String percentage) {
+    return 'Remaining: $percentage%';
+  }
+
+  @override
+  String get percentagesMustTotalHundred =>
+      'Percentages must be greater than 0% and add up to exactly 100.00%.';
 }

@@ -36,7 +36,11 @@ class _ExpenseCard extends StatelessWidget {
         subtitle: Text(
           l10n.expenseSplitDetails(
             payerNames,
-            expense.splitMode == 'salary' ? l10n.bySalary : l10n.split,
+            expense.splitMode == 'salary'
+                ? l10n.bySalary
+                : expense.splitMode == 'percentage'
+                    ? l10n.byPercentage
+                    : l10n.split,
             expense.participantIds.length,
           ),
         ),

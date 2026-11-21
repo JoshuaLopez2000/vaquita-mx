@@ -22,8 +22,13 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 4. Invites are sent only when the user opts in to syncing. Sync merges local
    groups with the account's existing groups and safely retries pending changes.
 5. A member records an expense and its payer or payers.
-6. The group chooses equal, percentage, shares, or exact splits.
-7. The server calculates obligations in integer centavos.
+6. The group chooses equal, percentage, salary, or exact splits (shares ratio
+   splitting is tracked separately). Percentage splits use integer basis points
+   (2-decimal fixed point, `10000` = `100.00%`, each participant strictly
+   positive) with deterministic largest-remainder centavo allocation breaking
+   ties in stored participant order.
+7. The server calculates obligations in integer centavos and persists final
+   shares for exact and percentage splits so stored centavos drive balances.
 8. In a shared group, a creditor can request payment or record that they
    received all or part of the outstanding amount. A debtor cannot manually
    confirm receipt on the creditor's behalf.

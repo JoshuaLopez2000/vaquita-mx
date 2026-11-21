@@ -287,4 +287,11 @@
   ,"@failedSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
   ,"discard": "Discard"
   ,"paymentRequestsRequireInternet": "Payment requests require an internet connection."
+  ,"byPercentage": "Percentage"
+  ,"percentageSplit": "Percentage split"
+  ,"percentageSplitBetween": "Enter each person's percentage"
+  ,"percentageSplitExplanation": "Each percentage uses fixed two-decimal precision and sums to 100.00%. Remaining centavos go to the largest remainder, breaking ties in participant order."
+  ,"percentageRemaining": "Remaining: {percentage}%"
+  ,"@percentageRemaining": {"placeholders":{"percentage":{"type":"String"}}}
+  ,"percentagesMustTotalHundred": "Percentages must be greater than 0% and add up to exactly 100.00%."
 }

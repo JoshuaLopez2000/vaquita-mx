@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/financial_statistics.dart';
 import 'package:vaquita_mx/src/models.dart';
@@ -45,6 +46,7 @@ class GroupDetailScreen extends StatelessWidget {
           participantIds: input.participantIds,
           splitMode: input.splitMode,
           shares: input.shares,
+          percentages: input.percentages,
           splitOverpayment: input.splitOverpayment,
         );
     if (!context.mounted) return;

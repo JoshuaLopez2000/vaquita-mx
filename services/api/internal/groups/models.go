@@ -11,6 +11,10 @@ const CurrentUserID = "me"
 const (
 	RoleOwner  = "owner"
 	RoleMember = "member"
+
+	// PercentageBasisPointsTotal is 100.00% expressed in integer basis points
+	// (0.01% precision, 100 bps = 1.00%).
+	PercentageBasisPointsTotal = 10000
 )
 
 var (
@@ -53,6 +57,7 @@ type Expense struct {
 	ParticipantIDs       []string         `json:"participant_ids"`
 	SplitMode            string           `json:"split_mode"`
 	Shares               map[string]int64 `json:"shares"`
+	Percentages          map[string]int   `json:"percentages,omitempty"`
 	PaidAmountCents      int64            `json:"paid_amount_cents"`
 	ConsumptionShares    map[string]int64 `json:"consumption_shares,omitempty"`
 	OverpaymentCents     int64            `json:"overpayment_cents"`
@@ -68,11 +73,19 @@ type ExpensePayer struct {
 }
 
 // ExpenseShare is an explicit, ordered allocation of an expense to a member.
-// It is used only with the exact split mode; payer contributions remain a
-// separate fact about who paid the expense.
+// It is used for exact splits and for persisted final shares computed for
+// percentage splits; payer contributions remain a separate fact about who
+// paid the expense.
 type ExpenseShare struct {
 	MemberID    string `json:"member_id"`
 	AmountCents int64  `json:"amount_cents"`
+}
+
+// ExpensePercentage is an explicit fixed-point percentage allocation in basis
+// points (100 bps = 1.00%, sum must equal PercentageBasisPointsTotal).
+type ExpensePercentage struct {
+	MemberID      string `json:"member_id"`
+	PercentageBps int    `json:"percentage_bps"`
 }
 type Settlement struct {
 	ID           string    `json:"id"`
@@ -118,14 +131,15 @@ type UpdateMemberInput struct {
 	SalarySharing *bool  `json:"salary_sharing"`
 }
 type AddExpenseInput struct {
-	Description      string         `json:"description"`
-	AmountCents      int64          `json:"amount_cents"`
-	PayerID          string         `json:"payer_id"`
-	Payers           []ExpensePayer `json:"payers"`
-	ParticipantIDs   []string       `json:"participant_ids"`
-	SplitMode        string         `json:"split_mode"`
-	Shares           []ExpenseShare `json:"shares"`
-	SplitOverpayment *bool          `json:"split_overpayment"`
+	Description      string              `json:"description"`
+	AmountCents      int64               `json:"amount_cents"`
+	PayerID          string              `json:"payer_id"`
+	Payers           []ExpensePayer      `json:"payers"`
+	ParticipantIDs   []string            `json:"participant_ids"`
+	SplitMode        string              `json:"split_mode"`
+	Shares           []ExpenseShare      `json:"shares"`
+	Percentages      []ExpensePercentage `json:"percentages,omitempty"`
+	SplitOverpayment *bool               `json:"split_overpayment"`
 }
 type Repository struct{ db *sql.DB }
 type Invitation struct {
@@ -161,6 +175,7 @@ type OfflineSyncExpenseInput struct {
 	ParticipantIDs   []string         `json:"participant_ids"`
 	SplitMode        string           `json:"split_mode"`
 	Shares           map[string]int64 `json:"shares"`
+	Percentages      map[string]int   `json:"percentages,omitempty"`
 	SplitOverpayment bool             `json:"split_overpayment"`
 	CreatedAt        time.Time        `json:"created_at"`
 }

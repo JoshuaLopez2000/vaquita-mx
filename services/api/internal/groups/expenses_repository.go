@@ -58,7 +58,7 @@ func prepareExpense(g Group, in *AddExpenseInput) error {
 		defaultSplitOverpayment := true
 		in.SplitOverpayment = &defaultSplitOverpayment
 	}
-	if in.SplitMode != "equal" && in.SplitMode != "salary" && in.SplitMode != "exact" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
+	if in.SplitMode != "equal" && in.SplitMode != "salary" && in.SplitMode != "exact" && in.SplitMode != "percentage" || in.SplitMode == "salary" && (!g.SalarySplitEnabled || !g.SalarySplitAvailable) {
 		return ErrInvalid
 	}
 	ms := map[string]Member{}
@@ -98,12 +98,31 @@ func prepareExpense(g Group, in *AddExpenseInput) error {
 		}
 		seen[id] = true
 	}
-	if in.SplitMode == "exact" {
+	switch in.SplitMode {
+	case "exact":
+		if len(in.Percentages) != 0 {
+			return ErrInvalid
+		}
 		if _, err := validateExactShares(in.Shares, in.ParticipantIDs, in.AmountCents); err != nil {
 			return ErrInvalid
 		}
-	} else if len(in.Shares) != 0 {
-		return ErrInvalid
+	case "percentage":
+		if len(in.Shares) != 0 {
+			return ErrInvalid
+		}
+		percentages, err := validatePercentages(in.Percentages, in.ParticipantIDs)
+		if err != nil {
+			return ErrInvalid
+		}
+		computedShares, err := computePercentageFinalShares(in.AmountCents, paid, *in.SplitOverpayment, in.ParticipantIDs, percentages)
+		if err != nil {
+			return ErrInvalid
+		}
+		in.Shares = computedShares
+	default:
+		if len(in.Shares) != 0 || len(in.Percentages) != 0 {
+			return ErrInvalid
+		}
 	}
 	return nil
 }
@@ -150,8 +169,18 @@ func insertExpense(c context.Context, t *sql.Tx, gid, id string, in AddExpenseIn
 			}
 		}
 	}
+	percentageByMember := make(map[string]int, len(in.Percentages))
+	if in.SplitMode == "percentage" {
+		for _, entry := range in.Percentages {
+			percentageByMember[entry.MemberID] = entry.PercentageBps
+		}
+	}
 	for p, share := range in.Shares {
-		if _, e = t.ExecContext(c, `INSERT INTO expense_shares(expense_id,member_id,position,amount_cents)VALUES($1,$2,$3,$4)`, id, share.MemberID, p, share.AmountCents); e != nil {
+		var percentageBps sql.NullInt32
+		if bps, ok := percentageByMember[share.MemberID]; ok {
+			percentageBps = sql.NullInt32{Int32: int32(bps), Valid: true}
+		}
+		if _, e = t.ExecContext(c, `INSERT INTO expense_shares(expense_id,member_id,position,amount_cents,percentage_bps)VALUES($1,$2,$3,$4,$5)`, id, share.MemberID, p, share.AmountCents, percentageBps); e != nil {
 			return e
 		}
 	}
