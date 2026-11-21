@@ -287,4 +287,38 @@
   ,"@failedSyncBannerTitle": {"placeholders":{"count":{"type":"int"}}}
   ,"discard": "Discard"
   ,"paymentRequestsRequireInternet": "Payment requests require an internet connection."
+  ,"byPercentage": "Percentage"
+  ,"percentageSplit": "Percentage split"
+  ,"percentageSplitBetween": "Enter each person's percentage"
+  ,"percentageSplitExplanation": "Each percentage uses fixed two-decimal precision and sums to 100.00%. Remaining centavos go to the largest remainder, breaking ties in participant order."
+  ,"percentageRemaining": "Remaining: {percentage}%"
+  ,"@percentageRemaining": {"placeholders":{"percentage":{"type":"String"}}}
+  ,"percentagesMustTotalHundred": "Percentages must be greater than 0% and add up to exactly 100.00%."
+  ,"reversed": "Reversed"
+  ,"replacement": "Replacement"
+  ,"settlementsHistory": "Settlements"
+  ,"settlementDetails": "Settlement details"
+  ,"reverseExpense": "Reverse expense"
+  ,"reverseAndReplaceExpense": "Reverse & replace"
+  ,"reverseSettlement": "Reverse settlement"
+  ,"reverseAndReplaceSettlement": "Reverse & record replacement"
+  ,"reversalReasonLabel": "Reversal reason"
+  ,"reversalReasonHint": "e.g. Wrong amount or duplicate entry"
+  ,"reversalReasonRequired": "Enter a reason (max 500 characters)."
+  ,"confirmReversal": "Confirm reversal"
+  ,"reversalAuditTitle": "Reversed record"
+  ,"reversedByName": "Reversed by {name}"
+  ,"@reversedByName": {"placeholders":{"name":{"type":"String"}}}
+  ,"reversalReasonValue": "Reason: {reason}"
+  ,"@reversalReasonValue": {"placeholders":{"reason":{"type":"String"}}}
+  ,"replacesOriginalRecord": "Replaces a previously reversed record."
+  ,"replacedByRecord": "Replaced by a separate replacement record in history."
+  ,"expenseReversed": "Expense reversed"
+  ,"settlementReversed": "Settlement reversed"
+  ,"couldNotReverseRecord": "Could not reverse the record."
+  ,"syncBeforeReversal": "Sync this pending record before reversing it."
+  ,"expenseReversalMovement": "Expense reversal: {description}"
+  ,"@expenseReversalMovement": {"placeholders":{"description":{"type":"String"}}}
+  ,"settlementReversalMovement": "Settlement reversal"
+  ,"compensatingEntry": "Compensating entry"
 }

@@ -15,8 +15,10 @@ const (
 	opCreateGroup       = "POST /groups"
 	opAddMember         = "POST /groups/{groupID}/members"
 	opAddExpense        = "POST /groups/{groupID}/expenses"
+	opReverseExpense    = "POST /groups/{groupID}/expenses/{expenseID}/reversals"
 	opAddSettlement     = "POST /groups/{groupID}/settlements"
 	opConfirmReceived   = "POST /groups/{groupID}/settlements/received"
+	opReverseSettlement = "POST /groups/{groupID}/settlements/{settlementID}/reversals"
 	opRespondInvitation = "POST /group-invitations/{groupID}/response"
 	opSaveContacts      = "POST /contacts"
 )

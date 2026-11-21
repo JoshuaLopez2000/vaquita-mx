@@ -19,30 +19,75 @@ class MovementsScreen extends StatelessWidget {
         return member.name;
       }
 
+      final expensesById = {
+        for (final expense in group.expenses) expense.id: expense,
+      };
+      final settlementsById = {
+        for (final settlement in group.settlements) settlement.id: settlement,
+      };
       for (final expense in group.expenses) {
+        final isReversed = group.isExpenseReversed(expense.id);
+        final payerDetail = l10n.memberPaid((expense.payers.isEmpty
+                ? [expense.payerId]
+                : expense.payers.map((payer) => payer.memberId))
+            .map(displayName)
+            .join(', '));
         items.add(_Movement(
           group: group,
           title: expense.description,
-          detail: l10n.memberPaid((expense.payers.isEmpty
-                  ? [expense.payerId]
-                  : expense.payers.map((payer) => payer.memberId))
-              .map(displayName)
-              .join(', ')),
+          detail: isReversed ? '${l10n.reversed} · $payerDetail' : payerDetail,
           amountCents: expense.amountCents,
           occurredAt: expense.createdAt,
           isSettlement: false,
+          isReversed: isReversed,
+          isReversalEntry: false,
+        ));
+      }
+      for (final reversal in group.expenseReversals) {
+        final original = expensesById[reversal.originalExpenseId];
+        items.add(_Movement(
+          group: group,
+          title: l10n.expenseReversalMovement(
+            original?.description ?? reversal.originalExpenseId,
+          ),
+          detail:
+              '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
+          amountCents: -(original?.amountCents ?? 0),
+          occurredAt: reversal.createdAt,
+          isSettlement: false,
+          isReversed: false,
+          isReversalEntry: true,
         ));
       }
       for (final settlement in group.settlements) {
+        final isReversed = group.isSettlementReversed(settlement.id);
         final from = displayName(settlement.fromMemberId);
         final to = displayName(settlement.toMemberId);
         items.add(_Movement(
           group: group,
           title: l10n.memberPaidMember(from, to),
-          detail: l10n.settlement,
+          detail: isReversed
+              ? '${l10n.reversed} · ${l10n.settlement}'
+              : l10n.settlement,
           amountCents: settlement.amountCents,
           occurredAt: settlement.createdAt,
           isSettlement: true,
+          isReversed: isReversed,
+          isReversalEntry: false,
+        ));
+      }
+      for (final reversal in group.settlementReversals) {
+        final original = settlementsById[reversal.originalSettlementId];
+        items.add(_Movement(
+          group: group,
+          title: l10n.settlementReversalMovement,
+          detail:
+              '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
+          amountCents: -(original?.amountCents ?? 0),
+          occurredAt: reversal.createdAt,
+          isSettlement: true,
+          isReversed: false,
+          isReversalEntry: true,
         ));
       }
     }
@@ -110,20 +155,44 @@ class MovementsScreen extends StatelessWidget {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 7),
                         leading: CircleAvatar(
-                          child: Icon(item.isSettlement
-                              ? Icons.handshake_outlined
-                              : Icons.receipt_long_outlined),
+                          backgroundColor:
+                              item.isReversed || item.isReversalEntry
+                                  ? Theme.of(context).colorScheme.errorContainer
+                                  : null,
+                          child: Icon(
+                            item.isReversalEntry || item.isReversed
+                                ? Icons.undo_rounded
+                                : item.isSettlement
+                                    ? Icons.handshake_outlined
+                                    : Icons.receipt_long_outlined,
+                            color: item.isReversed || item.isReversalEntry
+                                ? Theme.of(context).colorScheme.onErrorContainer
+                                : null,
+                          ),
                         ),
-                        title: Text(item.title),
+                        title: Text(
+                          item.title,
+                          style: TextStyle(
+                            decoration: item.isReversed
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
                         subtitle: Text(l10n.movementMetadata(
                           item.group.emoji,
                           item.group.name,
                           item.detail,
                           _relativeDate(item.occurredAt, l10n),
                         )),
-                        trailing: Text(formatMoney(item.amountCents),
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
+                        trailing: Text(
+                          formatMoney(item.amountCents),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            decoration: item.isReversed
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => GroupDetailScreen(
@@ -152,6 +221,8 @@ class _Movement {
     required this.amountCents,
     required this.occurredAt,
     required this.isSettlement,
+    this.isReversed = false,
+    this.isReversalEntry = false,
   });
 
   final ExpenseGroup group;
@@ -160,4 +231,6 @@ class _Movement {
   final int amountCents;
   final DateTime occurredAt;
   final bool isSettlement;
+  final bool isReversed;
+  final bool isReversalEntry;
 }

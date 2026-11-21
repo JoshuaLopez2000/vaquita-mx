@@ -414,6 +414,8 @@ func (app application) syncLocalGroups(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, groups.ErrSyncConflict):
 		writeAPIError(w, http.StatusConflict, "sync_conflict", "local history conflicts with previously synchronized data", nil)
+	case errors.Is(err, groups.ErrAlreadyReversed):
+		writeAPIError(w, http.StatusConflict, "already_reversed", "financial record has already been reversed", nil)
 	case errors.Is(err, groups.ErrInvalid):
 		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid local group data", nil)
 	case errors.Is(err, groups.ErrOverpayment):
@@ -465,10 +467,55 @@ func (app application) addExpense(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result.Status, result.Body)
 }
 
+func (app application) reverseExpense(w http.ResponseWriter, r *http.Request) {
+	var input groups.ReverseRecordInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash reverse expense", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	expenseID := r.PathValue("expenseID")
+	scopeID := groupID + ":" + expenseID
+	result, err := app.intents.Run(r.Context(), userID(r), opReverseExpense, scopeID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.ReverseExpenseTx(r.Context(), tx, userID(r), groupID, expenseID, input)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
+	if errors.Is(err, groups.ErrAlreadyReversed) {
+		writeAPIError(w, http.StatusConflict, "already_reversed", "expense has already been reversed", nil)
+		return
+	}
+	if errors.Is(err, groups.ErrInvalid) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a reversal reason of 1 to 500 characters is required", map[string]string{"reason": "invalid"})
+		return
+	}
+	if errors.Is(err, groups.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or expense not found", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "reverse expense", err)
+		return
+	}
+	writeJSON(w, result.Status, result.Body)
+}
+
 func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		MemberID    string `json:"member_id"`
-		AmountCents *int64 `json:"amount_cents"`
+		MemberID             string `json:"member_id"`
+		AmountCents          *int64 `json:"amount_cents"`
+		ReplacesSettlementID string `json:"replaces_settlement_id,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -484,7 +531,7 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 	}
 	groupID := r.PathValue("groupID")
 	result, err := app.intents.Run(r.Context(), userID(r), opAddSettlement, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
-		group, err := app.groups.AddSettlementTx(r.Context(), tx, userID(r), groupID, input.MemberID, input.AmountCents)
+		group, err := app.groups.AddSettlementTx(r.Context(), tx, userID(r), groupID, input.MemberID, input.AmountCents, input.ReplacesSettlementID)
 		return http.StatusCreated, group, err
 	})
 	if errors.Is(err, idempotency.ErrConflict) {
@@ -512,8 +559,9 @@ func (app application) addSettlement(w http.ResponseWriter, r *http.Request) {
 
 func (app application) confirmReceivedSettlement(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DebtorMemberID string `json:"debtor_member_id"`
-		AmountCents    *int64 `json:"amount_cents"`
+		DebtorMemberID       string `json:"debtor_member_id"`
+		AmountCents          *int64 `json:"amount_cents"`
+		ReplacesSettlementID string `json:"replaces_settlement_id,omitempty"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -529,7 +577,7 @@ func (app application) confirmReceivedSettlement(w http.ResponseWriter, r *http.
 	}
 	groupID := r.PathValue("groupID")
 	result, err := app.intents.Run(r.Context(), userID(r), opConfirmReceived, groupID, key, hash, func(tx *sql.Tx) (int, any, error) {
-		group, err := app.groups.ConfirmReceivedSettlementTx(r.Context(), tx, userID(r), groupID, input.DebtorMemberID, input.AmountCents)
+		group, err := app.groups.ConfirmReceivedSettlementTx(r.Context(), tx, userID(r), groupID, input.DebtorMemberID, input.AmountCents, input.ReplacesSettlementID)
 		return http.StatusCreated, group, err
 	})
 	if errors.Is(err, idempotency.ErrConflict) {
@@ -550,6 +598,50 @@ func (app application) confirmReceivedSettlement(w http.ResponseWriter, r *http.
 	}
 	if err != nil {
 		serverError(w, "confirm received settlement", err)
+		return
+	}
+	writeJSON(w, result.Status, result.Body)
+}
+
+func (app application) reverseSettlement(w http.ResponseWriter, r *http.Request) {
+	var input groups.ReverseRecordInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	key, ok := idempotencyKey(w, r)
+	if !ok {
+		return
+	}
+	hash, hashErr := commandPayloadHash(input)
+	if hashErr != nil {
+		serverError(w, "hash reverse settlement", hashErr)
+		return
+	}
+	groupID := r.PathValue("groupID")
+	settlementID := r.PathValue("settlementID")
+	scopeID := groupID + ":" + settlementID
+	result, err := app.intents.Run(r.Context(), userID(r), opReverseSettlement, scopeID, key, hash, func(tx *sql.Tx) (int, any, error) {
+		group, err := app.groups.ReverseSettlementTx(r.Context(), tx, userID(r), groupID, settlementID, input)
+		return http.StatusCreated, group, err
+	})
+	if errors.Is(err, idempotency.ErrConflict) {
+		writeConflict(w)
+		return
+	}
+	if errors.Is(err, groups.ErrAlreadyReversed) {
+		writeAPIError(w, http.StatusConflict, "already_reversed", "settlement has already been reversed", nil)
+		return
+	}
+	if errors.Is(err, groups.ErrInvalid) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "a reversal reason of 1 to 500 characters is required", map[string]string{"reason": "invalid"})
+		return
+	}
+	if errors.Is(err, groups.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group or settlement not found", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "reverse settlement", err)
 		return
 	}
 	writeJSON(w, result.Status, result.Body)

@@ -30,6 +30,7 @@ class _FinancialStatisticsSheetState extends State<_FinancialStatisticsSheet> {
       widget.group.expenses,
       now: DateTime.now(),
       thisMonthOnly: _thisMonthOnly,
+      reversedExpenseIds: widget.group.reversedExpenseIds,
     );
     final members = {
       for (final member in widget.group.members) member.id: member

@@ -49,22 +49,37 @@ class AppCubit extends Cubit<AppState> {
     required String groupId,
     required String memberId,
     int? amountCents,
+    String? replacesSettlementId,
   }) =>
       store.settleBalance(
         groupId: groupId,
         memberId: memberId,
         amountCents: amountCents,
+        replacesSettlementId: replacesSettlementId,
       );
 
   Future<bool> confirmReceivedPayment({
     required String groupId,
     required String debtorId,
     int? amountCents,
+    String? replacesSettlementId,
   }) =>
       store.confirmReceivedPayment(
         groupId: groupId,
         debtorId: debtorId,
         amountCents: amountCents,
+        replacesSettlementId: replacesSettlementId,
+      );
+
+  Future<bool> reverseSettlement({
+    required String groupId,
+    required String settlementId,
+    required String reason,
+  }) =>
+      store.reverseSettlement(
+        groupId: groupId,
+        settlementId: settlementId,
+        reason: reason,
       );
 
   Future<bool> requestPayment({
@@ -87,7 +102,9 @@ class AppCubit extends Cubit<AppState> {
     required List<String> participantIds,
     required String splitMode,
     List<ExpenseShare> shares = const [],
+    List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
+    String? replacesExpenseId,
   }) =>
       store.addExpense(
         groupId: groupId,
@@ -98,7 +115,20 @@ class AppCubit extends Cubit<AppState> {
         participantIds: participantIds,
         splitMode: splitMode,
         shares: shares,
+        percentages: percentages,
         splitOverpayment: splitOverpayment,
+        replacesExpenseId: replacesExpenseId,
+      );
+
+  Future<bool> reverseExpense({
+    required String groupId,
+    required String expenseId,
+    required String reason,
+  }) =>
+      store.reverseExpense(
+        groupId: groupId,
+        expenseId: expenseId,
+        reason: reason,
       );
 
   Future<bool> updateGroup(String groupId, Map<String, dynamic> input) =>

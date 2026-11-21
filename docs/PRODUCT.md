@@ -22,8 +22,13 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 4. Invites are sent only when the user opts in to syncing. Sync merges local
    groups with the account's existing groups and safely retries pending changes.
 5. A member records an expense and its payer or payers.
-6. The group chooses equal, percentage, shares, or exact splits.
-7. The server calculates obligations in integer centavos.
+6. The group chooses equal, percentage, salary, or exact splits (shares ratio
+   splitting is tracked separately). Percentage splits use integer basis points
+   (2-decimal fixed point, `10000` = `100.00%`, each participant strictly
+   positive) with deterministic largest-remainder centavo allocation breaking
+   ties in stored participant order.
+7. The server calculates obligations in integer centavos and persists final
+   shares for exact and percentage splits so stored centavos drive balances.
 8. In a shared group, a creditor can request payment or record that they
    received all or part of the outstanding amount. A debtor cannot manually
    confirm receipt on the creditor's behalf.
@@ -32,15 +37,23 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 10. In a personal group, its owner controls full or partial bilateral
     settlements. Local groups offer the same ledger control on-device.
 11. The balance view changes while the original expense remains immutable.
+12. To correct a posted expense or settlement, an authorized member records an
+    immutable compensating reversal with a required reason and may post a
+    separate replacement record linked to the reversed entry. Reversed records
+    remain visible and clearly marked in group and movement history alongside
+    their compensating reversals.
 
 Local-only data remains on the device until the user explicitly enables sync
 for the signed-in account. On sign-in, server-backed groups are fetched and
 cached locally in SQLite so they remain usable offline and across restarts.
-Expenses, personal-group manual settlements, and shared-group received-payment
-confirmations on server-backed groups use the authenticated API when online;
+Expenses, personal-group manual settlements, shared-group received-payment
+confirmations, and compensating reversals of already-synced records on
+server-backed groups use the authenticated API when online;
 when the device is offline or a transient transport failure occurs, they are
 saved optimistically on-device and queued in a durable outbox that replays
-automatically with stable idempotency keys when connectivity returns. Payment
+automatically with stable idempotency keys when connectivity returns. Pending
+offline expenses or settlements on a server-backed group must sync before they
+can be reversed. Payment
 requests require an active internet connection and are disabled offline.
 Permanent server rejections surface visibly so the user can retry or discard
 the failed entry. Once local sync is enabled, pending local-only group changes

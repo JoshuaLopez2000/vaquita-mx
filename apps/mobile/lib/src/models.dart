@@ -37,6 +37,7 @@ class Member {
       {required this.id,
       required this.name,
       this.userId = '',
+      this.role = 'member',
       this.phone = '',
       this.active = true,
       this.salarySharing = false,
@@ -44,6 +45,7 @@ class Member {
 
   final String id;
   final String userId;
+  final String role;
   final String name;
   final String phone;
   final bool active;
@@ -53,6 +55,7 @@ class Member {
   factory Member.fromJson(Map<String, dynamic> json) => Member(
         id: json['id'] as String,
         userId: json['user_id'] as String? ?? '',
+        role: json['role'] as String? ?? 'member',
         name: json['name'] as String,
         phone: json['phone'] as String? ?? '',
         active: json['active'] as bool? ?? true,
@@ -63,6 +66,7 @@ class Member {
   Map<String, dynamic> toJson() => {
         'id': id,
         'user_id': userId,
+        'role': role,
         'name': name,
         'phone': phone,
         'active': active,
@@ -119,12 +123,14 @@ class Expense {
     required this.createdAt,
     this.splitMode = 'equal',
     this.shares = const {},
+    this.percentages = const {},
     this.paidAmountCents = 0,
     this.consumptionShares = const {},
     this.overpaymentCents = 0,
     this.overpaymentShares = const {},
     this.splitOverpayment = true,
     this.retainedOverpayments = const [],
+    this.replacesExpenseId,
   });
 
   final String id;
@@ -136,12 +142,14 @@ class Expense {
   final DateTime createdAt;
   final String splitMode;
   final Map<String, int> shares;
+  final Map<String, int> percentages;
   final int paidAmountCents;
   final Map<String, int> consumptionShares;
   final int overpaymentCents;
   final Map<String, int> overpaymentShares;
   final bool splitOverpayment;
   final List<ExpensePayer> retainedOverpayments;
+  final String? replacesExpenseId;
 
   factory Expense.fromJson(Map<String, dynamic> json) => Expense(
         id: json['id'] as String,
@@ -158,6 +166,9 @@ class Expense {
         splitMode: json['split_mode'] as String? ?? 'equal',
         shares: ((json['shares'] as Map<String, dynamic>?) ?? const {})
             .map((key, value) => MapEntry(key, value as int)),
+        percentages:
+            ((json['percentages'] as Map<String, dynamic>?) ?? const {})
+                .map((key, value) => MapEntry(key, value as int)),
         paidAmountCents: json['paid_amount_cents'] as int? ?? 0,
         consumptionShares:
             ((json['consumption_shares'] as Map<String, dynamic>?) ?? const {})
@@ -172,6 +183,7 @@ class Expense {
                 .map((value) =>
                     ExpensePayer.fromJson(value as Map<String, dynamic>))
                 .toList(),
+        replacesExpenseId: _nonEmptyString(json['replaces_expense_id']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -184,6 +196,7 @@ class Expense {
         'created_at': createdAt.toIso8601String(),
         'split_mode': splitMode,
         'shares': shares,
+        if (percentages.isNotEmpty) 'percentages': percentages,
         'paid_amount_cents': paidAmountCents,
         'consumption_shares': consumptionShares,
         'overpayment_cents': overpaymentCents,
@@ -191,6 +204,8 @@ class Expense {
         'split_overpayment': splitOverpayment,
         'retained_overpayments':
             retainedOverpayments.map((payer) => payer.toJson()).toList(),
+        if (replacesExpenseId != null && replacesExpenseId!.isNotEmpty)
+          'replaces_expense_id': replacesExpenseId,
       };
 }
 
@@ -218,6 +233,27 @@ class ExpenseShare {
   final int amountCents;
 }
 
+class ExpensePercentage {
+  const ExpensePercentage({
+    required this.memberId,
+    required this.percentageBps,
+  });
+
+  final String memberId;
+  final int percentageBps;
+
+  factory ExpensePercentage.fromJson(Map<String, dynamic> json) =>
+      ExpensePercentage(
+        memberId: json['member_id'] as String,
+        percentageBps: json['percentage_bps'] as int,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'member_id': memberId,
+        'percentage_bps': percentageBps,
+      };
+}
+
 class Settlement {
   const Settlement({
     required this.id,
@@ -225,6 +261,7 @@ class Settlement {
     required this.toMemberId,
     required this.amountCents,
     required this.createdAt,
+    this.replacesSettlementId,
   });
 
   final String id;
@@ -232,6 +269,7 @@ class Settlement {
   final String toMemberId;
   final int amountCents;
   final DateTime createdAt;
+  final String? replacesSettlementId;
 
   factory Settlement.fromJson(Map<String, dynamic> json) => Settlement(
         id: json['id'] as String,
@@ -239,6 +277,7 @@ class Settlement {
         toMemberId: json['to_member_id'] as String,
         amountCents: json['amount_cents'] as int,
         createdAt: DateTime.parse(json['created_at'] as String),
+        replacesSettlementId: _nonEmptyString(json['replaces_settlement_id']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -247,7 +286,89 @@ class Settlement {
         'to_member_id': toMemberId,
         'amount_cents': amountCents,
         'created_at': createdAt.toIso8601String(),
+        if (replacesSettlementId != null && replacesSettlementId!.isNotEmpty)
+          'replaces_settlement_id': replacesSettlementId,
       };
+}
+
+class ExpenseReversal {
+  const ExpenseReversal({
+    required this.id,
+    required this.originalExpenseId,
+    required this.actorMemberId,
+    required this.reason,
+    required this.createdAt,
+    this.actorUserId = '',
+  });
+
+  final String id;
+  final String originalExpenseId;
+  final String actorUserId;
+  final String actorMemberId;
+  final String reason;
+  final DateTime createdAt;
+
+  factory ExpenseReversal.fromJson(Map<String, dynamic> json) =>
+      ExpenseReversal(
+        id: json['id'] as String,
+        originalExpenseId: json['original_expense_id'] as String,
+        actorUserId: json['actor_user_id'] as String? ?? '',
+        actorMemberId: json['actor_member_id'] as String,
+        reason: json['reason'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'original_expense_id': originalExpenseId,
+        if (actorUserId.isNotEmpty) 'actor_user_id': actorUserId,
+        'actor_member_id': actorMemberId,
+        'reason': reason,
+        'created_at': createdAt.toIso8601String(),
+      };
+}
+
+class SettlementReversal {
+  const SettlementReversal({
+    required this.id,
+    required this.originalSettlementId,
+    required this.actorMemberId,
+    required this.reason,
+    required this.createdAt,
+    this.actorUserId = '',
+  });
+
+  final String id;
+  final String originalSettlementId;
+  final String actorUserId;
+  final String actorMemberId;
+  final String reason;
+  final DateTime createdAt;
+
+  factory SettlementReversal.fromJson(Map<String, dynamic> json) =>
+      SettlementReversal(
+        id: json['id'] as String,
+        originalSettlementId: json['original_settlement_id'] as String,
+        actorUserId: json['actor_user_id'] as String? ?? '',
+        actorMemberId: json['actor_member_id'] as String,
+        reason: json['reason'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'original_settlement_id': originalSettlementId,
+        if (actorUserId.isNotEmpty) 'actor_user_id': actorUserId,
+        'actor_member_id': actorMemberId,
+        'reason': reason,
+        'created_at': createdAt.toIso8601String(),
+      };
+}
+
+String? _nonEmptyString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 class PaymentRelation {
@@ -280,10 +401,14 @@ class ExpenseGroup {
     this.salarySplitAvailable = false,
     Map<String, int>? balances,
     List<Expense>? expenses,
+    List<ExpenseReversal>? expenseReversals,
     List<Settlement>? settlements,
+    List<SettlementReversal>? settlementReversals,
     List<PaymentRelation>? paymentRelations,
   })  : expenses = expenses ?? [],
+        expenseReversals = expenseReversals ?? [],
         settlements = settlements ?? [],
+        settlementReversals = settlementReversals ?? [],
         paymentRelations = paymentRelations ?? [],
         balances = balances ?? {};
 
@@ -295,7 +420,9 @@ class ExpenseGroup {
   final bool salarySplitEnabled;
   final bool salarySplitAvailable;
   final List<Expense> expenses;
+  final List<ExpenseReversal> expenseReversals;
   final List<Settlement> settlements;
+  final List<SettlementReversal> settlementReversals;
   final List<PaymentRelation> paymentRelations;
   final Map<String, int> balances;
 
@@ -314,9 +441,19 @@ class ExpenseGroup {
         expenses: ((json['expenses'] as List<dynamic>?) ?? const [])
             .map((value) => Expense.fromJson(value as Map<String, dynamic>))
             .toList(),
+        expenseReversals:
+            ((json['expense_reversals'] as List<dynamic>?) ?? const [])
+                .map((value) =>
+                    ExpenseReversal.fromJson(value as Map<String, dynamic>))
+                .toList(),
         settlements: ((json['settlements'] as List<dynamic>?) ?? const [])
             .map((value) => Settlement.fromJson(value as Map<String, dynamic>))
             .toList(),
+        settlementReversals:
+            ((json['settlement_reversals'] as List<dynamic>?) ?? const [])
+                .map((value) =>
+                    SettlementReversal.fromJson(value as Map<String, dynamic>))
+                .toList(),
         paymentRelations:
             ((json['payment_relations'] as List<dynamic>?) ?? const [])
                 .map((value) =>
@@ -333,8 +470,12 @@ class ExpenseGroup {
         'salary_split_available': salarySplitAvailable,
         'members': members.map((member) => member.toJson()).toList(),
         'expenses': expenses.map((expense) => expense.toJson()).toList(),
+        'expense_reversals':
+            expenseReversals.map((reversal) => reversal.toJson()).toList(),
         'settlements':
             settlements.map((settlement) => settlement.toJson()).toList(),
+        'settlement_reversals':
+            settlementReversals.map((reversal) => reversal.toJson()).toList(),
         'balances': balances,
         'payment_relations': paymentRelations
             .map((relation) => {
@@ -345,10 +486,59 @@ class ExpenseGroup {
             .toList(),
       };
 
-  int get totalSpentCents => expenses.fold(
-        0,
-        (total, expense) => total + expense.amountCents,
-      );
+  Set<String> get reversedExpenseIds => {
+        for (final reversal in expenseReversals) reversal.originalExpenseId,
+      };
+
+  Set<String> get reversedSettlementIds => {
+        for (final reversal in settlementReversals)
+          reversal.originalSettlementId,
+      };
+
+  ExpenseReversal? reversalForExpense(String expenseId) {
+    for (final reversal in expenseReversals) {
+      if (reversal.originalExpenseId == expenseId) return reversal;
+    }
+    return null;
+  }
+
+  SettlementReversal? reversalForSettlement(String settlementId) {
+    for (final reversal in settlementReversals) {
+      if (reversal.originalSettlementId == settlementId) return reversal;
+    }
+    return null;
+  }
+
+  bool isExpenseReversed(String expenseId) =>
+      reversalForExpense(expenseId) != null;
+
+  bool isSettlementReversed(String settlementId) =>
+      reversalForSettlement(settlementId) != null;
+
+  Expense? replacementForExpense(String originalExpenseId) {
+    for (final expense in expenses) {
+      if (expense.replacesExpenseId == originalExpenseId) return expense;
+    }
+    return null;
+  }
+
+  Settlement? replacementForSettlement(String originalSettlementId) {
+    for (final settlement in settlements) {
+      if (settlement.replacesSettlementId == originalSettlementId) {
+        return settlement;
+      }
+    }
+    return null;
+  }
+
+  int get totalSpentCents {
+    final reversed = reversedExpenseIds;
+    return expenses.fold(
+      0,
+      (total, expense) =>
+          reversed.contains(expense.id) ? total : total + expense.amountCents,
+    );
+  }
 }
 
 class PendingMutation {
@@ -366,8 +556,10 @@ class PendingMutation {
   });
 
   static const opAddExpense = 'add_expense';
+  static const opReverseExpense = 'reverse_expense';
   static const opSettleBalance = 'settle_balance';
   static const opConfirmReceivedPayment = 'confirm_received_payment';
+  static const opReverseSettlement = 'reverse_settlement';
 
   static const statusPending = 'pending';
   static const statusFailed = 'failed';

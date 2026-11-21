@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/models.dart';
@@ -39,6 +40,7 @@ class DemoStore extends ChangeNotifier {
   final List<PendingMutation> _queuedMutations = [];
   bool _syncing = false;
   bool _syncRequested = false;
+  Future<bool>? _syncFuture;
   bool _flushingMutations = false;
   bool _flushRequested = false;
   bool _isOnline = true;
@@ -55,8 +57,7 @@ class DemoStore extends ChangeNotifier {
     final accountId = _apiClient?.userId;
     if (accountId == null) return const [];
     return List.unmodifiable(
-      _queuedMutations
-          .where((m) => m.accountId == accountId && m.isPending),
+      _queuedMutations.where((m) => m.accountId == accountId && m.isPending),
     );
   }
 
@@ -64,8 +65,7 @@ class DemoStore extends ChangeNotifier {
     final accountId = _apiClient?.userId;
     if (accountId == null) return const [];
     return List.unmodifiable(
-      _queuedMutations
-          .where((m) => m.accountId == accountId && m.isFailed),
+      _queuedMutations.where((m) => m.accountId == accountId && m.isFailed),
     );
   }
 
@@ -99,6 +99,45 @@ class DemoStore extends ChangeNotifier {
 
   bool canRequestPayment(ExpenseGroup group) =>
       group.visibility == 'shared' && canUseServerFeatures(group);
+
+  bool _isOwner(ExpenseGroup group) {
+    final self = _selfMember(group);
+    if (self == null) return false;
+    if (self.role == 'owner') return true;
+    return (!isServerBacked(group) || group.visibility == 'personal') &&
+        group.members.isNotEmpty &&
+        group.members.first.id == self.id;
+  }
+
+  bool canReverseExpense(ExpenseGroup group, Expense expense) {
+    if (group.isExpenseReversed(expense.id)) return false;
+    if (canUseServerFeatures(group) &&
+        expense.id.startsWith('local_expense_')) {
+      return false;
+    }
+    final self = _selfMember(group);
+    if (self == null || !self.active || !self.accepted) return false;
+    if (group.visibility == 'personal') return _isOwner(group);
+    return true;
+  }
+
+  bool canReverseSettlement(ExpenseGroup group, Settlement settlement) {
+    if (group.isSettlementReversed(settlement.id)) return false;
+    if (canUseServerFeatures(group) &&
+        settlement.id.startsWith('local_settlement_')) {
+      return false;
+    }
+    final self = _selfMember(group);
+    if (self == null || !self.active || !self.accepted) return false;
+    if (group.visibility == 'personal') return _isOwner(group);
+    return _isOwner(group) || settlement.toMemberId == self.id;
+  }
+
+  static String? _validatedReversalReason(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || trimmed.runes.length > 500) return null;
+    return trimmed;
+  }
 
   String get currentUserId => _apiClient?.userId ?? seedUserId;
   AppUser? get authenticatedUser => _apiClient?.user;
@@ -186,22 +225,43 @@ class DemoStore extends ChangeNotifier {
 
   Future<bool> syncLocalGroups({bool enable = false}) async {
     final api = _apiClient;
-    if (api == null || api.user == null || !_offlineFirst) return false;
-    if (_syncing) {
-      _syncRequested = true;
-      return true;
+    final accountId = api?.userId;
+    if (api == null || accountId == null || !_offlineFirst) return false;
+    if (enable) {
+      _syncEnabledInMemory.add(accountId);
+      await _offlineDatabase?.setSyncEnabled(accountId, true);
     }
+    final active = _syncFuture;
+    if (active != null || _syncing) {
+      _syncRequested = true;
+      final previous = active == null ? true : await active;
+      if (!enable) return previous;
+      if (_offlineDatabase != null &&
+          !await _offlineDatabase.hasPendingGroups()) {
+        return previous;
+      }
+      return syncLocalGroups(enable: true);
+    }
+    final future = _runSyncLocalGroups(api, accountId, enable: enable);
+    _syncFuture = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_syncFuture, future)) _syncFuture = null;
+    }
+  }
+
+  Future<bool> _runSyncLocalGroups(
+    ApiClient api,
+    String accountId, {
+    required bool enable,
+  }) async {
     isLoading = true;
     _syncing = true;
     errorMessage = null;
     notifyListeners();
     try {
-      final accountId = api.userId;
-      if (accountId == null) return false;
-      if (enable) {
-        _syncEnabledInMemory.add(accountId);
-        await _offlineDatabase?.setSyncEnabled(accountId, true);
-      } else {
+      if (!enable) {
         final enabled = _offlineDatabase != null
             ? await _offlineDatabase.syncEnabled(accountId)
             : _syncEnabledInMemory.contains(accountId);
@@ -296,7 +356,9 @@ class DemoStore extends ChangeNotifier {
             syncedAny = true;
             if (mutation.operation == PendingMutation.opSettleBalance ||
                 mutation.operation ==
-                    PendingMutation.opConfirmReceivedPayment) {
+                    PendingMutation.opConfirmReceivedPayment ||
+                mutation.operation == PendingMutation.opReverseExpense ||
+                mutation.operation == PendingMutation.opReverseSettlement) {
               syncedSettlement = true;
             }
           } on ApiException catch (error) {
@@ -356,6 +418,12 @@ class DemoStore extends ChangeNotifier {
       final group = groups[groupIndex];
       if (mutation.operation == PendingMutation.opAddExpense) {
         group.expenses.removeWhere((e) => e.id == mutation.localEntityId);
+      } else if (mutation.operation == PendingMutation.opReverseExpense) {
+        group.expenseReversals
+            .removeWhere((r) => r.id == mutation.localEntityId);
+      } else if (mutation.operation == PendingMutation.opReverseSettlement) {
+        group.settlementReversals
+            .removeWhere((r) => r.id == mutation.localEntityId);
       } else {
         group.settlements.removeWhere((s) => s.id == mutation.localEntityId);
       }
@@ -385,6 +453,9 @@ class DemoStore extends ChangeNotifier {
             .cast<Map<String, dynamic>>();
         final rawShares = (payload['shares'] as List<dynamic>? ?? const [])
             .cast<Map<String, dynamic>>();
+        final rawPercentages =
+            (payload['percentages'] as List<dynamic>? ?? const [])
+                .cast<Map<String, dynamic>>();
         await api.addExpense(
           groupId: mutation.groupId,
           description: payload['description'] as String,
@@ -407,7 +478,19 @@ class DemoStore extends ChangeNotifier {
                 amountCents: share['amount_cents'] as int,
               ),
           ],
+          percentages: [
+            for (final entry in rawPercentages)
+              ExpensePercentage.fromJson(entry),
+          ],
           splitOverpayment: payload['split_overpayment'] as bool? ?? true,
+          replacesExpenseId: payload['replaces_expense_id'] as String?,
+          idempotencyKey: mutation.idempotencyKey,
+        );
+      case PendingMutation.opReverseExpense:
+        await api.reverseExpense(
+          groupId: mutation.groupId,
+          expenseId: payload['expense_id'] as String,
+          reason: payload['reason'] as String,
           idempotencyKey: mutation.idempotencyKey,
         );
       case PendingMutation.opSettleBalance:
@@ -415,6 +498,7 @@ class DemoStore extends ChangeNotifier {
           groupId: mutation.groupId,
           memberId: payload['member_id'] as String,
           amountCents: payload['amount_cents'] as int?,
+          replacesSettlementId: payload['replaces_settlement_id'] as String?,
           idempotencyKey: mutation.idempotencyKey,
         );
       case PendingMutation.opConfirmReceivedPayment:
@@ -422,6 +506,14 @@ class DemoStore extends ChangeNotifier {
           groupId: mutation.groupId,
           debtorId: payload['debtor_member_id'] as String,
           amountCents: payload['amount_cents'] as int?,
+          replacesSettlementId: payload['replaces_settlement_id'] as String?,
+          idempotencyKey: mutation.idempotencyKey,
+        );
+      case PendingMutation.opReverseSettlement:
+        await api.reverseSettlement(
+          groupId: mutation.groupId,
+          settlementId: payload['settlement_id'] as String,
+          reason: payload['reason'] as String,
           idempotencyKey: mutation.idempotencyKey,
         );
       default:
@@ -547,6 +639,7 @@ class DemoStore extends ChangeNotifier {
       Member(
         id: _offlineFirst ? seedUserId : currentUserId,
         userId: _apiClient?.userId ?? '',
+        role: 'owner',
         name: _apiClient?.user?.name ?? 'You',
       )
     ];
@@ -599,7 +692,9 @@ class DemoStore extends ChangeNotifier {
           input['salary_split_enabled'] as bool? ?? group.salarySplitEnabled,
       members: group.members,
       expenses: group.expenses,
+      expenseReversals: group.expenseReversals,
       settlements: group.settlements,
+      settlementReversals: group.settlementReversals,
       paymentRelations: group.paymentRelations,
       balances: group.balances,
     );
@@ -639,6 +734,7 @@ class DemoStore extends ChangeNotifier {
     group.members[index] = Member(
       id: member.id,
       userId: member.userId,
+      role: member.role,
       name: input['name'] as String? ?? member.name,
       phone: input['phone'] as String? ?? member.phone,
       active: member.active,
@@ -704,14 +800,26 @@ class DemoStore extends ChangeNotifier {
     required List<String> participantIds,
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
+    List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
+    String? replacesExpenseId,
   }) async {
     _lastMutationQueuedOffline = false;
     final api = _apiClient;
     final group = groupById(groupId);
+    final normalizedReplaces = replacesExpenseId?.trim();
+    final effectiveReplaces =
+        (normalizedReplaces?.isEmpty ?? true) ? null : normalizedReplaces;
+    if (effectiveReplaces != null &&
+        (!group.isExpenseReversed(effectiveReplaces) ||
+            group.replacementForExpense(effectiveReplaces) != null)) {
+      errorMessage = 'validation_failed';
+      notifyListeners();
+      return false;
+    }
     if (api != null && canUseServerFeatures(group)) {
       if (!_offlineFirst) {
-        return _sync(
+        final created = await _sync(
           () => api.addExpense(
             groupId: groupId,
             description: description,
@@ -721,9 +829,13 @@ class DemoStore extends ChangeNotifier {
             participantIds: participantIds,
             splitMode: splitMode,
             shares: shares,
+            percentages: percentages,
             splitOverpayment: splitOverpayment,
+            replacesExpenseId: effectiveReplaces,
           ),
         );
+        if (created) await loadStatus();
+        return created;
       }
       final idempotencyKey = api.newIdempotencyKey();
       if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
@@ -736,7 +848,9 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
+          replacesExpenseId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         );
         if (queued && _isOnline) {
@@ -754,9 +868,12 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
+          replacesExpenseId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
+        refreshStatus: true,
         onTransientFallback: () => _queueExpenseForServerGroup(
           group: group,
           description: description,
@@ -766,33 +883,260 @@ class DemoStore extends ChangeNotifier {
           participantIds: participantIds,
           splitMode: splitMode,
           shares: shares,
+          percentages: percentages,
           splitOverpayment: splitOverpayment,
+          replacesExpenseId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
       );
     }
-    group.expenses.insert(
-          0,
-          Expense(
-            id: _offlineFirst
-                ? _newLocalId('local_expense')
-                : _nextId('expense'),
-            description: description.trim(),
-            amountCents: amountCents,
-            payerId: payerId,
-            payers: List.unmodifiable(payers),
-            participantIds: List.unmodifiable(participantIds),
-            splitMode: splitMode,
-            shares: {
-              for (final share in shares) share.memberId: share.amountCents
-            },
-            splitOverpayment: splitOverpayment,
-            createdAt: DateTime.now(),
-          ),
-        );
+    final localExpense = _buildLocalExpense(
+      id: _offlineFirst ? _newLocalId('local_expense') : _nextId('expense'),
+      description: description,
+      amountCents: amountCents,
+      payerId: payerId,
+      payers: payers,
+      participantIds: participantIds,
+      splitMode: splitMode,
+      shares: shares,
+      percentages: percentages,
+      splitOverpayment: splitOverpayment,
+      replacesExpenseId: effectiveReplaces,
+      createdAt: DateTime.now(),
+    );
+    if (localExpense == null) return false;
+    group.expenses.insert(0, localExpense);
     await _persistGroup(group);
+    _refreshLocalStatus();
     notifyListeners();
     return true;
+  }
+
+  Future<bool> reverseExpense({
+    required String groupId,
+    required String expenseId,
+    required String reason,
+  }) async {
+    _lastMutationQueuedOffline = false;
+    final api = _apiClient;
+    final group = groupById(groupId);
+    final expenseIndex =
+        group.expenses.indexWhere((expense) => expense.id == expenseId);
+    if (expenseIndex < 0) {
+      errorMessage = 'resource_not_found';
+      notifyListeners();
+      return false;
+    }
+    final expense = group.expenses[expenseIndex];
+    if (group.isExpenseReversed(expenseId)) {
+      errorMessage = 'already_reversed';
+      notifyListeners();
+      return false;
+    }
+    if (canUseServerFeatures(group) &&
+        expense.id.startsWith('local_expense_')) {
+      errorMessage = 'sync_required_before_reversal';
+      notifyListeners();
+      return false;
+    }
+    if (!canReverseExpense(group, expense)) {
+      errorMessage = 'resource_not_found';
+      notifyListeners();
+      return false;
+    }
+    final validatedReason = _validatedReversalReason(reason);
+    if (validatedReason == null) {
+      errorMessage = 'validation_failed';
+      notifyListeners();
+      return false;
+    }
+    if (api != null && canUseServerFeatures(group)) {
+      if (!_offlineFirst) {
+        final reversed = await _sync(
+          () => api.reverseExpense(
+            groupId: groupId,
+            expenseId: expenseId,
+            reason: validatedReason,
+          ),
+        );
+        if (reversed) await loadStatus();
+        return reversed;
+      }
+      final idempotencyKey = api.newIdempotencyKey();
+      if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
+        final queued = await _queueExpenseReversalForServerGroup(
+          group: group,
+          expenseId: expenseId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        );
+        if (queued && _isOnline) {
+          unawaited(syncPendingMutations());
+        }
+        return queued;
+      }
+      return _executeServerMutation(
+        send: () => api.reverseExpense(
+          groupId: groupId,
+          expenseId: expenseId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        ),
+        refreshStatus: true,
+        onTransientFallback: () => _queueExpenseReversalForServerGroup(
+          group: group,
+          expenseId: expenseId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        ),
+      );
+    }
+    final self = _selfMember(group);
+    final actorMemberId = self?.id ?? currentUserId;
+    group.expenseReversals.insert(
+      0,
+      ExpenseReversal(
+        id: _offlineFirst
+            ? _newLocalId('local_expense_reversal')
+            : _nextId('expense_reversal'),
+        originalExpenseId: expenseId,
+        actorUserId: _apiClient?.userId ?? '',
+        actorMemberId: actorMemberId,
+        reason: validatedReason,
+        createdAt: DateTime.now().toUtc(),
+      ),
+    );
+    await _persistGroup(group);
+    _refreshLocalStatus();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> _queueExpenseReversalForServerGroup({
+    required ExpenseGroup group,
+    required String expenseId,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return false;
+    final actorMemberId = _selfMember(group)?.id ?? currentUserId;
+    final localId = _newLocalId('local_expense_reversal');
+    final now = DateTime.now().toUtc();
+    group.expenseReversals.insert(
+      0,
+      ExpenseReversal(
+        id: localId,
+        originalExpenseId: expenseId,
+        actorUserId: accountId,
+        actorMemberId: actorMemberId,
+        reason: reason,
+        createdAt: now,
+      ),
+    );
+    final mutation = PendingMutation(
+      id: _newLocalId('mutation'),
+      accountId: accountId,
+      groupId: group.id,
+      operation: PendingMutation.opReverseExpense,
+      idempotencyKey: idempotencyKey,
+      localEntityId: localId,
+      createdAt: now,
+      payload: {
+        'expense_id': expenseId,
+        'reason': reason,
+      },
+    );
+    await _persistQueuedServerMutation(group, mutation);
+    return true;
+  }
+
+  Expense? _buildLocalExpense({
+    required String id,
+    required String description,
+    required int amountCents,
+    required String payerId,
+    required List<ExpensePayer> payers,
+    required List<String> participantIds,
+    required String splitMode,
+    required List<ExpenseShare> shares,
+    required List<ExpensePercentage> percentages,
+    required bool splitOverpayment,
+    required DateTime createdAt,
+    String? replacesExpenseId,
+  }) {
+    final trimmed = description.trim();
+    if (trimmed.isEmpty || amountCents <= 0 || participantIds.isEmpty) {
+      return null;
+    }
+    final effectivePayers = payers.isEmpty
+        ? [ExpensePayer(memberId: payerId, amountCents: amountCents)]
+        : payers;
+    final paidAmount = effectivePayers.fold<int>(
+      0,
+      (sum, payer) => sum + payer.amountCents,
+    );
+    if (paidAmount < amountCents) return null;
+
+    var resolvedShares = {
+      for (final share in shares) share.memberId: share.amountCents,
+    };
+    var resolvedPercentages = const <String, int>{};
+    var consumptionShares = const <String, int>{};
+    var overpaymentShares = const <String, int>{};
+    final overpaymentCents = paidAmount - amountCents;
+
+    if (splitMode == 'percentage') {
+      if (shares.isNotEmpty || percentages.length != participantIds.length) {
+        return null;
+      }
+      final pctMap = <String, int>{};
+      for (final entry in percentages) {
+        if (pctMap.containsKey(entry.memberId)) return null;
+        pctMap[entry.memberId] = entry.percentageBps;
+      }
+      final consumption = ExpenseAllocation.percentageShares(
+        allocationTotalCents: amountCents,
+        participantIds: participantIds,
+        percentagesBps: pctMap,
+      );
+      final finalShares = ExpenseAllocation.percentageFinalShares(
+        amountCents: amountCents,
+        paidAmountCents: paidAmount,
+        splitOverpayment: splitOverpayment,
+        participantIds: participantIds,
+        percentagesBps: pctMap,
+      );
+      if (consumption == null || finalShares == null) return null;
+      resolvedShares = finalShares;
+      resolvedPercentages = Map.unmodifiable(pctMap);
+      if (splitOverpayment && overpaymentCents > 0) {
+        consumptionShares = Map.unmodifiable(consumption);
+        overpaymentShares = Map.unmodifiable({
+          for (final memberId in participantIds)
+            memberId: finalShares[memberId]! - consumption[memberId]!,
+        });
+      }
+    }
+
+    return Expense(
+      id: id,
+      description: trimmed,
+      amountCents: amountCents,
+      payerId: effectivePayers.first.memberId,
+      payers: List.unmodifiable(effectivePayers),
+      participantIds: List.unmodifiable(participantIds),
+      splitMode: splitMode,
+      shares: Map.unmodifiable(resolvedShares),
+      percentages: resolvedPercentages,
+      paidAmountCents: paidAmount,
+      consumptionShares: consumptionShares,
+      overpaymentCents: overpaymentCents,
+      overpaymentShares: overpaymentShares,
+      splitOverpayment: splitOverpayment,
+      replacesExpenseId: replacesExpenseId,
+      createdAt: createdAt,
+    );
   }
 
   Future<bool> _queueExpenseForServerGroup({
@@ -804,39 +1148,31 @@ class DemoStore extends ChangeNotifier {
     required List<String> participantIds,
     required String splitMode,
     required List<ExpenseShare> shares,
+    required List<ExpensePercentage> percentages,
     required bool splitOverpayment,
     required String idempotencyKey,
+    String? replacesExpenseId,
   }) async {
     final accountId = _apiClient?.userId;
-    final trimmed = description.trim();
-    if (accountId == null ||
-        trimmed.isEmpty ||
-        amountCents <= 0 ||
-        participantIds.isEmpty) {
-      return false;
-    }
+    if (accountId == null) return false;
     final localId = _newLocalId('local_expense');
     final now = DateTime.now().toUtc();
-    final effectivePayers = payers.isEmpty
-        ? [ExpensePayer(memberId: payerId, amountCents: amountCents)]
-        : payers;
-    group.expenses.insert(
-      0,
-      Expense(
-        id: localId,
-        description: trimmed,
-        amountCents: amountCents,
-        payerId: effectivePayers.first.memberId,
-        payers: List.unmodifiable(effectivePayers),
-        participantIds: List.unmodifiable(participantIds),
-        splitMode: splitMode,
-        shares: {
-          for (final share in shares) share.memberId: share.amountCents,
-        },
-        splitOverpayment: splitOverpayment,
-        createdAt: now,
-      ),
+    final localExpense = _buildLocalExpense(
+      id: localId,
+      description: description,
+      amountCents: amountCents,
+      payerId: payerId,
+      payers: payers,
+      participantIds: participantIds,
+      splitMode: splitMode,
+      shares: shares,
+      percentages: percentages,
+      splitOverpayment: splitOverpayment,
+      replacesExpenseId: replacesExpenseId,
+      createdAt: now,
     );
+    if (localExpense == null) return false;
+    group.expenses.insert(0, localExpense);
     final mutation = PendingMutation(
       id: _newLocalId('mutation'),
       accountId: accountId,
@@ -846,11 +1182,11 @@ class DemoStore extends ChangeNotifier {
       localEntityId: localId,
       createdAt: now,
       payload: {
-        'description': trimmed,
+        'description': localExpense.description,
         'amount_cents': amountCents,
-        'payer_id': effectivePayers.first.memberId,
+        'payer_id': localExpense.payerId,
         'payers': [
-          for (final payer in effectivePayers)
+          for (final payer in localExpense.payers)
             {'member_id': payer.memberId, 'amount_cents': payer.amountCents},
         ],
         'participant_ids': List<String>.from(participantIds),
@@ -860,6 +1196,12 @@ class DemoStore extends ChangeNotifier {
           for (final share in shares)
             {'member_id': share.memberId, 'amount_cents': share.amountCents},
         ],
+        if (percentages.isNotEmpty)
+          'percentages': [
+            for (final entry in percentages) entry.toJson(),
+          ],
+        if (replacesExpenseId != null && replacesExpenseId.isNotEmpty)
+          'replaces_expense_id': replacesExpenseId,
       },
     );
     await _persistQueuedServerMutation(group, mutation);
@@ -877,6 +1219,7 @@ class DemoStore extends ChangeNotifier {
     group.members[index] = Member(
       id: removed.id,
       userId: removed.userId,
+      role: removed.role,
       name: removed.name,
       phone: removed.phone,
       active: false,
@@ -892,10 +1235,21 @@ class DemoStore extends ChangeNotifier {
     required String groupId,
     required String memberId,
     int? amountCents,
+    String? replacesSettlementId,
   }) async {
     _lastMutationQueuedOffline = false;
     final api = _apiClient;
     final group = groupById(groupId);
+    final normalizedReplaces = replacesSettlementId?.trim();
+    final effectiveReplaces =
+        (normalizedReplaces?.isEmpty ?? true) ? null : normalizedReplaces;
+    if (effectiveReplaces != null &&
+        (!group.isSettlementReversed(effectiveReplaces) ||
+            group.replacementForSettlement(effectiveReplaces) != null)) {
+      errorMessage = 'validation_failed';
+      notifyListeners();
+      return false;
+    }
     if (api != null && canUseServerFeatures(group)) {
       if (!_offlineFirst) {
         final settled = await _sync(
@@ -903,6 +1257,7 @@ class DemoStore extends ChangeNotifier {
             groupId: groupId,
             memberId: memberId,
             amountCents: amountCents,
+            replacesSettlementId: effectiveReplaces,
           ),
         );
         if (settled) await loadStatus();
@@ -914,6 +1269,7 @@ class DemoStore extends ChangeNotifier {
           group: group,
           memberId: memberId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         );
         if (queued && _isOnline) {
@@ -926,6 +1282,7 @@ class DemoStore extends ChangeNotifier {
           groupId: groupId,
           memberId: memberId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
         refreshStatus: true,
@@ -933,6 +1290,7 @@ class DemoStore extends ChangeNotifier {
           group: group,
           memberId: memberId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
       );
@@ -953,6 +1311,7 @@ class DemoStore extends ChangeNotifier {
         fromMemberId: memberBalance < 0 ? memberId : selfId,
         toMemberId: memberBalance < 0 ? selfId : memberId,
         amountCents: amount,
+        replacesSettlementId: effectiveReplaces,
         createdAt: DateTime.now(),
       ),
     );
@@ -967,6 +1326,7 @@ class DemoStore extends ChangeNotifier {
     required String memberId,
     required int? amountCents,
     required String idempotencyKey,
+    String? replacesSettlementId,
   }) async {
     final accountId = _apiClient?.userId;
     if (accountId == null || group.visibility == 'shared') return false;
@@ -988,6 +1348,7 @@ class DemoStore extends ChangeNotifier {
         fromMemberId: selfId,
         toMemberId: memberId,
         amountCents: amount,
+        replacesSettlementId: replacesSettlementId,
         createdAt: now,
       ),
     );
@@ -1002,6 +1363,8 @@ class DemoStore extends ChangeNotifier {
       payload: {
         'member_id': memberId,
         'amount_cents': amount,
+        if (replacesSettlementId != null && replacesSettlementId.isNotEmpty)
+          'replaces_settlement_id': replacesSettlementId,
       },
     );
     await _persistQueuedServerMutation(group, mutation);
@@ -1012,16 +1375,28 @@ class DemoStore extends ChangeNotifier {
     required String groupId,
     required String debtorId,
     int? amountCents,
+    String? replacesSettlementId,
   }) async {
     _lastMutationQueuedOffline = false;
     final api = _apiClient;
     final group = groupById(groupId);
+    final normalizedReplaces = replacesSettlementId?.trim();
+    final effectiveReplaces =
+        (normalizedReplaces?.isEmpty ?? true) ? null : normalizedReplaces;
+    if (effectiveReplaces != null &&
+        (!group.isSettlementReversed(effectiveReplaces) ||
+            group.replacementForSettlement(effectiveReplaces) != null)) {
+      errorMessage = 'validation_failed';
+      notifyListeners();
+      return false;
+    }
     if (api != null && canUseServerFeatures(group)) {
       if (!_offlineFirst) {
         return _sync(() => api.confirmReceivedPayment(
               groupId: groupId,
               debtorId: debtorId,
               amountCents: amountCents,
+              replacesSettlementId: effectiveReplaces,
             ));
       }
       final idempotencyKey = api.newIdempotencyKey();
@@ -1030,6 +1405,7 @@ class DemoStore extends ChangeNotifier {
           group: group,
           debtorId: debtorId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         );
         if (queued && _isOnline) {
@@ -1042,12 +1418,14 @@ class DemoStore extends ChangeNotifier {
           groupId: groupId,
           debtorId: debtorId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
         onTransientFallback: () => _queueReceivedPaymentForServerGroup(
           group: group,
           debtorId: debtorId,
           amountCents: amountCents,
+          replacesSettlementId: effectiveReplaces,
           idempotencyKey: idempotencyKey,
         ),
       );
@@ -1071,6 +1449,7 @@ class DemoStore extends ChangeNotifier {
         fromMemberId: debtorId,
         toMemberId: selfId,
         amountCents: amount,
+        replacesSettlementId: effectiveReplaces,
         createdAt: DateTime.now(),
       ),
     );
@@ -1085,6 +1464,7 @@ class DemoStore extends ChangeNotifier {
     required String debtorId,
     required int? amountCents,
     required String idempotencyKey,
+    String? replacesSettlementId,
   }) async {
     final accountId = _apiClient?.userId;
     if (accountId == null) return false;
@@ -1104,6 +1484,7 @@ class DemoStore extends ChangeNotifier {
         fromMemberId: debtorId,
         toMemberId: selfId,
         amountCents: amount,
+        replacesSettlementId: replacesSettlementId,
         createdAt: now,
       ),
     );
@@ -1118,6 +1499,146 @@ class DemoStore extends ChangeNotifier {
       payload: {
         'debtor_member_id': debtorId,
         'amount_cents': amount,
+        if (replacesSettlementId != null && replacesSettlementId.isNotEmpty)
+          'replaces_settlement_id': replacesSettlementId,
+      },
+    );
+    await _persistQueuedServerMutation(group, mutation);
+    return true;
+  }
+
+  Future<bool> reverseSettlement({
+    required String groupId,
+    required String settlementId,
+    required String reason,
+  }) async {
+    _lastMutationQueuedOffline = false;
+    final api = _apiClient;
+    final group = groupById(groupId);
+    final settlementIndex = group.settlements
+        .indexWhere((settlement) => settlement.id == settlementId);
+    if (settlementIndex < 0) {
+      errorMessage = 'resource_not_found';
+      notifyListeners();
+      return false;
+    }
+    final settlement = group.settlements[settlementIndex];
+    if (group.isSettlementReversed(settlementId)) {
+      errorMessage = 'already_reversed';
+      notifyListeners();
+      return false;
+    }
+    if (canUseServerFeatures(group) &&
+        settlement.id.startsWith('local_settlement_')) {
+      errorMessage = 'sync_required_before_reversal';
+      notifyListeners();
+      return false;
+    }
+    if (!canReverseSettlement(group, settlement)) {
+      errorMessage = 'resource_not_found';
+      notifyListeners();
+      return false;
+    }
+    final validatedReason = _validatedReversalReason(reason);
+    if (validatedReason == null) {
+      errorMessage = 'validation_failed';
+      notifyListeners();
+      return false;
+    }
+    if (api != null && canUseServerFeatures(group)) {
+      if (!_offlineFirst) {
+        final reversed = await _sync(
+          () => api.reverseSettlement(
+            groupId: groupId,
+            settlementId: settlementId,
+            reason: validatedReason,
+          ),
+        );
+        if (reversed) await loadStatus();
+        return reversed;
+      }
+      final idempotencyKey = api.newIdempotencyKey();
+      if (!_isOnline || hasPendingMutationsForGroup(group.id)) {
+        final queued = await _queueSettlementReversalForServerGroup(
+          group: group,
+          settlementId: settlementId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        );
+        if (queued && _isOnline) {
+          unawaited(syncPendingMutations());
+        }
+        return queued;
+      }
+      return _executeServerMutation(
+        send: () => api.reverseSettlement(
+          groupId: groupId,
+          settlementId: settlementId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        ),
+        refreshStatus: true,
+        onTransientFallback: () => _queueSettlementReversalForServerGroup(
+          group: group,
+          settlementId: settlementId,
+          reason: validatedReason,
+          idempotencyKey: idempotencyKey,
+        ),
+      );
+    }
+    final actorMemberId = _selfMember(group)?.id ?? currentUserId;
+    group.settlementReversals.insert(
+      0,
+      SettlementReversal(
+        id: _offlineFirst
+            ? _newLocalId('local_settlement_reversal')
+            : _nextId('settlement_reversal'),
+        originalSettlementId: settlementId,
+        actorUserId: _apiClient?.userId ?? '',
+        actorMemberId: actorMemberId,
+        reason: validatedReason,
+        createdAt: DateTime.now().toUtc(),
+      ),
+    );
+    await _persistGroup(group);
+    _refreshLocalStatus();
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> _queueSettlementReversalForServerGroup({
+    required ExpenseGroup group,
+    required String settlementId,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final accountId = _apiClient?.userId;
+    if (accountId == null) return false;
+    final actorMemberId = _selfMember(group)?.id ?? currentUserId;
+    final localId = _newLocalId('local_settlement_reversal');
+    final now = DateTime.now().toUtc();
+    group.settlementReversals.insert(
+      0,
+      SettlementReversal(
+        id: localId,
+        originalSettlementId: settlementId,
+        actorUserId: accountId,
+        actorMemberId: actorMemberId,
+        reason: reason,
+        createdAt: now,
+      ),
+    );
+    final mutation = PendingMutation(
+      id: _newLocalId('mutation'),
+      accountId: accountId,
+      groupId: group.id,
+      operation: PendingMutation.opReverseSettlement,
+      idempotencyKey: idempotencyKey,
+      localEntityId: localId,
+      createdAt: now,
+      payload: {
+        'settlement_id': settlementId,
+        'reason': reason,
       },
     );
     await _persistQueuedServerMutation(group, mutation);
@@ -1269,22 +1790,21 @@ class DemoStore extends ChangeNotifier {
       outgoing[to] = (outgoing[to] ?? 0) + amount;
     }
 
+    final reversedExpenseIds = group.reversedExpenseIds;
+    final reversedSettlementIds = group.reversedSettlementIds;
     for (final expense in group.expenses) {
-      final payers = expense.payers.isEmpty
-          ? [
-              ExpensePayer(
-                  memberId: expense.payerId, amountCents: expense.amountCents)
-            ]
-          : expense.payers;
+      if (reversedExpenseIds.contains(expense.id)) continue;
+      final payers = _localLedgerPayers(expense);
       final credits = <String, int>{
         for (final payer in payers) payer.memberId: payer.amountCents
       };
-      for (final share in _localExpenseShares(expense).entries) {
-        var owed = share.value;
+      final shares = _localExpenseShares(expense);
+      for (final participantId in expense.participantIds) {
+        var owed = shares[participantId] ?? 0;
         for (final payer in payers) {
           final available = credits[payer.memberId] ?? 0;
           final amount = owed < available ? owed : available;
-          if (amount > 0) add(share.key, payer.memberId, amount);
+          if (amount > 0) add(participantId, payer.memberId, amount);
           owed -= amount;
           credits[payer.memberId] = available - amount;
           if (owed == 0) break;
@@ -1292,6 +1812,7 @@ class DemoStore extends ChangeNotifier {
       }
     }
     for (final settlement in group.settlements) {
+      if (reversedSettlementIds.contains(settlement.id)) continue;
       add(
         settlement.fromMemberId,
         settlement.toMemberId,
@@ -1327,13 +1848,11 @@ class DemoStore extends ChangeNotifier {
 
   Map<String, int> _localBalances(ExpenseGroup group) {
     final result = {for (final member in group.members) member.id: 0};
+    final reversedExpenseIds = group.reversedExpenseIds;
+    final reversedSettlementIds = group.reversedSettlementIds;
     for (final expense in group.expenses) {
-      final payers = expense.payers.isEmpty
-          ? [
-              ExpensePayer(
-                  memberId: expense.payerId, amountCents: expense.amountCents)
-            ]
-          : expense.payers;
+      if (reversedExpenseIds.contains(expense.id)) continue;
+      final payers = _localLedgerPayers(expense);
       for (final payer in payers) {
         result[payer.memberId] =
             (result[payer.memberId] ?? 0) + payer.amountCents;
@@ -1346,10 +1865,43 @@ class DemoStore extends ChangeNotifier {
       }
     }
     for (final settlement in group.settlements) {
+      if (reversedSettlementIds.contains(settlement.id)) continue;
       result[settlement.fromMemberId] =
           (result[settlement.fromMemberId] ?? 0) + settlement.amountCents;
       result[settlement.toMemberId] =
           (result[settlement.toMemberId] ?? 0) - settlement.amountCents;
+    }
+    return result;
+  }
+
+  List<ExpensePayer> _localLedgerPayers(Expense expense) {
+    final payers = expense.payers.isEmpty
+        ? [
+            ExpensePayer(
+              memberId: expense.payerId,
+              amountCents: expense.amountCents,
+            ),
+          ]
+        : expense.payers;
+    if (expense.splitOverpayment) return payers;
+    final paid = payers.fold<int>(0, (sum, payer) => sum + payer.amountCents);
+    if (paid <= expense.amountCents) return payers;
+    final result = <ExpensePayer>[];
+    var used = 0;
+    for (final payer in payers) {
+      final share = (BigInt.from(expense.amountCents) *
+              BigInt.from(payer.amountCents) ~/
+              BigInt.from(paid))
+          .toInt();
+      result.add(ExpensePayer(memberId: payer.memberId, amountCents: share));
+      used += share;
+    }
+    for (var i = 0; i < result.length && used < expense.amountCents; i++) {
+      result[i] = ExpensePayer(
+        memberId: result[i].memberId,
+        amountCents: result[i].amountCents + 1,
+      );
+      used++;
     }
     return result;
   }
@@ -1366,6 +1918,26 @@ class DemoStore extends ChangeNotifier {
   }
 
   Map<String, int> _localExpenseShares(Expense expense) {
+    if (expense.splitMode == 'percentage') {
+      if (expense.shares.isNotEmpty) return expense.shares;
+      final paidAmount = expense.payers.isEmpty
+          ? expense.amountCents
+          : expense.payers
+              .fold<int>(0, (sum, payer) => sum + payer.amountCents);
+      final computed = ExpenseAllocation.percentageFinalShares(
+        amountCents: expense.amountCents,
+        paidAmountCents:
+            paidAmount > expense.amountCents ? paidAmount : expense.amountCents,
+        splitOverpayment: expense.splitOverpayment,
+        participantIds: expense.participantIds,
+        percentagesBps: expense.percentages,
+      );
+      if (computed != null) return computed;
+      return _equalShares(
+        _allocatedExpenseAmount(expense),
+        expense.participantIds,
+      );
+    }
     if (expense.splitMode != 'exact') {
       if (expense.shares.isNotEmpty &&
           (expense.splitMode == 'salary' ||
@@ -1497,6 +2069,7 @@ class DemoStore extends ChangeNotifier {
         group.members[index] = Member(
           id: existing.id,
           userId: user.id,
+          role: existing.role,
           name: user.name,
           phone: user.phone,
           active: existing.active,
@@ -1532,7 +2105,7 @@ class DemoStore extends ChangeNotifier {
   String _nextId(String prefix) => '${prefix}_${_sequence++}';
 
   static List<ExpenseGroup> _seedGroups() {
-    const you = Member(id: seedUserId, name: 'You');
+    const you = Member(id: seedUserId, role: 'owner', name: 'You');
     const ana = Member(id: 'ana', name: 'Ana');
     const diego = Member(id: 'diego', name: 'Diego');
     const sofia = Member(id: 'sofia', name: 'Sofía');

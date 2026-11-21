@@ -7,8 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
+	"sort"
 	"strings"
+	"time"
+
+	"github.com/JoshuaLopez2000/vaquita-mx/services/api/internal/auth"
 )
 
 func (r *Repository) SyncLocalGroups(ctx context.Context, userID string, inputs []OfflineSyncGroupInput) ([]OfflineSyncGroupResult, error) {
@@ -37,7 +40,8 @@ func (r *Repository) syncLocalGroup(ctx context.Context, userID string, input Of
 	input.Name = strings.TrimSpace(input.Name)
 	input.Emoji = strings.TrimSpace(input.Emoji)
 	if !validSyncID(input.ID) || len(input.Members) == 0 || len(input.Members) > 200 ||
-		len(input.Expenses) > 2000 || len(input.Settlements) > 2000 ||
+		len(input.Expenses) > 2000 || len(input.ExpenseReversals) > 2000 ||
+		len(input.Settlements) > 2000 || len(input.SettlementReversals) > 2000 ||
 		len(input.Name) < 2 || input.Emoji == "" ||
 		(input.Visibility != "personal" && input.Visibility != "shared") {
 		return ErrInvalid
@@ -234,135 +238,340 @@ func (r *Repository) syncLocalGroup(ctx context.Context, userID string, input Of
 		}
 	}
 
-	seenExpenses := make(map[string]bool, len(input.Expenses))
-	for _, localExpense := range input.Expenses {
-		if !validSyncID(localExpense.ID) || seenExpenses[localExpense.ID] || localExpense.CreatedAt.IsZero() {
-			return ErrInvalid
-		}
-		seenExpenses[localExpense.ID] = true
-		hash, err := syncPayloadHash(localExpense)
-		if err != nil {
-			return err
-		}
-		exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "expense", localExpense.ID, hash)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if !newGroup && !strings.HasPrefix(localExpense.ID, "local_expense_") {
-			continue
-		}
-		var payerID string
-		if len(localExpense.Payers) == 0 {
-			payerID = memberIDs[localExpense.PayerID]
-		} else {
-			payerID = memberIDs[localExpense.Payers[0].MemberID]
-		}
-		if payerID == "" {
-			return ErrInvalid
-		}
-		payers := make([]ExpensePayer, 0, len(localExpense.Payers))
-		for _, payer := range localExpense.Payers {
-			memberID := memberIDs[payer.MemberID]
-			if memberID == "" {
-				return ErrInvalid
-			}
-			payers = append(payers, ExpensePayer{MemberID: memberID, AmountCents: payer.AmountCents})
-		}
-		participants := make([]string, 0, len(localExpense.ParticipantIDs))
-		for _, localMemberID := range localExpense.ParticipantIDs {
-			memberID := memberIDs[localMemberID]
-			if memberID == "" {
-				return ErrInvalid
-			}
-			participants = append(participants, memberID)
-		}
-		shares := make([]ExpenseShare, 0, len(localExpense.Shares))
-		for _, localMemberID := range localExpense.ParticipantIDs {
-			if amount, ok := localExpense.Shares[localMemberID]; ok && localExpense.SplitMode == "exact" {
-				shares = append(shares, ExpenseShare{MemberID: memberIDs[localMemberID], AmountCents: amount})
-			}
-		}
-		splitOverpayment := localExpense.SplitOverpayment
-		expenseInput := AddExpenseInput{
-			Description:      localExpense.Description,
-			AmountCents:      localExpense.AmountCents,
-			PayerID:          payerID,
-			Payers:           payers,
-			ParticipantIDs:   participants,
-			SplitMode:        localExpense.SplitMode,
-			Shares:           shares,
-			SplitOverpayment: &splitOverpayment,
-		}
-		group, err = Ledger(ctx, groupID, tx)
-		if err != nil {
-			return err
-		}
-		if err = prepareExpense(group, &expenseInput); err != nil {
-			return err
-		}
-		if err = insertExpense(ctx, tx, groupID, localExpense.ID, expenseInput, localExpense.CreatedAt); err != nil {
-			return err
-		}
-		if err = addSyncEntry(ctx, tx, userID, input.ID, "expense", localExpense.ID, hash); err != nil {
-			return err
-		}
-	}
-
-	if len(input.Settlements) > 0 {
+	if len(input.Expenses) > 0 || len(input.ExpenseReversals) > 0 ||
+		len(input.Settlements) > 0 || len(input.SettlementReversals) > 0 {
 		if err = lockGroup(ctx, tx, groupID); err != nil {
 			return err
 		}
 	}
+
+	type syncEvent struct {
+		kind      int
+		index     int
+		createdAt time.Time
+	}
+	events := make([]syncEvent, 0, len(input.Expenses)+len(input.ExpenseReversals)+len(input.Settlements)+len(input.SettlementReversals))
+
+	seenExpenses := make(map[string]bool, len(input.Expenses))
+	for i, localExpense := range input.Expenses {
+		if !validSyncID(localExpense.ID) || seenExpenses[localExpense.ID] || localExpense.CreatedAt.IsZero() {
+			return ErrInvalid
+		}
+		seenExpenses[localExpense.ID] = true
+		kind := 0
+		if strings.TrimSpace(localExpense.ReplacesExpenseID) != "" {
+			kind = 4
+		}
+		events = append(events, syncEvent{kind: kind, index: i, createdAt: localExpense.CreatedAt})
+	}
 	seenSettlements := make(map[string]bool, len(input.Settlements))
-	for _, localSettlement := range input.Settlements {
+	for i, localSettlement := range input.Settlements {
 		if !validSyncID(localSettlement.ID) || seenSettlements[localSettlement.ID] ||
 			localSettlement.AmountCents <= 0 || localSettlement.CreatedAt.IsZero() {
 			return ErrInvalid
 		}
 		seenSettlements[localSettlement.ID] = true
-		hash, err := syncPayloadHash(localSettlement)
-		if err != nil {
-			return err
+		kind := 1
+		if strings.TrimSpace(localSettlement.ReplacesSettlementID) != "" {
+			kind = 5
 		}
-		exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "settlement", localSettlement.ID, hash)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
-		if !newGroup && !strings.HasPrefix(localSettlement.ID, "local_settlement_") {
-			continue
-		}
-		fromID := memberIDs[localSettlement.FromMemberID]
-		toID := memberIDs[localSettlement.ToMemberID]
-		if fromID == "" || toID == "" || fromID == toID || (fromID != userID && toID != userID) {
+		events = append(events, syncEvent{kind: kind, index: i, createdAt: localSettlement.CreatedAt})
+	}
+	seenExpenseReversals := make(map[string]bool, len(input.ExpenseReversals))
+	for i, localReversal := range input.ExpenseReversals {
+		if !validSyncID(localReversal.ID) || !validSyncID(localReversal.OriginalExpenseID) ||
+			seenExpenseReversals[localReversal.ID] || localReversal.CreatedAt.IsZero() {
 			return ErrInvalid
 		}
-		group, err = Ledger(ctx, groupID, tx)
-		if err != nil {
-			return err
+		seenExpenseReversals[localReversal.ID] = true
+		events = append(events, syncEvent{kind: 2, index: i, createdAt: localReversal.CreatedAt})
+	}
+	seenSettlementReversals := make(map[string]bool, len(input.SettlementReversals))
+	for i, localReversal := range input.SettlementReversals {
+		if !validSyncID(localReversal.ID) || !validSyncID(localReversal.OriginalSettlementID) ||
+			seenSettlementReversals[localReversal.ID] || localReversal.CreatedAt.IsZero() {
+			return ErrInvalid
 		}
-		var outstanding int64
-		for _, relation := range group.PaymentRelations {
-			if relation.FromMemberID == fromID && relation.ToMemberID == toID {
-				outstanding = relation.AmountCents
-				break
+		seenSettlementReversals[localReversal.ID] = true
+		events = append(events, syncEvent{kind: 3, index: i, createdAt: localReversal.CreatedAt})
+	}
+
+	sort.Slice(events, func(i, j int) bool {
+		if !events[i].createdAt.Equal(events[j].createdAt) {
+			return events[i].createdAt.Before(events[j].createdAt)
+		}
+		if events[i].kind != events[j].kind {
+			return events[i].kind < events[j].kind
+		}
+		return events[i].index < events[j].index
+	})
+
+	for _, event := range events {
+		switch event.kind {
+		case 0, 4:
+			localExpense := input.Expenses[event.index]
+			hash, err := syncPayloadHash(localExpense)
+			if err != nil {
+				return err
 			}
-		}
-		if localSettlement.AmountCents > outstanding {
-			return ErrOverpayment
-		}
-		if _, err = tx.ExecContext(ctx,
-			`INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents,created_at) VALUES($1,$2,$3,$4,$5,$6)`,
-			localSettlement.ID, groupID, fromID, toID, localSettlement.AmountCents, localSettlement.CreatedAt); err != nil {
-			return err
-		}
-		if err = addSyncEntry(ctx, tx, userID, input.ID, "settlement", localSettlement.ID, hash); err != nil {
-			return err
+			exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "expense", localExpense.ID, hash)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			if !newGroup && !strings.HasPrefix(localExpense.ID, "local_expense_") {
+				continue
+			}
+			var payerID string
+			if len(localExpense.Payers) == 0 {
+				payerID = memberIDs[localExpense.PayerID]
+			} else {
+				payerID = memberIDs[localExpense.Payers[0].MemberID]
+			}
+			if payerID == "" {
+				return ErrInvalid
+			}
+			payers := make([]ExpensePayer, 0, len(localExpense.Payers))
+			for _, payer := range localExpense.Payers {
+				memberID := memberIDs[payer.MemberID]
+				if memberID == "" {
+					return ErrInvalid
+				}
+				payers = append(payers, ExpensePayer{MemberID: memberID, AmountCents: payer.AmountCents})
+			}
+			participants := make([]string, 0, len(localExpense.ParticipantIDs))
+			for _, localMemberID := range localExpense.ParticipantIDs {
+				memberID := memberIDs[localMemberID]
+				if memberID == "" {
+					return ErrInvalid
+				}
+				participants = append(participants, memberID)
+			}
+			shares := make([]ExpenseShare, 0, len(localExpense.Shares))
+			for _, localMemberID := range localExpense.ParticipantIDs {
+				if amount, ok := localExpense.Shares[localMemberID]; ok && localExpense.SplitMode == "exact" {
+					shares = append(shares, ExpenseShare{MemberID: memberIDs[localMemberID], AmountCents: amount})
+				}
+			}
+			var percentages []ExpensePercentage
+			if localExpense.SplitMode == "percentage" {
+				if len(localExpense.Percentages) != len(localExpense.ParticipantIDs) {
+					return ErrInvalid
+				}
+				percentages = make([]ExpensePercentage, 0, len(localExpense.ParticipantIDs))
+				for _, localMemberID := range localExpense.ParticipantIDs {
+					bps, ok := localExpense.Percentages[localMemberID]
+					if !ok {
+						return ErrInvalid
+					}
+					percentages = append(percentages, ExpensePercentage{
+						MemberID:      memberIDs[localMemberID],
+						PercentageBps: bps,
+					})
+				}
+			} else if len(localExpense.Percentages) != 0 {
+				return ErrInvalid
+			}
+			replacesExpenseID := strings.TrimSpace(localExpense.ReplacesExpenseID)
+			if replacesExpenseID != "" {
+				if err = validateExpenseReplacement(ctx, tx, groupID, replacesExpenseID); err != nil {
+					return err
+				}
+			}
+			splitOverpayment := localExpense.SplitOverpayment
+			expenseInput := AddExpenseInput{
+				Description:       localExpense.Description,
+				AmountCents:       localExpense.AmountCents,
+				PayerID:           payerID,
+				Payers:            payers,
+				ParticipantIDs:    participants,
+				SplitMode:         localExpense.SplitMode,
+				Shares:            shares,
+				Percentages:       percentages,
+				SplitOverpayment:  &splitOverpayment,
+				ReplacesExpenseID: replacesExpenseID,
+			}
+			group, err = Ledger(ctx, groupID, tx)
+			if err != nil {
+				return err
+			}
+			if err = prepareExpense(group, &expenseInput); err != nil {
+				return err
+			}
+			if err = insertExpense(ctx, tx, groupID, localExpense.ID, expenseInput, localExpense.CreatedAt); err != nil {
+				return err
+			}
+			if err = addSyncEntry(ctx, tx, userID, input.ID, "expense", localExpense.ID, hash); err != nil {
+				return err
+			}
+
+		case 1, 5:
+			localSettlement := input.Settlements[event.index]
+			hash, err := syncPayloadHash(localSettlement)
+			if err != nil {
+				return err
+			}
+			exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "settlement", localSettlement.ID, hash)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			if !newGroup && !strings.HasPrefix(localSettlement.ID, "local_settlement_") {
+				continue
+			}
+			fromID := memberIDs[localSettlement.FromMemberID]
+			toID := memberIDs[localSettlement.ToMemberID]
+			if fromID == "" || toID == "" || fromID == toID || (fromID != userID && toID != userID) {
+				return ErrInvalid
+			}
+			replacesSettlementID := strings.TrimSpace(localSettlement.ReplacesSettlementID)
+			if replacesSettlementID != "" {
+				if err = validateSettlementReplacement(ctx, tx, groupID, replacesSettlementID); err != nil {
+					return err
+				}
+			}
+			group, err = Ledger(ctx, groupID, tx)
+			if err != nil {
+				return err
+			}
+			var outstanding int64
+			for _, relation := range group.PaymentRelations {
+				if relation.FromMemberID == fromID && relation.ToMemberID == toID {
+					outstanding = relation.AmountCents
+					break
+				}
+			}
+			if localSettlement.AmountCents > outstanding {
+				return ErrOverpayment
+			}
+			var replacesSettlement sql.NullString
+			if replacesSettlementID != "" {
+				replacesSettlement = sql.NullString{String: replacesSettlementID, Valid: true}
+			}
+			if _, err = tx.ExecContext(ctx,
+				`INSERT INTO settlements(id,group_id,from_member_id,to_member_id,amount_cents,replaces_settlement_id,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+				localSettlement.ID, groupID, fromID, toID, localSettlement.AmountCents, replacesSettlement, localSettlement.CreatedAt); err != nil {
+				return err
+			}
+			if err = addSyncEntry(ctx, tx, userID, input.ID, "settlement", localSettlement.ID, hash); err != nil {
+				return err
+			}
+
+		case 2:
+			localReversal := input.ExpenseReversals[event.index]
+			hash, err := syncPayloadHash(localReversal)
+			if err != nil {
+				return err
+			}
+			exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "expense_reversal", localReversal.ID, hash)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			if !newGroup && !strings.HasPrefix(localReversal.ID, "local_expense_reversal_") {
+				continue
+			}
+			if input.Visibility == "personal" && !isOwner {
+				return ErrNotFound
+			}
+			actorMemberID := memberIDs[localReversal.ActorMemberID]
+			if actorMemberID == "" {
+				actorMemberID = userID
+			}
+			reason, err := validateReversalReason(localReversal.Reason)
+			if err != nil {
+				return err
+			}
+			var expenseExists bool
+			if err = tx.QueryRowContext(ctx,
+				`SELECT EXISTS(SELECT 1 FROM expenses WHERE id=$1 AND group_id=$2)`,
+				localReversal.OriginalExpenseID, groupID).Scan(&expenseExists); err != nil {
+				return err
+			}
+			if !expenseExists {
+				return ErrNotFound
+			}
+			var alreadyReversed bool
+			if err = tx.QueryRowContext(ctx,
+				`SELECT EXISTS(SELECT 1 FROM expense_reversals WHERE original_expense_id=$1)`,
+				localReversal.OriginalExpenseID).Scan(&alreadyReversed); err != nil {
+				return err
+			}
+			if alreadyReversed {
+				return ErrAlreadyReversed
+			}
+			if _, err = tx.ExecContext(ctx,
+				`INSERT INTO expense_reversals(id,group_id,original_expense_id,actor_user_id,actor_member_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+				localReversal.ID, groupID, localReversal.OriginalExpenseID, userID, actorMemberID, reason, localReversal.CreatedAt); err != nil {
+				return err
+			}
+			if err = addSyncEntry(ctx, tx, userID, input.ID, "expense_reversal", localReversal.ID, hash); err != nil {
+				return err
+			}
+
+		case 3:
+			localReversal := input.SettlementReversals[event.index]
+			hash, err := syncPayloadHash(localReversal)
+			if err != nil {
+				return err
+			}
+			exists, err := checkSyncEntry(ctx, tx, userID, input.ID, "settlement_reversal", localReversal.ID, hash)
+			if err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+			if !newGroup && !strings.HasPrefix(localReversal.ID, "local_settlement_reversal_") {
+				continue
+			}
+			if input.Visibility == "personal" && !isOwner {
+				return ErrNotFound
+			}
+			actorMemberID := memberIDs[localReversal.ActorMemberID]
+			if actorMemberID == "" {
+				actorMemberID = userID
+			}
+			reason, err := validateReversalReason(localReversal.Reason)
+			if err != nil {
+				return err
+			}
+			var toMemberID string
+			err = tx.QueryRowContext(ctx,
+				`SELECT to_member_id FROM settlements WHERE id=$1 AND group_id=$2`,
+				localReversal.OriginalSettlementID, groupID).Scan(&toMemberID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			if err != nil {
+				return err
+			}
+			if input.Visibility == "shared" && !isOwner && toMemberID != actorMemberID {
+				return ErrNotFound
+			}
+			var alreadyReversed bool
+			if err = tx.QueryRowContext(ctx,
+				`SELECT EXISTS(SELECT 1 FROM settlement_reversals WHERE original_settlement_id=$1)`,
+				localReversal.OriginalSettlementID).Scan(&alreadyReversed); err != nil {
+				return err
+			}
+			if alreadyReversed {
+				return ErrAlreadyReversed
+			}
+			if _, err = tx.ExecContext(ctx,
+				`INSERT INTO settlement_reversals(id,group_id,original_settlement_id,actor_user_id,actor_member_id,reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+				localReversal.ID, groupID, localReversal.OriginalSettlementID, userID, actorMemberID, reason, localReversal.CreatedAt); err != nil {
+				return err
+			}
+			if err = addSyncEntry(ctx, tx, userID, input.ID, "settlement_reversal", localReversal.ID, hash); err != nil {
+				return err
+			}
 		}
 	}
 

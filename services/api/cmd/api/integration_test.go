@@ -678,6 +678,134 @@ func TestOfflineGroupSyncIsIdempotentAndInvitesOnlyOnSync(t *testing.T) {
 	}
 }
 
+func TestPercentageExpenseSplittingAndOfflineSyncWithPostgreSQL(t *testing.T) {
+	t.Parallel()
+	test := newPostgreSQLApplication(t)
+	client := test.server.Client()
+	owner := registerUser(t, client, test.server.URL, "Ana", "pct-ana@example.test", "+525511119901")
+
+	var group groups.Group
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups", owner.Token, map[string]any{
+		"name":       "Cena",
+		"emoji":      "🍜",
+		"visibility": "personal",
+		"members": []map[string]any{
+			{"name": "Beto"},
+			{"name": "Carla"},
+		},
+	}, http.StatusCreated, &group)
+	if len(group.Members) != 3 {
+		t.Fatalf("members = %#v, want 3", group.Members)
+	}
+	anaID, betoID, carlaID := group.Members[0].ID, group.Members[1].ID, group.Members[2].ID
+
+	// Reject percentages that do not sum to 10000 bps.
+	var validationErr apiError
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/expenses", owner.Token, map[string]any{
+		"description":     "Invalid pct",
+		"amount_cents":    1000,
+		"payer_id":        anaID,
+		"payers":          []map[string]any{{"member_id": anaID, "amount_cents": 1000}},
+		"participant_ids": []string{anaID, betoID, carlaID},
+		"split_mode":      "percentage",
+		"percentages": []map[string]any{
+			{"member_id": anaID, "percentage_bps": 5000},
+			{"member_id": betoID, "percentage_bps": 3000},
+			{"member_id": carlaID, "percentage_bps": 1999},
+		},
+	}, http.StatusUnprocessableEntity, &validationErr)
+	if validationErr.Code != "validation_failed" {
+		t.Fatalf("invalid pct error = %#v", validationErr)
+	}
+
+	// Create valid 33.34 / 33.33 / 33.33 expense for 1000 cents ($10.00).
+	var updated groups.Group
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/groups/"+group.ID+"/expenses", owner.Token, map[string]any{
+		"description":     "Tacos",
+		"amount_cents":    1000,
+		"payer_id":        anaID,
+		"payers":          []map[string]any{{"member_id": anaID, "amount_cents": 1000}},
+		"participant_ids": []string{anaID, betoID, carlaID},
+		"split_mode":      "percentage",
+		"percentages": []map[string]any{
+			{"member_id": anaID, "percentage_bps": 3334},
+			{"member_id": betoID, "percentage_bps": 3333},
+			{"member_id": carlaID, "percentage_bps": 3333},
+		},
+	}, http.StatusCreated, &updated)
+	if len(updated.Expenses) != 1 {
+		t.Fatalf("expenses = %#v, want 1", updated.Expenses)
+	}
+	exp := updated.Expenses[0]
+	if exp.SplitMode != "percentage" || exp.Shares[anaID] != 334 || exp.Shares[betoID] != 333 || exp.Shares[carlaID] != 333 {
+		t.Fatalf("percentage expense shares = %#v", exp)
+	}
+	if exp.Percentages[anaID] != 3334 || exp.Percentages[betoID] != 3333 || exp.Percentages[carlaID] != 3333 {
+		t.Fatalf("percentage expense bps = %#v", exp.Percentages)
+	}
+	if updated.Balances[anaID] != 666 || updated.Balances[betoID] != -333 || updated.Balances[carlaID] != -333 {
+		t.Fatalf("balances = %#v", updated.Balances)
+	}
+
+	// Offline sync with a local percentage expense is idempotent and detects edits.
+	localGroup := map[string]any{
+		"id":         "local_group_pct_sync",
+		"name":       "Offline Pct",
+		"emoji":      "🥧",
+		"visibility": "personal",
+		"members": []map[string]any{
+			{"id": "me", "name": "Ana", "phone": "+525511119901", "active": true},
+			{"id": "local_member_d", "name": "Diego", "phone": "", "active": true},
+		},
+		"expenses": []map[string]any{
+			{
+				"id":                "local_expense_pct_1",
+				"description":       "Hotel",
+				"amount_cents":      1001,
+				"payer_id":          "me",
+				"payers":            []map[string]any{{"member_id": "me", "amount_cents": 1001}},
+				"participant_ids":   []string{"me", "local_member_d"},
+				"split_mode":        "percentage",
+				"shares":            map[string]int64{"me": 701, "local_member_d": 300},
+				"percentages":       map[string]int{"me": 7000, "local_member_d": 3000},
+				"split_overpayment": true,
+				"created_at":        "2026-11-08T10:00:00Z",
+			},
+		},
+		"settlements": []any{},
+	}
+	var syncRes struct {
+		Groups []groups.OfflineSyncGroupResult `json:"groups"`
+	}
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/offline-sync/groups", owner.Token, map[string]any{
+		"groups": []map[string]any{localGroup},
+	}, http.StatusOK, &syncRes)
+	// Idempotent retry
+	doJSON(t, client, http.MethodPost, test.server.URL+"/api/v1/offline-sync/groups", owner.Token, map[string]any{
+		"groups": []map[string]any{localGroup},
+	}, http.StatusOK, &syncRes)
+
+	var listed []groups.Group
+	doJSON(t, client, http.MethodGet, test.server.URL+"/api/v1/groups", owner.Token, nil, http.StatusOK, &struct {
+		Groups *[]groups.Group `json:"groups"`
+	}{Groups: &listed})
+	var syncedPct *groups.Group
+	for i := range listed {
+		if listed[i].ID == "local_group_pct_sync" {
+			syncedPct = &listed[i]
+			break
+		}
+	}
+	if syncedPct == nil || len(syncedPct.Expenses) != 1 {
+		t.Fatalf("synced percentage group missing: %#v", listed)
+	}
+	syncedExp := syncedPct.Expenses[0]
+	if syncedExp.SplitMode != "percentage" || syncedExp.Shares[owner.User.ID] != 701 || syncedExp.Shares["local_member_d"] != 300 ||
+		syncedExp.Percentages[owner.User.ID] != 7000 || syncedExp.Percentages["local_member_d"] != 3000 {
+		t.Fatalf("synced percentage expense = %#v", syncedExp)
+	}
+}
+
 type postgresApplication struct {
 	db       *sql.DB
 	dbURL    string

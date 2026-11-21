@@ -115,9 +115,8 @@ class DashboardScreen extends StatelessWidget {
                         key: const Key('sync-pending-mutations-button'),
                         onPressed: store.isLoading
                             ? null
-                            : () => context
-                                .read<AppCubit>()
-                                .syncPendingMutations(),
+                            : () =>
+                                context.read<AppCubit>().syncPendingMutations(),
                         child: Text(l10n.syncNow),
                       ),
                     ),
@@ -160,8 +159,8 @@ class DashboardScreen extends StatelessWidget {
                                     ? null
                                     : () async {
                                         final cubit = context.read<AppCubit>();
-                                        for (final failed in List.of(
-                                            store.failedMutations)) {
+                                        for (final failed
+                                            in List.of(store.failedMutations)) {
                                           await cubit
                                               .discardFailedMutation(failed.id);
                                         }

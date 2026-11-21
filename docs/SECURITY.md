@@ -38,7 +38,11 @@ requirements are defined in [Security scanning](SECURITY_SCANNING.md).
   amount, currency, receiver, correlation ID, or repeated provider failures
   park the request in `payment_reconcile_events` for manual review instead of
   inventing settlements.
-- Use compensating ledger entries instead of destructive edits.
+- Use compensating ledger entries instead of destructive edits. Expenses and
+  settlements cannot be updated or deleted through application commands;
+  reversals lock the group transactionally, enforce single-reversal uniqueness
+  (`409 already_reversed`), support `Idempotency-Key` replay, and return `404`
+  for hidden groups or cross-group record IDs.
 
 ## Group authorization matrix
 
@@ -55,9 +59,13 @@ response so callers cannot enumerate group or member records.
 | Invite, edit, or remove members | Allow | Deny | Deny |
 | Change salary-sharing consent | Own membership only | Own membership only | Deny |
 | Create an expense | Allow | Allow | Deny |
+| Reverse an expense in a personal group | Owner only | Deny | Deny |
+| Reverse an expense in a shared group | Allow | Allow | Deny |
 | Create a payment request | Exact creditor/debtor relation only | Exact creditor/debtor relation only | Deny |
 | Record a manual settlement in a personal group | Owner only | Deny | Deny |
 | Confirm received payment in a shared group | Exact creditor relation only | Exact creditor relation only | Deny |
+| Reverse a settlement in a personal group | Owner only | Deny | Deny |
+| Reverse a settlement in a shared group | Allow (owner) | Exact creditor relation only | Deny |
 | Accept or decline an invitation | Not applicable | Pending invitee only | Removed or declined: deny |
 
 The owner role cannot be removed. Payment requests must match the exact

@@ -31,8 +31,7 @@ void main() {
             200,
           );
         }
-        if (request.method == 'GET' &&
-            request.url.path == '/api/v1/groups') {
+        if (request.method == 'GET' && request.url.path == '/api/v1/groups') {
           return http.Response(
             jsonEncode({
               'groups': [
@@ -72,7 +71,8 @@ void main() {
           });
           return http.Response(jsonEncode({'id': 'expense-1'}), 201);
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
     final store = DemoStore.offline(client, null);

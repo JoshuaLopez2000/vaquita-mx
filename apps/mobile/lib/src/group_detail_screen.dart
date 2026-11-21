@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/financial_statistics.dart';
 import 'package:vaquita_mx/src/models.dart';
@@ -12,6 +13,7 @@ import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
 import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
 
 part 'group_detail/settlement_sheet.dart';
+part 'group_detail/settlement_details_sheet.dart';
 part 'group_detail/salary_split_card.dart';
 part 'group_detail/group_header.dart';
 part 'group_detail/section_header.dart';
@@ -32,9 +34,17 @@ class GroupDetailScreen extends StatelessWidget {
   final DemoStore store;
   final String groupId;
 
-  Future<void> _addExpense(BuildContext context, ExpenseGroup group) async {
+  Future<void> _addExpense(
+    BuildContext context,
+    ExpenseGroup group, {
+    Expense? replacingExpense,
+  }) async {
     final l10n = AppLocalizations.of(context)!;
-    final input = await showAddExpenseSheet(context, group);
+    final input = await showAddExpenseSheet(
+      context,
+      group,
+      initialExpense: replacingExpense,
+    );
     if (input == null || !context.mounted) return;
     final created = await context.read<AppCubit>().addExpense(
           groupId: group.id,
@@ -45,7 +55,9 @@ class GroupDetailScreen extends StatelessWidget {
           participantIds: input.participantIds,
           splitMode: input.splitMode,
           shares: input.shares,
+          percentages: input.percentages,
           splitOverpayment: input.splitOverpayment,
+          replacesExpenseId: replacingExpense?.id,
         );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -58,6 +70,78 @@ class GroupDetailScreen extends StatelessWidget {
               : l10n.couldNotAddExpense,
         ),
       ),
+    );
+  }
+
+  Future<void> _reverseAndReplaceExpense(
+    BuildContext context,
+    ExpenseGroup group,
+    Expense expense,
+    String reason,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final reversed = await context.read<AppCubit>().reverseExpense(
+          groupId: group.id,
+          expenseId: expense.id,
+          reason: reason,
+        );
+    if (!context.mounted) return;
+    if (!reversed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.couldNotReverseRecord)),
+      );
+      return;
+    }
+    final updatedGroup = store.groupById(group.id);
+    await _addExpense(context, updatedGroup, replacingExpense: expense);
+  }
+
+  Future<void> _reverseAndReplaceSettlement(
+    BuildContext context,
+    ExpenseGroup group,
+    Settlement settlement,
+    String reason,
+  ) async {
+    final l10n = AppLocalizations.of(context)!;
+    final reversed = await context.read<AppCubit>().reverseSettlement(
+          groupId: group.id,
+          settlementId: settlement.id,
+          reason: reason,
+        );
+    if (!context.mounted) return;
+    if (!reversed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.couldNotReverseRecord)),
+      );
+      return;
+    }
+    final updatedGroup = store.groupById(group.id);
+    final selfMember = updatedGroup.members.where(
+      (member) =>
+          member.userId == store.currentUserId ||
+          member.id == store.currentUserId,
+    );
+    final selfId = selfMember.isNotEmpty
+        ? selfMember.first.id
+        : (updatedGroup.members.isNotEmpty
+            ? updatedGroup.members.first.id
+            : '');
+    final counterpartyId = settlement.fromMemberId == selfId
+        ? settlement.toMemberId
+        : settlement.fromMemberId;
+    final counterpartyMatches =
+        updatedGroup.members.where((member) => member.id == counterpartyId);
+    if (counterpartyMatches.isEmpty) return;
+    final counterparty = counterpartyMatches.first;
+    final relationshipBalance = store.balanceWith(updatedGroup, counterparty);
+    if (relationshipBalance == 0) return;
+    showSettlementSheet(
+      context,
+      store,
+      updatedGroup,
+      counterparty,
+      relationshipBalance,
+      replacesSettlementId: settlement.id,
     );
   }
 
@@ -187,9 +271,43 @@ class GroupDetailScreen extends StatelessWidget {
                 _EmptyExpenses(onAdd: () => _addExpense(context, group))
               else
                 for (final expense in group.expenses) ...[
-                  _ExpenseCard(group: group, expense: expense),
+                  _ExpenseCard(
+                    store: store,
+                    group: group,
+                    expense: expense,
+                    onReverseAndReplace: (target, reason) =>
+                        _reverseAndReplaceExpense(
+                      context,
+                      group,
+                      target,
+                      reason,
+                    ),
+                  ),
                   const SizedBox(height: 10),
                 ],
+              if (group.settlements.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _SectionHeader(
+                  title: l10n.settlementsHistory,
+                  detail: '${group.settlements.length}',
+                ),
+                const SizedBox(height: 10),
+                for (final settlement in group.settlements) ...[
+                  _SettlementCard(
+                    store: store,
+                    group: group,
+                    settlement: settlement,
+                    onReverseAndReplace: (target, reason) =>
+                        _reverseAndReplaceSettlement(
+                      context,
+                      group,
+                      target,
+                      reason,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
             ],
           ),
         );
@@ -298,8 +416,8 @@ class GroupDetailScreen extends StatelessWidget {
                   title: Text(l10n.enableSalarySplits),
                   subtitle: Text(l10n.everyMemberConsented),
                   onChanged: (value) async {
-                    final updated = await store.updateGroup(
-                        group.id, {'salary_split_enabled': value});
+                    final updated = await store
+                        .updateGroup(group.id, {'salary_split_enabled': value});
                     if (!updated) {
                       if (sheet.mounted) {
                         ScaffoldMessenger.of(sheet).showSnackBar(

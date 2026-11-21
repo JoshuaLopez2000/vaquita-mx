@@ -3,6 +3,7 @@ package groups
 import (
 	"math"
 	"math/big"
+	"sort"
 )
 
 func Balances(g Group) map[string]int64 {
@@ -55,9 +56,15 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		edges[key].Add(edges[key], big.NewInt(amount))
 		return nil
 	}
+	expenseObligationsByID := make(map[string][]obligation, len(g.Expenses))
 	for _, expense := range g.Expenses {
 		if expense.AmountCents <= 0 {
 			return nil, ErrInvalid
+		}
+		if expense.ID != "" {
+			if _, duplicate := expenseObligationsByID[expense.ID]; duplicate {
+				return nil, ErrInvalid
+			}
 		}
 		if _, err := ledgerPayers(expense, nil); err != nil {
 			return nil, err
@@ -74,17 +81,57 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if err != nil {
 			return nil, err
 		}
+		if expense.ID != "" {
+			expenseObligationsByID[expense.ID] = obligations
+		}
 		for _, obligation := range obligations {
 			if err := add(obligation.from, obligation.to, obligation.amount); err != nil {
 				return nil, err
 			}
 		}
 	}
-	for _, settlement := range g.Settlements {
-		if settlement.AmountCents <= 0 {
+	seenExpenseReversals := make(map[string]bool, len(g.ExpenseReversals))
+	for _, reversal := range g.ExpenseReversals {
+		if reversal.OriginalExpenseID == "" || seenExpenseReversals[reversal.OriginalExpenseID] {
 			return nil, ErrInvalid
 		}
+		obligations, exists := expenseObligationsByID[reversal.OriginalExpenseID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenExpenseReversals[reversal.OriginalExpenseID] = true
+		for _, obligation := range obligations {
+			if err := add(obligation.from, obligation.to, -obligation.amount); err != nil {
+				return nil, err
+			}
+		}
+	}
+	settlementByID := make(map[string]Settlement, len(g.Settlements))
+	for _, settlement := range g.Settlements {
+		if settlement.AmountCents <= 0 || settlement.FromMemberID == settlement.ToMemberID {
+			return nil, ErrInvalid
+		}
+		if settlement.ID != "" {
+			if _, duplicate := settlementByID[settlement.ID]; duplicate {
+				return nil, ErrInvalid
+			}
+			settlementByID[settlement.ID] = settlement
+		}
 		if err := add(settlement.FromMemberID, settlement.ToMemberID, -settlement.AmountCents); err != nil {
+			return nil, err
+		}
+	}
+	seenSettlementReversals := make(map[string]bool, len(g.SettlementReversals))
+	for _, reversal := range g.SettlementReversals {
+		if reversal.OriginalSettlementID == "" || seenSettlementReversals[reversal.OriginalSettlementID] {
+			return nil, ErrInvalid
+		}
+		settlement, exists := settlementByID[reversal.OriginalSettlementID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenSettlementReversals[reversal.OriginalSettlementID] = true
+		if err := add(settlement.FromMemberID, settlement.ToMemberID, settlement.AmountCents); err != nil {
 			return nil, err
 		}
 	}
@@ -135,9 +182,19 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		}
 		exact[m.ID] = new(big.Int)
 	}
+	type expenseEffect struct {
+		credited []ExpensePayer
+		shares   map[string]int64
+	}
+	expenseEffects := make(map[string]expenseEffect, len(g.Expenses))
 	for _, e := range g.Expenses {
 		if e.AmountCents <= 0 {
 			return nil, ErrInvalid
+		}
+		if e.ID != "" {
+			if _, duplicate := expenseEffects[e.ID]; duplicate {
+				return nil, ErrInvalid
+			}
 		}
 		credited, err := ledgerPayers(e, nil)
 		if err != nil {
@@ -160,7 +217,28 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		for id, v := range shares {
 			exact[id].Sub(exact[id], big.NewInt(v))
 		}
+		if e.ID != "" {
+			expenseEffects[e.ID] = expenseEffect{credited: credited, shares: shares}
+		}
 	}
+	seenExpenseReversals := make(map[string]bool, len(g.ExpenseReversals))
+	for _, reversal := range g.ExpenseReversals {
+		if reversal.OriginalExpenseID == "" || seenExpenseReversals[reversal.OriginalExpenseID] {
+			return nil, ErrInvalid
+		}
+		effect, exists := expenseEffects[reversal.OriginalExpenseID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenExpenseReversals[reversal.OriginalExpenseID] = true
+		for _, payer := range effect.credited {
+			exact[payer.MemberID].Sub(exact[payer.MemberID], big.NewInt(payer.AmountCents))
+		}
+		for id, v := range effect.shares {
+			exact[id].Add(exact[id], big.NewInt(v))
+		}
+	}
+	settlementByID := make(map[string]Settlement, len(g.Settlements))
 	for _, s := range g.Settlements {
 		if s.AmountCents <= 0 || s.FromMemberID == s.ToMemberID {
 			return nil, ErrInvalid
@@ -171,8 +249,27 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		if _, exists := exact[s.ToMemberID]; !exists {
 			return nil, ErrInvalid
 		}
+		if s.ID != "" {
+			if _, duplicate := settlementByID[s.ID]; duplicate {
+				return nil, ErrInvalid
+			}
+			settlementByID[s.ID] = s
+		}
 		exact[s.FromMemberID].Add(exact[s.FromMemberID], big.NewInt(s.AmountCents))
 		exact[s.ToMemberID].Sub(exact[s.ToMemberID], big.NewInt(s.AmountCents))
+	}
+	seenSettlementReversals := make(map[string]bool, len(g.SettlementReversals))
+	for _, reversal := range g.SettlementReversals {
+		if reversal.OriginalSettlementID == "" || seenSettlementReversals[reversal.OriginalSettlementID] {
+			return nil, ErrInvalid
+		}
+		s, exists := settlementByID[reversal.OriginalSettlementID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenSettlementReversals[reversal.OriginalSettlementID] = true
+		exact[s.FromMemberID].Sub(exact[s.FromMemberID], big.NewInt(s.AmountCents))
+		exact[s.ToMemberID].Add(exact[s.ToMemberID], big.NewInt(s.AmountCents))
 	}
 
 	b := make(map[string]int64, len(exact))
@@ -431,9 +528,152 @@ func validateExactShares(shares []ExpenseShare, ids []string, total int64) (map[
 	return result, nil
 }
 
+func validatePercentages(percentages []ExpensePercentage, ids []string) (map[string]int, error) {
+	if len(ids) == 0 || len(percentages) != len(ids) {
+		return nil, ErrInvalid
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || wanted[id] {
+			return nil, ErrInvalid
+		}
+		wanted[id] = true
+	}
+	result := make(map[string]int, len(percentages))
+	totalBps := 0
+	for _, entry := range percentages {
+		if !wanted[entry.MemberID] || entry.PercentageBps <= 0 || entry.PercentageBps > PercentageBasisPointsTotal {
+			return nil, ErrInvalid
+		}
+		if _, duplicate := result[entry.MemberID]; duplicate {
+			return nil, ErrInvalid
+		}
+		result[entry.MemberID] = entry.PercentageBps
+		totalBps += entry.PercentageBps
+	}
+	if totalBps != PercentageBasisPointsTotal {
+		return nil, ErrInvalid
+	}
+	return result, nil
+}
+
+// allocateByPercentage distributes total centavos using fixed-point integer
+// basis points (10000 = 100.00%). Each participant receives floor(total*bps/10000),
+// and leftover centavos are assigned one per participant ordered by largest
+// exact remainder (total*bps % 10000) descending, breaking ties by stored
+// participant order ascending.
+func allocateByPercentage(total int64, ids []string, percentages map[string]int) (map[string]int64, error) {
+	if total <= 0 || len(ids) == 0 || len(percentages) != len(ids) {
+		return nil, ErrInvalid
+	}
+	seen := make(map[string]bool, len(ids))
+	totalBps := 0
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			return nil, ErrInvalid
+		}
+		bps, ok := percentages[id]
+		if !ok || bps <= 0 || bps > PercentageBasisPointsTotal {
+			return nil, ErrInvalid
+		}
+		seen[id] = true
+		totalBps += bps
+	}
+	if totalBps != PercentageBasisPointsTotal {
+		return nil, ErrInvalid
+	}
+
+	type remainderRank struct {
+		index     int
+		memberID  string
+		remainder int64
+	}
+	denom := big.NewInt(PercentageBasisPointsTotal)
+	totalBig := big.NewInt(total)
+	shares := make(map[string]int64, len(ids))
+	ranks := make([]remainderRank, len(ids))
+	var used int64
+	for index, id := range ids {
+		product := new(big.Int).Mul(totalBig, big.NewInt(int64(percentages[id])))
+		quotient, rem := new(big.Int).QuoRem(product, denom, new(big.Int))
+		if !quotient.IsInt64() {
+			return nil, ErrInvalid
+		}
+		shares[id] = quotient.Int64()
+		var err error
+		used, err = addCentavos(used, shares[id])
+		if err != nil {
+			return nil, err
+		}
+		ranks[index] = remainderRank{
+			index:     index,
+			memberID:  id,
+			remainder: rem.Int64(),
+		}
+	}
+	leftover := total - used
+	if leftover < 0 || leftover > int64(len(ids)) {
+		return nil, ErrInvalid
+	}
+	if leftover > 0 {
+		sort.Slice(ranks, func(i, j int) bool {
+			if ranks[i].remainder != ranks[j].remainder {
+				return ranks[i].remainder > ranks[j].remainder
+			}
+			return ranks[i].index < ranks[j].index
+		})
+		for i := int64(0); i < leftover; i++ {
+			var err error
+			shares[ranks[i].memberID], err = addCentavos(shares[ranks[i].memberID], 1)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return shares, nil
+}
+
+// computePercentageFinalShares computes immutable final centavo shares for a
+// percentage expense in participant order. When overpayment is split, the
+// entered total and the overpayment are each allocated by the same percentage
+// weights so every participant's overpayment share is non-negative.
+func computePercentageFinalShares(amountCents, paidAmountCents int64, splitOverpayment bool, ids []string, percentages map[string]int) ([]ExpenseShare, error) {
+	if amountCents <= 0 || paidAmountCents < amountCents {
+		return nil, ErrInvalid
+	}
+	consumption, err := allocateByPercentage(amountCents, ids, percentages)
+	if err != nil {
+		return nil, err
+	}
+	var extraShares map[string]int64
+	if splitOverpayment && paidAmountCents > amountCents {
+		extraShares, err = allocateByPercentage(paidAmountCents-amountCents, ids, percentages)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ordered := make([]ExpenseShare, 0, len(ids))
+	for _, id := range ids {
+		finalAmount := consumption[id]
+		if extraShares != nil {
+			finalAmount, err = addCentavos(finalAmount, extraShares[id])
+			if err != nil {
+				return nil, err
+			}
+		}
+		ordered = append(ordered, ExpenseShare{MemberID: id, AmountCents: finalAmount})
+	}
+	return ordered, nil
+}
+
 func sharesForExpense(e Expense, g Group, total int64) (map[string]int64, error) {
 	if !e.SplitOverpayment {
 		total = e.AmountCents
+	}
+	if e.SplitMode == "percentage" {
+		// Stored final centavo shares drive ledger balances; never recompute
+		// ledger obligations from percentages after creation.
+		return validateExactShares(e.ExplicitShares, e.ParticipantIDs, total)
 	}
 	if e.SplitMode == "exact" {
 		shares, err := validateExactShares(e.ExplicitShares, e.ParticipantIDs, e.AmountCents)

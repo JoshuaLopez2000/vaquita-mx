@@ -50,7 +50,7 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if result.CurrentVersion != latestVersion || len(result.Applied) != latestVersion {
 		t.Fatalf("unexpected migration result: %#v", result)
 	}
-	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "settlements", "payment_requests", "payment_provider_events", "offline_sync_groups", "offline_sync_members", "offline_sync_entries", "schema_migrations"} {
+	for _, table := range []string{"users", "contacts", "sessions", "session_families", "refresh_tokens", "members", "expense_groups", "group_members", "expenses", "expense_payers", "expense_participants", "expense_shares", "expense_retained_overpayments", "expense_reversals", "settlements", "settlement_reversals", "payment_requests", "payment_provider_events", "offline_sync_groups", "offline_sync_members", "offline_sync_entries", "schema_migrations"} {
 		var exists bool
 		if err := db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&exists); err != nil {
 			t.Fatalf("find table %s: %v", table, err)
@@ -79,6 +79,26 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	}
 	if !providerRef {
 		t.Fatal("payment_requests.provider_ref was not created")
+	}
+	var percentageBps bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='expense_shares' AND column_name='percentage_bps')`).Scan(&percentageBps); err != nil {
+		t.Fatal(err)
+	}
+	if !percentageBps {
+		t.Fatal("expense_shares.percentage_bps was not created")
+	}
+	var replacesExpense, replacesSettlement bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='expenses' AND column_name='replaces_expense_id')`).Scan(&replacesExpense); err != nil {
+		t.Fatal(err)
+	}
+	if !replacesExpense {
+		t.Fatal("expenses.replaces_expense_id was not created")
+	}
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='settlements' AND column_name='replaces_settlement_id')`).Scan(&replacesSettlement); err != nil {
+		t.Fatal(err)
+	}
+	if !replacesSettlement {
+		t.Fatal("settlements.replaces_settlement_id was not created")
 	}
 	version, err := Verify(ctx, db)
 	if err != nil || version != latestVersion {

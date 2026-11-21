@@ -1634,6 +1634,186 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Las solicitudes de pago requieren conexión a internet.'**
   String get paymentRequestsRequireInternet;
+
+  /// No description provided for @byPercentage.
+  ///
+  /// In es, this message translates to:
+  /// **'Porcentaje'**
+  String get byPercentage;
+
+  /// No description provided for @percentageSplit.
+  ///
+  /// In es, this message translates to:
+  /// **'División por porcentaje'**
+  String get percentageSplit;
+
+  /// No description provided for @percentageSplitBetween.
+  ///
+  /// In es, this message translates to:
+  /// **'Ingresa el porcentaje de cada persona'**
+  String get percentageSplitBetween;
+
+  /// No description provided for @percentageSplitExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Cada porcentaje usa precisión fija de dos decimales y suma 100.00%. Los centavos restantes se asignan al mayor residuo y, en empate, según el orden de participantes.'**
+  String get percentageSplitExplanation;
+
+  /// No description provided for @percentageRemaining.
+  ///
+  /// In es, this message translates to:
+  /// **'Restante: {percentage}%'**
+  String percentageRemaining(String percentage);
+
+  /// No description provided for @percentagesMustTotalHundred.
+  ///
+  /// In es, this message translates to:
+  /// **'Los porcentajes deben ser mayores a 0% y sumar exactamente 100.00%.'**
+  String get percentagesMustTotalHundred;
+
+  /// No description provided for @reversed.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertido'**
+  String get reversed;
+
+  /// No description provided for @replacement.
+  ///
+  /// In es, this message translates to:
+  /// **'Reemplazo'**
+  String get replacement;
+
+  /// No description provided for @settlementsHistory.
+  ///
+  /// In es, this message translates to:
+  /// **'Liquidaciones'**
+  String get settlementsHistory;
+
+  /// No description provided for @settlementDetails.
+  ///
+  /// In es, this message translates to:
+  /// **'Detalle de liquidación'**
+  String get settlementDetails;
+
+  /// No description provided for @reverseExpense.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertir gasto'**
+  String get reverseExpense;
+
+  /// No description provided for @reverseAndReplaceExpense.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertir y reemplazar'**
+  String get reverseAndReplaceExpense;
+
+  /// No description provided for @reverseSettlement.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertir liquidación'**
+  String get reverseSettlement;
+
+  /// No description provided for @reverseAndReplaceSettlement.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertir y registrar reemplazo'**
+  String get reverseAndReplaceSettlement;
+
+  /// No description provided for @reversalReasonLabel.
+  ///
+  /// In es, this message translates to:
+  /// **'Motivo de la reversión'**
+  String get reversalReasonLabel;
+
+  /// No description provided for @reversalReasonHint.
+  ///
+  /// In es, this message translates to:
+  /// **'Ej. Monto incorrecto o registro duplicado'**
+  String get reversalReasonHint;
+
+  /// No description provided for @reversalReasonRequired.
+  ///
+  /// In es, this message translates to:
+  /// **'Ingresa un motivo (máx. 500 caracteres).'**
+  String get reversalReasonRequired;
+
+  /// No description provided for @confirmReversal.
+  ///
+  /// In es, this message translates to:
+  /// **'Confirmar reversión'**
+  String get confirmReversal;
+
+  /// No description provided for @reversalAuditTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'Registro revertido'**
+  String get reversalAuditTitle;
+
+  /// No description provided for @reversedByName.
+  ///
+  /// In es, this message translates to:
+  /// **'Revertido por {name}'**
+  String reversedByName(String name);
+
+  /// No description provided for @reversalReasonValue.
+  ///
+  /// In es, this message translates to:
+  /// **'Motivo: {reason}'**
+  String reversalReasonValue(String reason);
+
+  /// No description provided for @replacesOriginalRecord.
+  ///
+  /// In es, this message translates to:
+  /// **'Reemplaza un registro revertido anterior.'**
+  String get replacesOriginalRecord;
+
+  /// No description provided for @replacedByRecord.
+  ///
+  /// In es, this message translates to:
+  /// **'Reemplazado por un registro nuevo en el historial.'**
+  String get replacedByRecord;
+
+  /// No description provided for @expenseReversed.
+  ///
+  /// In es, this message translates to:
+  /// **'Gasto revertido'**
+  String get expenseReversed;
+
+  /// No description provided for @settlementReversed.
+  ///
+  /// In es, this message translates to:
+  /// **'Liquidación revertida'**
+  String get settlementReversed;
+
+  /// No description provided for @couldNotReverseRecord.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo revertir el registro.'**
+  String get couldNotReverseRecord;
+
+  /// No description provided for @syncBeforeReversal.
+  ///
+  /// In es, this message translates to:
+  /// **'Sincroniza este registro pendiente antes de revertirlo.'**
+  String get syncBeforeReversal;
+
+  /// No description provided for @expenseReversalMovement.
+  ///
+  /// In es, this message translates to:
+  /// **'Reversión de gasto: {description}'**
+  String expenseReversalMovement(String description);
+
+  /// No description provided for @settlementReversalMovement.
+  ///
+  /// In es, this message translates to:
+  /// **'Reversión de liquidación'**
+  String get settlementReversalMovement;
+
+  /// No description provided for @compensatingEntry.
+  ///
+  /// In es, this message translates to:
+  /// **'Asiento compensatorio'**
+  String get compensatingEntry;
 }
 
 class _AppLocalizationsDelegate
