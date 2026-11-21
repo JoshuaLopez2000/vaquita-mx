@@ -906,4 +906,86 @@ class AppLocalizationsEs extends AppLocalizations {
   @override
   String get percentagesMustTotalHundred =>
       'Los porcentajes deben ser mayores a 0% y sumar exactamente 100.00%.';
+
+  @override
+  String get reversed => 'Revertido';
+
+  @override
+  String get replacement => 'Reemplazo';
+
+  @override
+  String get settlementsHistory => 'Liquidaciones';
+
+  @override
+  String get settlementDetails => 'Detalle de liquidación';
+
+  @override
+  String get reverseExpense => 'Revertir gasto';
+
+  @override
+  String get reverseAndReplaceExpense => 'Revertir y reemplazar';
+
+  @override
+  String get reverseSettlement => 'Revertir liquidación';
+
+  @override
+  String get reverseAndReplaceSettlement => 'Revertir y registrar reemplazo';
+
+  @override
+  String get reversalReasonLabel => 'Motivo de la reversión';
+
+  @override
+  String get reversalReasonHint => 'Ej. Monto incorrecto o registro duplicado';
+
+  @override
+  String get reversalReasonRequired =>
+      'Ingresa un motivo (máx. 500 caracteres).';
+
+  @override
+  String get confirmReversal => 'Confirmar reversión';
+
+  @override
+  String get reversalAuditTitle => 'Registro revertido';
+
+  @override
+  String reversedByName(String name) {
+    return 'Revertido por $name';
+  }
+
+  @override
+  String reversalReasonValue(String reason) {
+    return 'Motivo: $reason';
+  }
+
+  @override
+  String get replacesOriginalRecord =>
+      'Reemplaza un registro revertido anterior.';
+
+  @override
+  String get replacedByRecord =>
+      'Reemplazado por un registro nuevo en el historial.';
+
+  @override
+  String get expenseReversed => 'Gasto revertido';
+
+  @override
+  String get settlementReversed => 'Liquidación revertida';
+
+  @override
+  String get couldNotReverseRecord => 'No se pudo revertir el registro.';
+
+  @override
+  String get syncBeforeReversal =>
+      'Sincroniza este registro pendiente antes de revertirlo.';
+
+  @override
+  String expenseReversalMovement(String description) {
+    return 'Reversión de gasto: $description';
+  }
+
+  @override
+  String get settlementReversalMovement => 'Reversión de liquidación';
+
+  @override
+  String get compensatingEntry => 'Asiento compensatorio';
 }

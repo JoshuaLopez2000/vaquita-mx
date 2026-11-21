@@ -294,4 +294,31 @@
   ,"percentageRemaining": "Restante: {percentage}%"
   ,"@percentageRemaining": {"placeholders":{"percentage":{"type":"String"}}}
   ,"percentagesMustTotalHundred": "Los porcentajes deben ser mayores a 0% y sumar exactamente 100.00%."
+  ,"reversed": "Revertido"
+  ,"replacement": "Reemplazo"
+  ,"settlementsHistory": "Liquidaciones"
+  ,"settlementDetails": "Detalle de liquidación"
+  ,"reverseExpense": "Revertir gasto"
+  ,"reverseAndReplaceExpense": "Revertir y reemplazar"
+  ,"reverseSettlement": "Revertir liquidación"
+  ,"reverseAndReplaceSettlement": "Revertir y registrar reemplazo"
+  ,"reversalReasonLabel": "Motivo de la reversión"
+  ,"reversalReasonHint": "Ej. Monto incorrecto o registro duplicado"
+  ,"reversalReasonRequired": "Ingresa un motivo (máx. 500 caracteres)."
+  ,"confirmReversal": "Confirmar reversión"
+  ,"reversalAuditTitle": "Registro revertido"
+  ,"reversedByName": "Revertido por {name}"
+  ,"@reversedByName": {"placeholders":{"name":{"type":"String"}}}
+  ,"reversalReasonValue": "Motivo: {reason}"
+  ,"@reversalReasonValue": {"placeholders":{"reason":{"type":"String"}}}
+  ,"replacesOriginalRecord": "Reemplaza un registro revertido anterior."
+  ,"replacedByRecord": "Reemplazado por un registro nuevo en el historial."
+  ,"expenseReversed": "Gasto revertido"
+  ,"settlementReversed": "Liquidación revertida"
+  ,"couldNotReverseRecord": "No se pudo revertir el registro."
+  ,"syncBeforeReversal": "Sincroniza este registro pendiente antes de revertirlo."
+  ,"expenseReversalMovement": "Reversión de gasto: {description}"
+  ,"@expenseReversalMovement": {"placeholders":{"description":{"type":"String"}}}
+  ,"settlementReversalMovement": "Reversión de liquidación"
+  ,"compensatingEntry": "Asiento compensatorio"
 }

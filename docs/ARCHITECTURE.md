@@ -75,6 +75,13 @@ Recommended database rules:
   one PostgreSQL transaction; a callback replay can never create another
   settlement.
 - Financial rows are reversed with compensating entries rather than deleted.
+  `expense_reversals` (`UNIQUE(original_expense_id)`) and
+  `settlement_reversals` (`UNIQUE(original_settlement_id)`) stay separate,
+  record actor, reason (`1..500` chars), and timestamp, and negate the original
+  record's exact integer-centavo ledger effect once. Optional
+  `expenses.replaces_expense_id` and `settlements.replaces_settlement_id`
+  (`UNIQUE WHERE NOT NULL`) link a separate immutable replacement record to an
+  already-reversed entry in the same group without modifying the original row.
 - All records use UTC timestamps; presentation uses the user's time zone.
 
 ## API conventions
@@ -95,9 +102,11 @@ Recommended database rules:
 | `GET` | `/healthz` | Hosting health probe |
 | `GET` | `/api/v1/groups` | Load groups, members, expenses, and settlements |
 | `POST` | `/api/v1/groups` | Create a group and its members |
-| `POST` | `/api/v1/groups/{id}/expenses` | Add an expense (equal, percentage, salary, or exact split) |
-| `POST` | `/api/v1/groups/{id}/settlements` | Record a manual settlement in a personal group |
-| `POST` | `/api/v1/groups/{id}/settlements/received` | Authenticated creditor confirmation of a full or partial received payment |
+| `POST` | `/api/v1/groups/{id}/expenses` | Add an expense (equal, percentage, salary, or exact split; optional `replaces_expense_id`) |
+| `POST` | `/api/v1/groups/{id}/expenses/{expenseId}/reversals` | Record an immutable compensating reversal for a posted expense |
+| `POST` | `/api/v1/groups/{id}/settlements` | Record a manual settlement in a personal group (optional `replaces_settlement_id`) |
+| `POST` | `/api/v1/groups/{id}/settlements/received` | Authenticated creditor confirmation of a full or partial received payment (optional `replaces_settlement_id`) |
+| `POST` | `/api/v1/groups/{id}/settlements/{settlementId}/reversals` | Record an immutable compensating reversal for a posted settlement |
 | `POST` | `/api/v1/offline-sync/groups` | Authenticated, opt-in merge of local groups and ledger history |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
@@ -114,7 +123,9 @@ invitations are created only as part of this explicit sync operation.
 
 An authenticated mutation to a group that is already server-backed uses its
 idempotent API endpoint (`POST /groups/{id}/expenses`,
-`POST /groups/{id}/settlements`, `POST /groups/{id}/settlements/received`)
+`POST /groups/{id}/expenses/{expenseId}/reversals`,
+`POST /groups/{id}/settlements`, `POST /groups/{id}/settlements/received`,
+`POST /groups/{id}/settlements/{settlementId}/reversals`)
 directly when online. When offline, when the group already has queued mutations
 (preserving FIFO order), or when a transient transport/5xx failure leaves the
 outcome unknown, the client applies the optimistic integer-centavo entry
@@ -125,8 +136,10 @@ replay in FIFO order independently of the pre-login local-group sync opt-in;
 then refreshes authoritative server state (including server-computed salary
 shares). Permanent 4xx rejections mark the entry `failed` without blocking
 other queued mutations, allowing explicit retry or discard. Mutations to
-local-only groups remain persisted locally and are uploaded only after the
-account's explicit sync opt-in.
+local-only groups (including local reversals and linked replacements) remain
+persisted locally and are uploaded chronologically only after the account's
+explicit sync opt-in; local unsynced entries on server-backed groups must sync
+before they can be reversed.
 
 Manual payment requests are available only for authenticated shared groups.
 In shared groups, `POST /groups/{id}/settlements/received` records a full or

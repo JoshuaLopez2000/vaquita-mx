@@ -24,10 +24,18 @@ Map<String, int> _expenseShares(Expense expense) {
 void showExpenseDetailsSheet(
   BuildContext context,
   ExpenseGroup group,
-  Expense expense,
-) {
+  Expense expense, {
+  DemoStore? store,
+  Future<void> Function(Expense expense, String reason)? onReverseAndReplace,
+}) {
   final l10n = AppLocalizations.of(context)!;
   final members = {for (final member in group.members) member.id: member};
+  final reversal = group.reversalForExpense(expense.id);
+  final replacement = group.replacementForExpense(expense.id);
+  final canReverse = store != null && store.canReverseExpense(group, expense);
+  final pendingServerSync = store != null &&
+      store.canUseServerFeatures(group) &&
+      expense.id.startsWith('local_expense_');
   final payers = expense.payers.isEmpty
       ? [
           ExpensePayer(
@@ -86,12 +94,29 @@ void showExpenseDetailsSheet(
                       formatMoney(expense.amountCents),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
+                            decoration: reversal != null
+                                ? TextDecoration.lineThrough
+                                : null,
                           ),
                     ),
                   ],
                 ),
               ),
             ),
+            if (expense.replacesExpenseId != null) ...[
+              const SizedBox(height: 12),
+              Text(l10n.replacesOriginalRecord),
+            ],
+            if (reversal != null) ...[
+              const SizedBox(height: 16),
+              _ReversalAuditCard(
+                actorName:
+                    members[reversal.actorMemberId]?.name ?? l10n.genericMember,
+                reason: reversal.reason,
+                createdAt: reversal.createdAt,
+                hasReplacement: replacement != null,
+              ),
+            ],
             if (expense.paidAmountCents > expense.amountCents) ...[
               const SizedBox(height: 8),
               Text(
@@ -182,6 +207,62 @@ void showExpenseDetailsSheet(
                   trailing:
                       Text(formatMoney(expense.shares[participantId] ?? 0)),
                 ),
+            ],
+            if (pendingServerSync && reversal == null) ...[
+              const SizedBox(height: 12),
+              Text(l10n.syncBeforeReversal),
+            ],
+            if (canReverse) ...[
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                key: Key('reverse-expense-${expense.id}'),
+                onPressed: () async {
+                  final reason = await showReversalReasonDialog(
+                    sheetContext,
+                    title: l10n.reverseExpense,
+                  );
+                  if (reason == null || !sheetContext.mounted) return;
+                  final reversed =
+                      await sheetContext.read<AppCubit>().reverseExpense(
+                            groupId: group.id,
+                            expenseId: expense.id,
+                            reason: reason,
+                          );
+                  if (!sheetContext.mounted) return;
+                  Navigator.pop(sheetContext);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        reversed
+                            ? (store.lastMutationQueuedOffline
+                                ? l10n.savedOfflineWillSync
+                                : l10n.expenseReversed)
+                            : l10n.couldNotReverseRecord,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.undo_rounded),
+                label: Text(l10n.reverseExpense),
+              ),
+              if (onReverseAndReplace != null) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: Key('reverse-replace-expense-${expense.id}'),
+                  onPressed: () async {
+                    final reason = await showReversalReasonDialog(
+                      sheetContext,
+                      title: l10n.reverseAndReplaceExpense,
+                    );
+                    if (reason == null || !sheetContext.mounted) return;
+                    Navigator.pop(sheetContext);
+                    await onReverseAndReplace(expense, reason);
+                  },
+                  icon: const Icon(Icons.published_with_changes_rounded),
+                  label: Text(l10n.reverseAndReplaceExpense),
+                ),
+              ],
             ],
             const SizedBox(height: 12),
             FilledButton(

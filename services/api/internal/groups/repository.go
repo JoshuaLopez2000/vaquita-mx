@@ -484,7 +484,9 @@ func Ledger(c context.Context, groupID string, q queryer) (Group, error) {
 func load(c context.Context, g *Group, q queryer) error {
 	g.Members = make([]Member, 0)
 	g.Expenses = make([]Expense, 0)
+	g.ExpenseReversals = make([]ExpenseReversal, 0)
 	g.Settlements = make([]Settlement, 0)
+	g.SettlementReversals = make([]SettlementReversal, 0)
 	rows, e := q.QueryContext(c, `SELECT m.id,COALESCE(x.user_id,''),x.role,m.name,COALESCE(m.phone,''),x.removed_at IS NULL,x.salary_sharing,x.accepted,COALESCE(u.salary_cents,0) FROM group_members x JOIN members m ON m.id=x.member_id LEFT JOIN users u ON u.id=x.user_id WHERE x.group_id=$1 ORDER BY x.position`, g.ID)
 	if e != nil {
 		return e
@@ -499,25 +501,26 @@ func load(c context.Context, g *Group, q queryer) error {
 	}
 	rows.Close()
 	g.SalarySplitAvailable = salaryReady(c, q, g.ID)
-	es, e := q.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,split_overpayment,created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	es, e := q.QueryContext(c, `SELECT id,description,amount_cents,payer_id,split_mode,split_overpayment,COALESCE(replaces_expense_id,''),created_at FROM expenses WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
 	if e != nil {
 		return e
 	}
 	// A transaction shares one connection, so the expense rows must all be
 	// read and closed before any per-expense query runs on the same tx.
 	type expenseSeed struct {
-		id               string
-		description      string
-		amountCents      int64
-		payerID          string
-		splitMode        string
-		splitOverpayment bool
-		createdAt        time.Time
+		id                string
+		description       string
+		amountCents       int64
+		payerID           string
+		splitMode         string
+		splitOverpayment  bool
+		replacesExpenseID string
+		createdAt         time.Time
 	}
 	seeds := make([]expenseSeed, 0)
 	for es.Next() {
 		var x expenseSeed
-		if e = es.Scan(&x.id, &x.description, &x.amountCents, &x.payerID, &x.splitMode, &x.splitOverpayment, &x.createdAt); e != nil {
+		if e = es.Scan(&x.id, &x.description, &x.amountCents, &x.payerID, &x.splitMode, &x.splitOverpayment, &x.replacesExpenseID, &x.createdAt); e != nil {
 			es.Close()
 			return e
 		}
@@ -529,7 +532,7 @@ func load(c context.Context, g *Group, q queryer) error {
 	}
 	es.Close()
 	for _, seed := range seeds {
-		x := Expense{ID: seed.id, Description: seed.description, AmountCents: seed.amountCents, PayerID: seed.payerID, SplitMode: seed.splitMode, SplitOverpayment: seed.splitOverpayment, CreatedAt: seed.createdAt}
+		x := Expense{ID: seed.id, Description: seed.description, AmountCents: seed.amountCents, PayerID: seed.payerID, SplitMode: seed.splitMode, SplitOverpayment: seed.splitOverpayment, ReplacesExpenseID: seed.replacesExpenseID, CreatedAt: seed.createdAt}
 		ps, _ := q.QueryContext(c, `SELECT member_id FROM expense_participants WHERE expense_id=$1 ORDER BY position`, x.ID)
 		for ps.Next() {
 			var id string
@@ -627,21 +630,57 @@ func load(c context.Context, g *Group, q queryer) error {
 		}
 		g.Expenses = append(g.Expenses, x)
 	}
-	ss, e := q.QueryContext(c, `SELECT id,from_member_id,to_member_id,amount_cents,created_at FROM settlements WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	er, e := q.QueryContext(c, `SELECT id,original_expense_id,actor_user_id,actor_member_id,reason,created_at FROM expense_reversals WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
 	if e != nil {
 		return e
 	}
-	defer ss.Close()
+	for er.Next() {
+		var x ExpenseReversal
+		if e = er.Scan(&x.ID, &x.OriginalExpenseID, &x.ActorUserID, &x.ActorMemberID, &x.Reason, &x.CreatedAt); e != nil {
+			er.Close()
+			return e
+		}
+		g.ExpenseReversals = append(g.ExpenseReversals, x)
+	}
+	if err := er.Err(); err != nil {
+		er.Close()
+		return err
+	}
+	er.Close()
+	ss, e := q.QueryContext(c, `SELECT id,from_member_id,to_member_id,amount_cents,COALESCE(replaces_settlement_id,''),created_at FROM settlements WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	if e != nil {
+		return e
+	}
 	for ss.Next() {
 		var x Settlement
-		if e = ss.Scan(&x.ID, &x.FromMemberID, &x.ToMemberID, &x.AmountCents, &x.CreatedAt); e != nil {
+		if e = ss.Scan(&x.ID, &x.FromMemberID, &x.ToMemberID, &x.AmountCents, &x.ReplacesSettlementID, &x.CreatedAt); e != nil {
+			ss.Close()
 			return e
 		}
 		g.Settlements = append(g.Settlements, x)
 	}
 	if err := ss.Err(); err != nil {
+		ss.Close()
 		return err
 	}
+	ss.Close()
+	sr, e := q.QueryContext(c, `SELECT id,original_settlement_id,actor_user_id,actor_member_id,reason,created_at FROM settlement_reversals WHERE group_id=$1 ORDER BY created_at DESC,id DESC`, g.ID)
+	if e != nil {
+		return e
+	}
+	for sr.Next() {
+		var x SettlementReversal
+		if e = sr.Scan(&x.ID, &x.OriginalSettlementID, &x.ActorUserID, &x.ActorMemberID, &x.Reason, &x.CreatedAt); e != nil {
+			sr.Close()
+			return e
+		}
+		g.SettlementReversals = append(g.SettlementReversals, x)
+	}
+	if err := sr.Err(); err != nil {
+		sr.Close()
+		return err
+	}
+	sr.Close()
 	g.Balances, e = calculateBalances(*g)
 	if e != nil {
 		return e

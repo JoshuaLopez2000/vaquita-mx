@@ -1,9 +1,10 @@
 part of '../sheets.dart';
 
 class _AddExpenseSheet extends StatefulWidget {
-  const _AddExpenseSheet({required this.group});
+  const _AddExpenseSheet({required this.group, this.initialExpense});
 
   final ExpenseGroup group;
+  final Expense? initialExpense;
 
   @override
   State<_AddExpenseSheet> createState() => _AddExpenseSheetState();
@@ -26,17 +27,95 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   var _splitOverpayment = true;
   var _exactSharesEdited = false;
   var _percentagesEdited = false;
+  var _payerAmountsEdited = false;
 
   @override
   void initState() {
     super.initState();
-    _payerIds = {widget.group.members.first.id};
     for (final member in widget.group.members) {
       _payerAmountControllers[member.id] = TextEditingController();
       _shareAmountControllers[member.id] = TextEditingController();
       _percentageControllers[member.id] = TextEditingController();
     }
-    _participantIds = widget.group.members.map((member) => member.id).toSet();
+    final activeIds = {
+      for (final member in widget.group.members)
+        if (member.active) member.id,
+    };
+    final initial = widget.initialExpense;
+    if (initial == null) {
+      _payerIds = {widget.group.members.first.id};
+      _participantIds = widget.group.members.map((member) => member.id).toSet();
+      return;
+    }
+    _descriptionController.text = initial.description;
+    _amountController.text = _formatCentavos(initial.amountCents);
+    final initialPayers = initial.payers.isEmpty
+        ? [
+            ExpensePayer(
+              memberId: initial.payerId,
+              amountCents: initial.amountCents,
+            ),
+          ]
+        : initial.payers;
+    _payerIds = {
+      for (final payer in initialPayers)
+        if (activeIds.contains(payer.memberId)) payer.memberId,
+    };
+    if (_payerIds.isEmpty) {
+      _payerIds = {widget.group.members.first.id};
+    }
+    final singleExactPayer = initialPayers.length == 1 &&
+        initialPayers.first.amountCents == initial.amountCents &&
+        _payerIds.length == 1 &&
+        _payerIds.contains(initialPayers.first.memberId);
+    if (singleExactPayer) {
+      if (!initial.splitOverpayment) {
+        _payerAmountControllers[initialPayers.first.memberId]?.text =
+            _formatCentavos(initial.amountCents);
+      }
+      _payerAmountsEdited = false;
+    } else {
+      for (final payer in initialPayers) {
+        final controller = _payerAmountControllers[payer.memberId];
+        if (controller != null) {
+          controller.text = _formatCentavos(payer.amountCents);
+        }
+      }
+      _payerAmountsEdited = true;
+    }
+    _participantIds = {
+      for (final id in initial.participantIds)
+        if (activeIds.contains(id)) id,
+    };
+    if (_participantIds.isEmpty) {
+      _participantIds = widget.group.members.map((member) => member.id).toSet();
+    }
+    _splitMode = initial.splitMode == 'salary' &&
+            (!widget.group.salarySplitEnabled ||
+                !widget.group.salarySplitAvailable)
+        ? 'equal'
+        : initial.splitMode;
+    _splitOverpayment = initial.splitOverpayment;
+    if (_splitMode == 'exact') {
+      final sourceShares = initial.consumptionShares.isNotEmpty
+          ? initial.consumptionShares
+          : initial.shares;
+      for (final entry in sourceShares.entries) {
+        final controller = _shareAmountControllers[entry.key];
+        if (controller != null) {
+          controller.text = _formatCentavos(entry.value);
+        }
+      }
+      _exactSharesEdited = sourceShares.isNotEmpty;
+    } else if (_splitMode == 'percentage') {
+      for (final entry in initial.percentages.entries) {
+        final controller = _percentageControllers[entry.key];
+        if (controller != null) {
+          controller.text = ExpenseAllocation.formatPercentageBps(entry.value);
+        }
+      }
+      _percentagesEdited = initial.percentages.isNotEmpty;
+    }
   }
 
   @override
@@ -341,7 +420,13 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
               ],
-              onChanged: (_) {
+              onChanged: (value) {
+                if (_payerIds.length == 1 && !_payerAmountsEdited) {
+                  final singlePayerId = _payerIds.first;
+                  if (!_splitOverpayment) {
+                    _payerAmountControllers[singlePayerId]!.text = value;
+                  }
+                }
                 if (_splitMode == 'exact' && !_exactSharesEdited) {
                   setState(_populateExactShares);
                 } else if (_splitMode == 'percentage') {
@@ -389,6 +474,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                           FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
                         ],
                         onChanged: (_) {
+                          _payerAmountsEdited = true;
                           if (_splitMode == 'exact' && !_exactSharesEdited) {
                             setState(_populateExactShares);
                           } else if (_splitMode == 'percentage') {
@@ -420,9 +506,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                     ButtonSegment(value: 'salary', label: Text(l10n.bySalary)),
                   ButtonSegment(value: 'exact', label: Text(l10n.exactAmount)),
                 ],
-                selected: {
-                  _splitMode
-                },
+                selected: {_splitMode},
                 onSelectionChanged: (value) => setState(() {
                       _splitMode = value.first;
                       if (_splitMode == 'salary') {

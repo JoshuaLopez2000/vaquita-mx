@@ -73,12 +73,14 @@ Future<NewGroupInput?> showCreateGroupSheet(
 
 Future<NewExpenseInput?> showAddExpenseSheet(
   BuildContext context,
-  ExpenseGroup group,
-) {
+  ExpenseGroup group, {
+  Expense? initialExpense,
+}) {
   return showModalBottomSheet<NewExpenseInput>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _AddExpenseSheet(group: group),
+    builder: (_) =>
+        _AddExpenseSheet(group: group, initialExpense: initialExpense),
   );
 }

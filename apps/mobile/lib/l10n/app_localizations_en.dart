@@ -901,4 +901,84 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get percentagesMustTotalHundred =>
       'Percentages must be greater than 0% and add up to exactly 100.00%.';
+
+  @override
+  String get reversed => 'Reversed';
+
+  @override
+  String get replacement => 'Replacement';
+
+  @override
+  String get settlementsHistory => 'Settlements';
+
+  @override
+  String get settlementDetails => 'Settlement details';
+
+  @override
+  String get reverseExpense => 'Reverse expense';
+
+  @override
+  String get reverseAndReplaceExpense => 'Reverse & replace';
+
+  @override
+  String get reverseSettlement => 'Reverse settlement';
+
+  @override
+  String get reverseAndReplaceSettlement => 'Reverse & record replacement';
+
+  @override
+  String get reversalReasonLabel => 'Reversal reason';
+
+  @override
+  String get reversalReasonHint => 'e.g. Wrong amount or duplicate entry';
+
+  @override
+  String get reversalReasonRequired => 'Enter a reason (max 500 characters).';
+
+  @override
+  String get confirmReversal => 'Confirm reversal';
+
+  @override
+  String get reversalAuditTitle => 'Reversed record';
+
+  @override
+  String reversedByName(String name) {
+    return 'Reversed by $name';
+  }
+
+  @override
+  String reversalReasonValue(String reason) {
+    return 'Reason: $reason';
+  }
+
+  @override
+  String get replacesOriginalRecord => 'Replaces a previously reversed record.';
+
+  @override
+  String get replacedByRecord =>
+      'Replaced by a separate replacement record in history.';
+
+  @override
+  String get expenseReversed => 'Expense reversed';
+
+  @override
+  String get settlementReversed => 'Settlement reversed';
+
+  @override
+  String get couldNotReverseRecord => 'Could not reverse the record.';
+
+  @override
+  String get syncBeforeReversal =>
+      'Sync this pending record before reversing it.';
+
+  @override
+  String expenseReversalMovement(String description) {
+    return 'Expense reversal: $description';
+  }
+
+  @override
+  String get settlementReversalMovement => 'Settlement reversal';
+
+  @override
+  String get compensatingEntry => 'Compensating entry';
 }

@@ -17,11 +17,15 @@ class OverpaymentStatistics {
     Iterable<Expense> expenses, {
     required DateTime now,
     required bool thisMonthOnly,
+    Set<String> reversedExpenseIds = const {},
   }) {
     var distributedCents = 0;
     var retainedCents = 0;
     final retainedByMember = <String, int>{};
     for (final expense in expenses) {
+      if (reversedExpenseIds.contains(expense.id)) {
+        continue;
+      }
       final created = expense.createdAt.toLocal();
       if (thisMonthOnly &&
           (created.year != now.year || created.month != now.month)) {

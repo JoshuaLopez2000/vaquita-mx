@@ -6,6 +6,7 @@ void showSettlementSheet(
   ExpenseGroup group,
   Member member,
   int balance, {
+  String? replacesSettlementId,
   VoidCallback? onSettled,
 }) {
   if (member.userId == store.currentUserId ||
@@ -27,6 +28,7 @@ void showSettlementSheet(
           outstandingCents: balance.abs(),
           memberOwes: memberOwes,
           canRequestPayment: sharedServerGroup,
+          replacesSettlementId: replacesSettlementId,
           onSettled: onSettled,
         ),
       ),
@@ -42,6 +44,7 @@ class _SettlementSheet extends StatefulWidget {
     required this.outstandingCents,
     required this.memberOwes,
     required this.canRequestPayment,
+    this.replacesSettlementId,
     this.onSettled,
   });
 
@@ -51,6 +54,7 @@ class _SettlementSheet extends StatefulWidget {
   final int outstandingCents;
   final bool memberOwes;
   final bool canRequestPayment;
+  final String? replacesSettlementId;
   final VoidCallback? onSettled;
 
   @override
@@ -138,11 +142,13 @@ class _SettlementSheetState extends State<_SettlementSheet> {
             groupId: widget.group.id,
             debtorId: widget.member.id,
             amountCents: amount,
+            replacesSettlementId: widget.replacesSettlementId,
           )
         : await cubit.settleBalance(
             groupId: widget.group.id,
             memberId: widget.member.id,
             amountCents: amount,
+            replacesSettlementId: widget.replacesSettlementId,
           );
     if (!mounted) return;
     Navigator.pop(context);

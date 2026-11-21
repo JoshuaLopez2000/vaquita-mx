@@ -56,9 +56,15 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		edges[key].Add(edges[key], big.NewInt(amount))
 		return nil
 	}
+	expenseObligationsByID := make(map[string][]obligation, len(g.Expenses))
 	for _, expense := range g.Expenses {
 		if expense.AmountCents <= 0 {
 			return nil, ErrInvalid
+		}
+		if expense.ID != "" {
+			if _, duplicate := expenseObligationsByID[expense.ID]; duplicate {
+				return nil, ErrInvalid
+			}
 		}
 		if _, err := ledgerPayers(expense, nil); err != nil {
 			return nil, err
@@ -75,17 +81,57 @@ func bilateralRelations(g Group) ([]PaymentRelation, error) {
 		if err != nil {
 			return nil, err
 		}
+		if expense.ID != "" {
+			expenseObligationsByID[expense.ID] = obligations
+		}
 		for _, obligation := range obligations {
 			if err := add(obligation.from, obligation.to, obligation.amount); err != nil {
 				return nil, err
 			}
 		}
 	}
-	for _, settlement := range g.Settlements {
-		if settlement.AmountCents <= 0 {
+	seenExpenseReversals := make(map[string]bool, len(g.ExpenseReversals))
+	for _, reversal := range g.ExpenseReversals {
+		if reversal.OriginalExpenseID == "" || seenExpenseReversals[reversal.OriginalExpenseID] {
 			return nil, ErrInvalid
 		}
+		obligations, exists := expenseObligationsByID[reversal.OriginalExpenseID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenExpenseReversals[reversal.OriginalExpenseID] = true
+		for _, obligation := range obligations {
+			if err := add(obligation.from, obligation.to, -obligation.amount); err != nil {
+				return nil, err
+			}
+		}
+	}
+	settlementByID := make(map[string]Settlement, len(g.Settlements))
+	for _, settlement := range g.Settlements {
+		if settlement.AmountCents <= 0 || settlement.FromMemberID == settlement.ToMemberID {
+			return nil, ErrInvalid
+		}
+		if settlement.ID != "" {
+			if _, duplicate := settlementByID[settlement.ID]; duplicate {
+				return nil, ErrInvalid
+			}
+			settlementByID[settlement.ID] = settlement
+		}
 		if err := add(settlement.FromMemberID, settlement.ToMemberID, -settlement.AmountCents); err != nil {
+			return nil, err
+		}
+	}
+	seenSettlementReversals := make(map[string]bool, len(g.SettlementReversals))
+	for _, reversal := range g.SettlementReversals {
+		if reversal.OriginalSettlementID == "" || seenSettlementReversals[reversal.OriginalSettlementID] {
+			return nil, ErrInvalid
+		}
+		settlement, exists := settlementByID[reversal.OriginalSettlementID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenSettlementReversals[reversal.OriginalSettlementID] = true
+		if err := add(settlement.FromMemberID, settlement.ToMemberID, settlement.AmountCents); err != nil {
 			return nil, err
 		}
 	}
@@ -136,9 +182,19 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		}
 		exact[m.ID] = new(big.Int)
 	}
+	type expenseEffect struct {
+		credited []ExpensePayer
+		shares   map[string]int64
+	}
+	expenseEffects := make(map[string]expenseEffect, len(g.Expenses))
 	for _, e := range g.Expenses {
 		if e.AmountCents <= 0 {
 			return nil, ErrInvalid
+		}
+		if e.ID != "" {
+			if _, duplicate := expenseEffects[e.ID]; duplicate {
+				return nil, ErrInvalid
+			}
 		}
 		credited, err := ledgerPayers(e, nil)
 		if err != nil {
@@ -161,7 +217,28 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		for id, v := range shares {
 			exact[id].Sub(exact[id], big.NewInt(v))
 		}
+		if e.ID != "" {
+			expenseEffects[e.ID] = expenseEffect{credited: credited, shares: shares}
+		}
 	}
+	seenExpenseReversals := make(map[string]bool, len(g.ExpenseReversals))
+	for _, reversal := range g.ExpenseReversals {
+		if reversal.OriginalExpenseID == "" || seenExpenseReversals[reversal.OriginalExpenseID] {
+			return nil, ErrInvalid
+		}
+		effect, exists := expenseEffects[reversal.OriginalExpenseID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenExpenseReversals[reversal.OriginalExpenseID] = true
+		for _, payer := range effect.credited {
+			exact[payer.MemberID].Sub(exact[payer.MemberID], big.NewInt(payer.AmountCents))
+		}
+		for id, v := range effect.shares {
+			exact[id].Add(exact[id], big.NewInt(v))
+		}
+	}
+	settlementByID := make(map[string]Settlement, len(g.Settlements))
 	for _, s := range g.Settlements {
 		if s.AmountCents <= 0 || s.FromMemberID == s.ToMemberID {
 			return nil, ErrInvalid
@@ -172,8 +249,27 @@ func calculateBalances(g Group) (map[string]int64, error) {
 		if _, exists := exact[s.ToMemberID]; !exists {
 			return nil, ErrInvalid
 		}
+		if s.ID != "" {
+			if _, duplicate := settlementByID[s.ID]; duplicate {
+				return nil, ErrInvalid
+			}
+			settlementByID[s.ID] = s
+		}
 		exact[s.FromMemberID].Add(exact[s.FromMemberID], big.NewInt(s.AmountCents))
 		exact[s.ToMemberID].Sub(exact[s.ToMemberID], big.NewInt(s.AmountCents))
+	}
+	seenSettlementReversals := make(map[string]bool, len(g.SettlementReversals))
+	for _, reversal := range g.SettlementReversals {
+		if reversal.OriginalSettlementID == "" || seenSettlementReversals[reversal.OriginalSettlementID] {
+			return nil, ErrInvalid
+		}
+		s, exists := settlementByID[reversal.OriginalSettlementID]
+		if !exists {
+			return nil, ErrInvalid
+		}
+		seenSettlementReversals[reversal.OriginalSettlementID] = true
+		exact[s.FromMemberID].Sub(exact[s.FromMemberID], big.NewInt(s.AmountCents))
+		exact[s.ToMemberID].Add(exact[s.ToMemberID], big.NewInt(s.AmountCents))
 	}
 
 	b := make(map[string]int64, len(exact))

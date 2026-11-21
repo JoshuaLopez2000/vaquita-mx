@@ -216,9 +216,23 @@ class ApiClient {
               if (expense.percentages.isNotEmpty)
                 'percentages': expense.percentages,
               'split_overpayment': expense.splitOverpayment,
+              if (expense.replacesExpenseId != null &&
+                  expense.replacesExpenseId!.isNotEmpty)
+                'replaces_expense_id': expense.replacesExpenseId,
               'created_at': expense.createdAt.toUtc().toIso8601String(),
             },
         ],
+        if (group.expenseReversals.isNotEmpty)
+          'expense_reversals': [
+            for (final reversal in group.expenseReversals)
+              {
+                'id': reversal.id,
+                'original_expense_id': reversal.originalExpenseId,
+                'actor_member_id': reversal.actorMemberId,
+                'reason': reversal.reason,
+                'created_at': reversal.createdAt.toUtc().toIso8601String(),
+              },
+          ],
         'settlements': [
           for (final settlement in group.settlements)
             {
@@ -226,9 +240,23 @@ class ApiClient {
               'from_member_id': settlement.fromMemberId,
               'to_member_id': settlement.toMemberId,
               'amount_cents': settlement.amountCents,
+              if (settlement.replacesSettlementId != null &&
+                  settlement.replacesSettlementId!.isNotEmpty)
+                'replaces_settlement_id': settlement.replacesSettlementId,
               'created_at': settlement.createdAt.toUtc().toIso8601String(),
             },
         ],
+        if (group.settlementReversals.isNotEmpty)
+          'settlement_reversals': [
+            for (final reversal in group.settlementReversals)
+              {
+                'id': reversal.id,
+                'original_settlement_id': reversal.originalSettlementId,
+                'actor_member_id': reversal.actorMemberId,
+                'reason': reversal.reason,
+                'created_at': reversal.createdAt.toUtc().toIso8601String(),
+              },
+          ],
       };
 
   Future<void> createGroup({
@@ -347,6 +375,7 @@ class ApiClient {
     List<ExpenseShare> shares = const [],
     List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
+    String? replacesExpenseId,
     String? idempotencyKey,
   }) async {
     final response = await _request(
@@ -372,7 +401,24 @@ class ApiClient {
           'percentages': [
             for (final entry in percentages) entry.toJson(),
           ],
+        if (replacesExpenseId != null && replacesExpenseId.isNotEmpty)
+          'replaces_expense_id': replacesExpenseId,
       },
+    );
+    _decode(response);
+  }
+
+  Future<void> reverseExpense({
+    required String groupId,
+    required String expenseId,
+    required String reason,
+    String? idempotencyKey,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/api/v1/groups/$groupId/expenses/$expenseId/reversals',
+      headers: {'Idempotency-Key': idempotencyKey ?? _idempotencyKey()},
+      body: {'reason': reason},
     );
     _decode(response);
   }
@@ -381,6 +427,7 @@ class ApiClient {
     required String groupId,
     required String memberId,
     int? amountCents,
+    String? replacesSettlementId,
     String? idempotencyKey,
   }) async {
     final response = await _request(
@@ -390,6 +437,8 @@ class ApiClient {
       body: {
         'member_id': memberId,
         if (amountCents != null) 'amount_cents': amountCents,
+        if (replacesSettlementId != null && replacesSettlementId.isNotEmpty)
+          'replaces_settlement_id': replacesSettlementId,
       },
     );
     _decode(response);
@@ -399,6 +448,7 @@ class ApiClient {
     required String groupId,
     required String debtorId,
     int? amountCents,
+    String? replacesSettlementId,
     String? idempotencyKey,
   }) async {
     final response = await _request(
@@ -408,7 +458,24 @@ class ApiClient {
       body: {
         'debtor_member_id': debtorId,
         if (amountCents != null) 'amount_cents': amountCents,
+        if (replacesSettlementId != null && replacesSettlementId.isNotEmpty)
+          'replaces_settlement_id': replacesSettlementId,
       },
+    );
+    _decode(response);
+  }
+
+  Future<void> reverseSettlement({
+    required String groupId,
+    required String settlementId,
+    required String reason,
+    String? idempotencyKey,
+  }) async {
+    final response = await _request(
+      'POST',
+      '/api/v1/groups/$groupId/settlements/$settlementId/reversals',
+      headers: {'Idempotency-Key': idempotencyKey ?? _idempotencyKey()},
+      body: {'reason': reason},
     );
     _decode(response);
   }
