@@ -110,10 +110,12 @@ class DemoStore extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_offlineDatabase == null) return;
-    _serverSyncedGroupIds.addAll(await _offlineDatabase.syncedGroupIds());
+    final syncedIds = await _offlineDatabase.syncedGroupIds();
+    final loadedGroups = await _offlineDatabase.loadGroups();
+    _serverSyncedGroupIds.addAll(syncedIds);
     groups
       ..clear()
-      ..addAll(await _offlineDatabase.loadGroups());
+      ..addAll(loadedGroups);
     final accountId = _apiClient?.userId;
     if (accountId != null) {
       await _reloadQueuedMutations(accountId);
@@ -450,9 +452,10 @@ class DemoStore extends ChangeNotifier {
   Future<void> findContacts(List<String> phones) async {
     final api = _apiClient;
     if (api == null || api.user == null) return;
+    final matched = await api.matchContacts(phones);
     contacts
       ..clear()
-      ..addAll(await api.matchContacts(phones));
+      ..addAll(matched);
     notifyListeners();
   }
 
@@ -461,9 +464,10 @@ class DemoStore extends ChangeNotifier {
     if (api == null || api.user == null) return;
     if (_offlineFirst && !_isOnline) return;
     try {
+      final loaded = await api.listContacts();
       contacts
         ..clear()
-        ..addAll(await api.listContacts());
+        ..addAll(loaded);
       notifyListeners();
     } catch (_) {
       // Keep cached contacts when offline or unreachable.
@@ -673,9 +677,10 @@ class DemoStore extends ChangeNotifier {
     if (api == null || api.user == null) return;
     if (_offlineFirst && !_isOnline) return;
     try {
+      final loaded = await api.invitations();
       invitations
         ..clear()
-        ..addAll(await api.invitations());
+        ..addAll(loaded);
       notifyListeners();
     } catch (_) {
       // Keep cached invitations when offline or unreachable.
