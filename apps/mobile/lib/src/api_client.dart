@@ -213,6 +213,8 @@ class ApiClient {
                       expense.consumptionShares.isNotEmpty
                   ? expense.consumptionShares
                   : expense.shares,
+              if (expense.percentages.isNotEmpty)
+                'percentages': expense.percentages,
               'split_overpayment': expense.splitOverpayment,
               'created_at': expense.createdAt.toUtc().toIso8601String(),
             },
@@ -343,6 +345,7 @@ class ApiClient {
     required List<String> participantIds,
     String splitMode = 'equal',
     List<ExpenseShare> shares = const [],
+    List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
     String? idempotencyKey,
   }) async {
@@ -365,6 +368,10 @@ class ApiClient {
           for (final share in shares)
             {'member_id': share.memberId, 'amount_cents': share.amountCents},
         ],
+        if (percentages.isNotEmpty)
+          'percentages': [
+            for (final entry in percentages) entry.toJson(),
+          ],
       },
     );
     _decode(response);

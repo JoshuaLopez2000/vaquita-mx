@@ -42,6 +42,7 @@ class NewExpenseInput {
     required this.participantIds,
     required this.splitMode,
     this.shares = const [],
+    this.percentages = const [],
     this.splitOverpayment = true,
   });
 
@@ -52,6 +53,7 @@ class NewExpenseInput {
   final List<String> participantIds;
   final String splitMode;
   final List<ExpenseShare> shares;
+  final List<ExpensePercentage> percentages;
   final bool splitOverpayment;
 }
 

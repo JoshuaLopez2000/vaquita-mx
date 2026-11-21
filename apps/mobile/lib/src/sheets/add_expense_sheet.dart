@@ -21,9 +21,11 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   final Map<String, TextEditingController> _payerAmountControllers = {};
   late final Set<String> _participantIds;
   final Map<String, TextEditingController> _shareAmountControllers = {};
+  final Map<String, TextEditingController> _percentageControllers = {};
   var _splitMode = 'equal';
   var _splitOverpayment = true;
   var _exactSharesEdited = false;
+  var _percentagesEdited = false;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     for (final member in widget.group.members) {
       _payerAmountControllers[member.id] = TextEditingController();
       _shareAmountControllers[member.id] = TextEditingController();
+      _percentageControllers[member.id] = TextEditingController();
     }
     _participantIds = widget.group.members.map((member) => member.id).toSet();
   }
@@ -44,6 +47,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       controller.dispose();
     }
     for (final controller in _shareAmountControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _percentageControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -91,6 +97,71 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
     for (final (index, member) in ordered.indexed) {
       _shareAmountControllers[member.id]!.text = _formatCentavos(shares[index]);
     }
+  }
+
+  List<Member> get _orderedParticipants => widget.group.members
+      .where((member) => _participantIds.contains(member.id))
+      .toList();
+
+  void _populatePercentages() {
+    final ordered = _orderedParticipants;
+    if (ordered.isEmpty) return;
+    final values = ExpenseAllocation.equalPercentageBps(ordered.length);
+    for (final (index, member) in ordered.indexed) {
+      _percentageControllers[member.id]!.text =
+          ExpenseAllocation.formatPercentageBps(values[index]);
+    }
+  }
+
+  int? get _allocatedPercentageBps {
+    var total = 0;
+    for (final member in _orderedParticipants) {
+      final value = ExpenseAllocation.parsePercentageBps(
+        _percentageControllers[member.id]!.text,
+        allowZero: true,
+      );
+      if (value == null) return null;
+      total += value;
+    }
+    return total;
+  }
+
+  Map<String, int>? _draftPercentagesBps() {
+    final ordered = _orderedParticipants;
+    if (ordered.isEmpty) return null;
+    final result = <String, int>{};
+    var total = 0;
+    for (final member in ordered) {
+      final bps = ExpenseAllocation.parsePercentageBps(
+        _percentageControllers[member.id]!.text,
+      );
+      if (bps == null) return null;
+      result[member.id] = bps;
+      total += bps;
+    }
+    if (total != ExpenseAllocation.percentageTotalBps) return null;
+    return result;
+  }
+
+  Map<String, int>? _percentagePreviewShares() {
+    final amountCents = _parseAmount();
+    final percentagesBps = _draftPercentagesBps();
+    if (amountCents == null || percentagesBps == null) return null;
+    final payers = _draftPayers();
+    final paidAmount = payers == null
+        ? amountCents
+        : ExpenseAllocation.total(
+              expenseTotalCents: amountCents,
+              payers: payers,
+            ) ??
+            amountCents;
+    return ExpenseAllocation.percentageFinalShares(
+      amountCents: amountCents,
+      paidAmountCents: paidAmount,
+      splitOverpayment: _splitOverpayment,
+      participantIds: [for (final member in _orderedParticipants) member.id],
+      percentagesBps: percentagesBps,
+    );
   }
 
   int? get _exactAllocatedCentavos {
@@ -173,6 +244,19 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       );
       return;
     }
+    Map<String, int>? validatedPercentages;
+    if (_splitMode == 'percentage') {
+      validatedPercentages = _draftPercentagesBps();
+      if (validatedPercentages == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.percentagesMustTotalHundred)),
+        );
+        return;
+      }
+    }
+    final orderedParticipantIds = [
+      for (final member in _orderedParticipants) member.id,
+    ];
     Navigator.pop(
       context,
       NewExpenseInput(
@@ -180,20 +264,28 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
         amountCents: amountCents,
         payerId: payers.first.memberId,
         payers: payers,
-        participantIds: _participantIds.toList(),
+        participantIds: orderedParticipantIds,
         splitMode: _splitMode,
         splitOverpayment: _splitOverpayment,
         shares: _splitMode == 'exact'
             ? [
-                for (final member in widget.group.members)
-                  if (_participantIds.contains(member.id))
-                    ExpenseShare(
-                      memberId: member.id,
-                      amountCents: _parseCentavos(
-                        _shareAmountControllers[member.id]!.text,
-                        allowZero: true,
-                      )!,
-                    ),
+                for (final member in _orderedParticipants)
+                  ExpenseShare(
+                    memberId: member.id,
+                    amountCents: _parseCentavos(
+                      _shareAmountControllers[member.id]!.text,
+                      allowZero: true,
+                    )!,
+                  ),
+              ]
+            : const [],
+        percentages: _splitMode == 'percentage'
+            ? [
+                for (final memberId in orderedParticipantIds)
+                  ExpensePercentage(
+                    memberId: memberId,
+                    percentageBps: validatedPercentages![memberId]!,
+                  ),
               ]
             : const [],
       ),
@@ -203,6 +295,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final percentagePreview =
+        _splitMode == 'percentage' ? _percentagePreviewShares() : null;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -250,6 +344,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               onChanged: (_) {
                 if (_splitMode == 'exact' && !_exactSharesEdited) {
                   setState(_populateExactShares);
+                } else if (_splitMode == 'percentage') {
+                  setState(() {});
                 }
               },
               decoration: InputDecoration(
@@ -295,6 +391,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                         onChanged: (_) {
                           if (_splitMode == 'exact' && !_exactSharesEdited) {
                             setState(_populateExactShares);
+                          } else if (_splitMode == 'percentage') {
+                            setState(() {});
                           }
                         },
                         decoration: const InputDecoration(
@@ -313,8 +411,11 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             ),
             const SizedBox(height: 18),
             SegmentedButton<String>(
+                showSelectedIcon: false,
                 segments: [
                   ButtonSegment(value: 'equal', label: Text(l10n.equal)),
+                  ButtonSegment(
+                      value: 'percentage', label: Text(l10n.byPercentage)),
                   if (widget.group.salarySplitEnabled)
                     ButtonSegment(value: 'salary', label: Text(l10n.bySalary)),
                   ButtonSegment(value: 'exact', label: Text(l10n.exactAmount)),
@@ -334,6 +435,10 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                         _exactSharesEdited = false;
                         _populateExactShares();
                       }
+                      if (_splitMode == 'percentage') {
+                        _percentagesEdited = false;
+                        _populatePercentages();
+                      }
                     })),
             if (_splitMode == 'salary')
               Padding(
@@ -344,7 +449,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   ? l10n.splitBySalaryBetween
                   : _splitMode == 'exact'
                       ? l10n.exactSplitBetween
-                      : l10n.splitEquallyBetween,
+                      : _splitMode == 'percentage'
+                          ? l10n.percentageSplitBetween
+                          : l10n.splitEquallyBetween,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -358,6 +465,15 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                     contentPadding: EdgeInsets.zero,
                     value: _participantIds.contains(member.id),
                     title: Text(member.name),
+                    subtitle: _splitMode == 'percentage' &&
+                            _participantIds.contains(member.id)
+                        ? Text(
+                            percentagePreview != null
+                                ? formatMoney(percentagePreview[member.id]!)
+                                : '—',
+                            key: Key('expense-percentage-preview-${member.id}'),
+                          )
+                        : null,
                     controlAffinity: ListTileControlAffinity.leading,
                     onChanged: _splitMode == 'salary' && !member.salarySharing
                         ? null
@@ -369,8 +485,16 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                                     !_exactSharesEdited) {
                                   _populateExactShares();
                                 }
+                                if (_splitMode == 'percentage' &&
+                                    !_percentagesEdited) {
+                                  _populatePercentages();
+                                }
                               } else {
                                 _participantIds.remove(member.id);
+                                if (_splitMode == 'percentage' &&
+                                    !_percentagesEdited) {
+                                  _populatePercentages();
+                                }
                               }
                             });
                           },
@@ -398,6 +522,27 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                       ),
                     ),
                   ),
+                if (_splitMode == 'percentage' &&
+                    _participantIds.contains(member.id))
+                  SizedBox(
+                    width: 110,
+                    child: TextFormField(
+                      key: Key('expense-percentage-${member.id}'),
+                      controller: _percentageControllers[member.id],
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                      ],
+                      onChanged: (_) => setState(() {
+                        _percentagesEdited = true;
+                      }),
+                      decoration: const InputDecoration(
+                        suffixText: '%',
+                        hintText: '0.00',
+                      ),
+                    ),
+                  ),
               ]),
             if (_splitMode == 'exact')
               Padding(
@@ -406,6 +551,20 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   l10n.exactAmountRemaining(_formatCentavos(
                     (_parseAmount() ?? 0) - (_exactAllocatedCentavos ?? 0),
                   )),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            if (_splitMode == 'percentage')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  l10n.percentageRemaining(
+                    ExpenseAllocation.formatPercentageBps(
+                      ExpenseAllocation.percentageTotalBps -
+                          (_allocatedPercentageBps ?? 0),
+                    ),
+                  ),
+                  key: const Key('expense-percentage-remaining'),
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),

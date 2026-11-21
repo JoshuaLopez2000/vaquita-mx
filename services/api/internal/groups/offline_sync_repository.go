@@ -285,6 +285,25 @@ func (r *Repository) syncLocalGroup(ctx context.Context, userID string, input Of
 				shares = append(shares, ExpenseShare{MemberID: memberIDs[localMemberID], AmountCents: amount})
 			}
 		}
+		var percentages []ExpensePercentage
+		if localExpense.SplitMode == "percentage" {
+			if len(localExpense.Percentages) != len(localExpense.ParticipantIDs) {
+				return ErrInvalid
+			}
+			percentages = make([]ExpensePercentage, 0, len(localExpense.ParticipantIDs))
+			for _, localMemberID := range localExpense.ParticipantIDs {
+				bps, ok := localExpense.Percentages[localMemberID]
+				if !ok {
+					return ErrInvalid
+				}
+				percentages = append(percentages, ExpensePercentage{
+					MemberID:      memberIDs[localMemberID],
+					PercentageBps: bps,
+				})
+			}
+		} else if len(localExpense.Percentages) != 0 {
+			return ErrInvalid
+		}
 		splitOverpayment := localExpense.SplitOverpayment
 		expenseInput := AddExpenseInput{
 			Description:      localExpense.Description,
@@ -294,6 +313,7 @@ func (r *Repository) syncLocalGroup(ctx context.Context, userID string, input Of
 			ParticipantIDs:   participants,
 			SplitMode:        localExpense.SplitMode,
 			Shares:           shares,
+			Percentages:      percentages,
 			SplitOverpayment: &splitOverpayment,
 		}
 		group, err = Ledger(ctx, groupID, tx)

@@ -1634,6 +1634,42 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Las solicitudes de pago requieren conexión a internet.'**
   String get paymentRequestsRequireInternet;
+
+  /// No description provided for @byPercentage.
+  ///
+  /// In es, this message translates to:
+  /// **'Porcentaje'**
+  String get byPercentage;
+
+  /// No description provided for @percentageSplit.
+  ///
+  /// In es, this message translates to:
+  /// **'División por porcentaje'**
+  String get percentageSplit;
+
+  /// No description provided for @percentageSplitBetween.
+  ///
+  /// In es, this message translates to:
+  /// **'Ingresa el porcentaje de cada persona'**
+  String get percentageSplitBetween;
+
+  /// No description provided for @percentageSplitExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Cada porcentaje usa precisión fija de dos decimales y suma 100.00%. Los centavos restantes se asignan al mayor residuo y, en empate, según el orden de participantes.'**
+  String get percentageSplitExplanation;
+
+  /// No description provided for @percentageRemaining.
+  ///
+  /// In es, this message translates to:
+  /// **'Restante: {percentage}%'**
+  String percentageRemaining(String percentage);
+
+  /// No description provided for @percentagesMustTotalHundred.
+  ///
+  /// In es, this message translates to:
+  /// **'Los porcentajes deben ser mayores a 0% y sumar exactamente 100.00%.'**
+  String get percentagesMustTotalHundred;
 }
 
 class _AppLocalizationsDelegate

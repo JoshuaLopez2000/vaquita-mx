@@ -99,7 +99,7 @@ func TestFinancialCalculationsRejectInvalidAndOverflowingInputs(t *testing.T) {
 		{name: "no participants", amount: 1, group: validGroup, mode: "equal"},
 		{name: "duplicate participant", amount: 1, ids: []string{"a", "a"}, group: validGroup, mode: "equal"},
 		{name: "unknown participant", amount: 1, ids: []string{"missing"}, group: validGroup, mode: "equal"},
-		{name: "unknown mode", amount: 1, ids: []string{"a"}, group: validGroup, mode: "percentage"},
+		{name: "unknown mode", amount: 1, ids: []string{"a"}, group: validGroup, mode: "unknown_mode"},
 		{name: "missing salary", amount: 1, ids: []string{"a"}, group: Group{Members: []Member{{ID: "a"}}}, mode: "salary"},
 		{name: "duplicate member", amount: 1, ids: []string{"a"}, group: Group{Members: []Member{{ID: "a"}, {ID: "a"}}}, mode: "equal"},
 	}

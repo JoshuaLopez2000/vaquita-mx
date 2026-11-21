@@ -61,6 +61,12 @@ Recommended database rules:
 - Monetary columns use `BIGINT` centavos and currency is `CHAR(3)`.
 - IDs are UUIDv7 or ULID values generated on the server.
 - Expense shares must sum exactly to the expense total.
+- Percentage splits store fixed-point integer basis points (`percentage_bps`,
+  `1..10000`, summing to `10000` = `100.00%`) alongside the immutable final
+  centavo share in `expense_shares`. Leftover centavos are allocated by
+  largest exact remainder `(total * bps) % 10000` descending, breaking ties in
+  stored `participant_ids` order. Stored final centavo shares drive ledger
+  balances; client offline calculations use the identical `BigInt` algorithm.
 - Group responses include a deterministic bilateral debt projection derived
   from expense shares and direct settlements. It is a read model, never a
   financial record; settlements remain the authoritative immutable history.
@@ -89,7 +95,7 @@ Recommended database rules:
 | `GET` | `/healthz` | Hosting health probe |
 | `GET` | `/api/v1/groups` | Load groups, members, expenses, and settlements |
 | `POST` | `/api/v1/groups` | Create a group and its members |
-| `POST` | `/api/v1/groups/{id}/expenses` | Add an equally split expense |
+| `POST` | `/api/v1/groups/{id}/expenses` | Add an expense (equal, percentage, salary, or exact split) |
 | `POST` | `/api/v1/groups/{id}/settlements` | Record a manual settlement in a personal group |
 | `POST` | `/api/v1/groups/{id}/settlements/received` | Authenticated creditor confirmation of a full or partial received payment |
 | `POST` | `/api/v1/offline-sync/groups` | Authenticated, opt-in merge of local groups and ledger history |

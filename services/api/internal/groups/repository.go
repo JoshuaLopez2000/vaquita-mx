@@ -554,17 +554,24 @@ func load(c context.Context, g *Group, q queryer) error {
 			return queryErr
 		}
 		payers.Close()
-		explicit, queryErr := q.QueryContext(c, `SELECT member_id,amount_cents FROM expense_shares WHERE expense_id=$1 ORDER BY position`, x.ID)
+		explicit, queryErr := q.QueryContext(c, `SELECT member_id,amount_cents,percentage_bps FROM expense_shares WHERE expense_id=$1 ORDER BY position`, x.ID)
 		if queryErr != nil {
 			return queryErr
 		}
 		for explicit.Next() {
 			var share ExpenseShare
-			if queryErr = explicit.Scan(&share.MemberID, &share.AmountCents); queryErr != nil {
+			var percentageBps sql.NullInt32
+			if queryErr = explicit.Scan(&share.MemberID, &share.AmountCents, &percentageBps); queryErr != nil {
 				explicit.Close()
 				return queryErr
 			}
 			x.ExplicitShares = append(x.ExplicitShares, share)
+			if percentageBps.Valid {
+				if x.Percentages == nil {
+					x.Percentages = make(map[string]int)
+				}
+				x.Percentages[share.MemberID] = int(percentageBps.Int32)
+			}
 		}
 		if queryErr = explicit.Err(); queryErr != nil {
 			explicit.Close()
@@ -599,6 +606,11 @@ func load(c context.Context, g *Group, q queryer) error {
 		x.OverpaymentCents = allocatedAmount - x.AmountCents
 		if x.SplitMode == "exact" {
 			x.ConsumptionShares, e = validateExactShares(x.ExplicitShares, x.ParticipantIDs, x.AmountCents)
+			if e != nil {
+				return e
+			}
+		} else if x.SplitMode == "percentage" && x.SplitOverpayment && x.OverpaymentCents > 0 && len(x.Percentages) > 0 {
+			x.ConsumptionShares, e = allocateByPercentage(x.AmountCents, x.ParticipantIDs, x.Percentages)
 			if e != nil {
 				return e
 			}

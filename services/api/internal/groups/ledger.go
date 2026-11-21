@@ -3,6 +3,7 @@ package groups
 import (
 	"math"
 	"math/big"
+	"sort"
 )
 
 func Balances(g Group) map[string]int64 {
@@ -431,9 +432,152 @@ func validateExactShares(shares []ExpenseShare, ids []string, total int64) (map[
 	return result, nil
 }
 
+func validatePercentages(percentages []ExpensePercentage, ids []string) (map[string]int, error) {
+	if len(ids) == 0 || len(percentages) != len(ids) {
+		return nil, ErrInvalid
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || wanted[id] {
+			return nil, ErrInvalid
+		}
+		wanted[id] = true
+	}
+	result := make(map[string]int, len(percentages))
+	totalBps := 0
+	for _, entry := range percentages {
+		if !wanted[entry.MemberID] || entry.PercentageBps <= 0 || entry.PercentageBps > PercentageBasisPointsTotal {
+			return nil, ErrInvalid
+		}
+		if _, duplicate := result[entry.MemberID]; duplicate {
+			return nil, ErrInvalid
+		}
+		result[entry.MemberID] = entry.PercentageBps
+		totalBps += entry.PercentageBps
+	}
+	if totalBps != PercentageBasisPointsTotal {
+		return nil, ErrInvalid
+	}
+	return result, nil
+}
+
+// allocateByPercentage distributes total centavos using fixed-point integer
+// basis points (10000 = 100.00%). Each participant receives floor(total*bps/10000),
+// and leftover centavos are assigned one per participant ordered by largest
+// exact remainder (total*bps % 10000) descending, breaking ties by stored
+// participant order ascending.
+func allocateByPercentage(total int64, ids []string, percentages map[string]int) (map[string]int64, error) {
+	if total <= 0 || len(ids) == 0 || len(percentages) != len(ids) {
+		return nil, ErrInvalid
+	}
+	seen := make(map[string]bool, len(ids))
+	totalBps := 0
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			return nil, ErrInvalid
+		}
+		bps, ok := percentages[id]
+		if !ok || bps <= 0 || bps > PercentageBasisPointsTotal {
+			return nil, ErrInvalid
+		}
+		seen[id] = true
+		totalBps += bps
+	}
+	if totalBps != PercentageBasisPointsTotal {
+		return nil, ErrInvalid
+	}
+
+	type remainderRank struct {
+		index     int
+		memberID  string
+		remainder int64
+	}
+	denom := big.NewInt(PercentageBasisPointsTotal)
+	totalBig := big.NewInt(total)
+	shares := make(map[string]int64, len(ids))
+	ranks := make([]remainderRank, len(ids))
+	var used int64
+	for index, id := range ids {
+		product := new(big.Int).Mul(totalBig, big.NewInt(int64(percentages[id])))
+		quotient, rem := new(big.Int).QuoRem(product, denom, new(big.Int))
+		if !quotient.IsInt64() {
+			return nil, ErrInvalid
+		}
+		shares[id] = quotient.Int64()
+		var err error
+		used, err = addCentavos(used, shares[id])
+		if err != nil {
+			return nil, err
+		}
+		ranks[index] = remainderRank{
+			index:     index,
+			memberID:  id,
+			remainder: rem.Int64(),
+		}
+	}
+	leftover := total - used
+	if leftover < 0 || leftover > int64(len(ids)) {
+		return nil, ErrInvalid
+	}
+	if leftover > 0 {
+		sort.Slice(ranks, func(i, j int) bool {
+			if ranks[i].remainder != ranks[j].remainder {
+				return ranks[i].remainder > ranks[j].remainder
+			}
+			return ranks[i].index < ranks[j].index
+		})
+		for i := int64(0); i < leftover; i++ {
+			var err error
+			shares[ranks[i].memberID], err = addCentavos(shares[ranks[i].memberID], 1)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return shares, nil
+}
+
+// computePercentageFinalShares computes immutable final centavo shares for a
+// percentage expense in participant order. When overpayment is split, the
+// entered total and the overpayment are each allocated by the same percentage
+// weights so every participant's overpayment share is non-negative.
+func computePercentageFinalShares(amountCents, paidAmountCents int64, splitOverpayment bool, ids []string, percentages map[string]int) ([]ExpenseShare, error) {
+	if amountCents <= 0 || paidAmountCents < amountCents {
+		return nil, ErrInvalid
+	}
+	consumption, err := allocateByPercentage(amountCents, ids, percentages)
+	if err != nil {
+		return nil, err
+	}
+	var extraShares map[string]int64
+	if splitOverpayment && paidAmountCents > amountCents {
+		extraShares, err = allocateByPercentage(paidAmountCents-amountCents, ids, percentages)
+		if err != nil {
+			return nil, err
+		}
+	}
+	ordered := make([]ExpenseShare, 0, len(ids))
+	for _, id := range ids {
+		finalAmount := consumption[id]
+		if extraShares != nil {
+			finalAmount, err = addCentavos(finalAmount, extraShares[id])
+			if err != nil {
+				return nil, err
+			}
+		}
+		ordered = append(ordered, ExpenseShare{MemberID: id, AmountCents: finalAmount})
+	}
+	return ordered, nil
+}
+
 func sharesForExpense(e Expense, g Group, total int64) (map[string]int64, error) {
 	if !e.SplitOverpayment {
 		total = e.AmountCents
+	}
+	if e.SplitMode == "percentage" {
+		// Stored final centavo shares drive ledger balances; never recompute
+		// ledger obligations from percentages after creation.
+		return validateExactShares(e.ExplicitShares, e.ParticipantIDs, total)
 	}
 	if e.SplitMode == "exact" {
 		shares, err := validateExactShares(e.ExplicitShares, e.ParticipantIDs, e.AmountCents)

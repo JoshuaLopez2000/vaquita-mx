@@ -80,6 +80,13 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if !providerRef {
 		t.Fatal("payment_requests.provider_ref was not created")
 	}
+	var percentageBps bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='expense_shares' AND column_name='percentage_bps')`).Scan(&percentageBps); err != nil {
+		t.Fatal(err)
+	}
+	if !percentageBps {
+		t.Fatal("expense_shares.percentage_bps was not created")
+	}
 	version, err := Verify(ctx, db)
 	if err != nil || version != latestVersion {
 		t.Fatalf("verify version = %d, error = %v", version, err)

@@ -87,6 +87,7 @@ class AppCubit extends Cubit<AppState> {
     required List<String> participantIds,
     required String splitMode,
     List<ExpenseShare> shares = const [],
+    List<ExpensePercentage> percentages = const [],
     bool splitOverpayment = true,
   }) =>
       store.addExpense(
@@ -98,6 +99,7 @@ class AppCubit extends Cubit<AppState> {
         participantIds: participantIds,
         splitMode: splitMode,
         shares: shares,
+        percentages: percentages,
         splitOverpayment: splitOverpayment,
       );
 
