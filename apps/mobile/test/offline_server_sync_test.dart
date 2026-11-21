@@ -79,7 +79,8 @@ void main() {
             if (!online) {
               throw const SocketException('offline');
             }
-            if (request.method == 'GET' && request.url.path == '/api/v1/groups') {
+            if (request.method == 'GET' &&
+                request.url.path == '/api/v1/groups') {
               return http.Response(
                 jsonEncode({
                   'groups': [
@@ -139,7 +140,8 @@ void main() {
               return http.Response(
                   jsonEncode({'id': 'settlement-server-1'}), 201);
             }
-            if (request.method == 'GET' && request.url.path == '/api/v1/status') {
+            if (request.method == 'GET' &&
+                request.url.path == '/api/v1/status') {
               return http.Response(jsonEncode({'contacts': <Object>[]}), 200);
             }
             throw StateError(
@@ -294,7 +296,8 @@ void main() {
                       'amount_cents': 10000,
                       'payer_id': 'member-2',
                       'participant_ids': ['user-1', 'member-2'],
-                      'created_at': DateTime.utc(2026, 11, 19).toIso8601String(),
+                      'created_at':
+                          DateTime.utc(2026, 11, 19).toIso8601String(),
                     }
                   ],
                   'settlements': attempts >= 3
@@ -334,7 +337,8 @@ void main() {
         if (request.method == 'GET' && request.url.path == '/api/v1/status') {
           return http.Response(jsonEncode({'contacts': <Object>[]}), 200);
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
 
@@ -421,7 +425,8 @@ void main() {
             headers: const {'content-type': 'application/json; charset=utf-8'},
           );
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
 
@@ -491,7 +496,8 @@ void main() {
                       'amount_cents': 10000,
                       'payer_id': 'user-1',
                       'participant_ids': ['user-1', 'member-2'],
-                      'created_at': DateTime.utc(2026, 11, 19).toIso8601String(),
+                      'created_at':
+                          DateTime.utc(2026, 11, 19).toIso8601String(),
                     }
                   ],
                   'settlements': <Object>[],
@@ -527,8 +533,7 @@ void main() {
           );
         }
         if (request.method == 'POST' &&
-            request.url.path ==
-                '/api/v1/groups/group-1/settlements/received') {
+            request.url.path == '/api/v1/groups/group-1/settlements/received') {
           return http.Response(
             jsonEncode({
               'code': 'validation_failed',
@@ -542,7 +547,8 @@ void main() {
           group2Synced = true;
           return http.Response(jsonEncode({'id': 'expense-server-2'}), 201);
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
 
@@ -693,7 +699,11 @@ void main() {
                   'emoji': 'A',
                   'visibility': 'shared',
                   'members': [
-                    {'id': 'account-a', 'user_id': 'account-a', 'name': 'Alice'},
+                    {
+                      'id': 'account-a',
+                      'user_id': 'account-a',
+                      'name': 'Alice'
+                    },
                     {'id': 'member-2', 'name': 'Carlos'},
                   ],
                   'expenses': <Object>[],
@@ -709,7 +719,8 @@ void main() {
           syncedForAccount.add(request.headers['authorization'] ?? '');
           return http.Response(jsonEncode({'id': 'expense-a'}), 201);
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
 
@@ -792,7 +803,8 @@ void main() {
                       'amount_cents': 10000,
                       'payer_id': 'user-1',
                       'participant_ids': ['user-1', 'debtor-1'],
-                      'created_at': DateTime.utc(2026, 11, 20).toIso8601String(),
+                      'created_at':
+                          DateTime.utc(2026, 11, 20).toIso8601String(),
                     }
                   ],
                   'settlements': <Object>[],
@@ -803,7 +815,8 @@ void main() {
             headers: const {'content-type': 'application/json; charset=utf-8'},
           );
         }
-        throw StateError('Unexpected request: ${request.method} ${request.url}');
+        throw StateError(
+            'Unexpected request: ${request.method} ${request.url}');
       }),
     );
 

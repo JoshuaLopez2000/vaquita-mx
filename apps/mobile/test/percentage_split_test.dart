@@ -109,19 +109,27 @@ void main() {
 
     expect(find.byKey(Key('expense-percentage-$m0')), findsOneWidget);
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m0'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m0')))
+          .data,
       r'$3.34',
     );
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m1'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m1')))
+          .data,
       r'$3.33',
     );
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m2'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m2')))
+          .data,
       r'$3.33',
     );
     expect(
-      tester.widget<Text>(find.byKey(const Key('expense-percentage-remaining'))).data,
+      tester
+          .widget<Text>(find.byKey(const Key('expense-percentage-remaining')))
+          .data,
       'Remaining: 0.00%',
     );
 
@@ -131,7 +139,9 @@ void main() {
     await tester.enterText(find.byKey(Key('expense-percentage-$m2')), '10');
     await tester.pump();
     expect(
-      tester.widget<Text>(find.byKey(const Key('expense-percentage-remaining'))).data,
+      tester
+          .widget<Text>(find.byKey(const Key('expense-percentage-remaining')))
+          .data,
       'Remaining: 10.00%',
     );
 
@@ -139,7 +149,8 @@ void main() {
     await tester.tap(find.byKey(const Key('add-expense-submit')));
     await tester.pumpAndSettle();
     expect(
-      find.text('Percentages must be greater than 0% and add up to exactly 100.00%.'),
+      find.text(
+          'Percentages must be greater than 0% and add up to exactly 100.00%.'),
       findsOneWidget,
     );
 
@@ -147,15 +158,21 @@ void main() {
     await tester.enterText(find.byKey(Key('expense-percentage-$m2')), '20');
     await tester.pump();
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m0'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m0')))
+          .data,
       r'$5.00',
     );
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m1'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m1')))
+          .data,
       r'$3.00',
     );
     expect(
-      tester.widget<Text>(find.byKey(Key('expense-percentage-preview-$m2'))).data,
+      tester
+          .widget<Text>(find.byKey(Key('expense-percentage-preview-$m2')))
+          .data,
       r'$2.00',
     );
 
@@ -239,8 +256,8 @@ void main() {
             request.url.path == '/api/v1/offline-sync/groups') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           syncPayloads.add(body);
-          final groups = (body['groups'] as List<dynamic>)
-              .cast<Map<String, dynamic>>();
+          final groups =
+              (body['groups'] as List<dynamic>).cast<Map<String, dynamic>>();
           return http.Response(
             jsonEncode({
               'groups': [
@@ -265,16 +282,16 @@ void main() {
     // Persisted across restart with identical percentages, shares, and balances.
     final restored = store2.groupById(localGroup.id);
     expect(restored.expenses.single.splitMode, 'percentage');
-    expect(restored.expenses.single.percentages, {m0: 3334, m1: 3333, m2: 3333});
+    expect(
+        restored.expenses.single.percentages, {m0: 3334, m1: 3333, m2: 3333});
     expect(restored.expenses.single.shares, {m0: 334, m1: 333, m2: 333});
     expect(store2.balances(restored), {m0: 666, m1: -333, m2: -333});
 
     await client.login(email: 'ana@example.test', password: 'secret');
     expect(await store2.syncLocalGroups(enable: true), isTrue);
     expect(syncPayloads, hasLength(1));
-    final uploadedExpense =
-        ((syncPayloads.single['groups'] as List<dynamic>).single
-            as Map<String, dynamic>)['expenses'][0] as Map<String, dynamic>;
+    final uploadedExpense = ((syncPayloads.single['groups'] as List<dynamic>)
+        .single as Map<String, dynamic>)['expenses'][0] as Map<String, dynamic>;
     expect(uploadedExpense['split_mode'], 'percentage');
     expect(uploadedExpense['percentages'], {m0: 3334, m1: 3333, m2: 3333});
 

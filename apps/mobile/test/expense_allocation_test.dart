@@ -57,7 +57,9 @@ void main() {
       expect(ExpenseAllocation.parsePercentageBps('abc'), isNull);
     });
 
-    test('allocates repeating fractions, ties, and one-cent totals deterministically', () {
+    test(
+        'allocates repeating fractions, ties, and one-cent totals deterministically',
+        () {
       expect(
         ExpenseAllocation.percentageShares(
           allocationTotalCents: 10000,
