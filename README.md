@@ -1,15 +1,64 @@
 # Vaquita MX
 
-Vaquita MX is a portfolio-grade group expense application for Mexico. A group can record an expense, identify who paid, calculate what each member owes, and issue individual payment requests. The production design supports Banco de Mexico's CoDi collection workflow through a replaceable payment-provider adapter.
+Vaquita MX is a portfolio-grade, offline-first group expense application for Mexico. A group can record an expense, identify one or multiple payers, deterministically allocate every centavo across four split modes, correct mistakes through immutable compensating reversals, and issue individual payment requests. The production design supports Banco de Mexico's CoDi collection workflow through a replaceable payment-provider adapter.
 
 > The repository does not claim live or certified CoDi access. The included provider is a simulator. A real CoDi integration requires the applicable registration, certification, credentials, message signing, and operational controls.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/01-dashboard.png" alt="Vaquita MX dashboard showing net balance across shared groups" width="84%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/02-group-detail.png" alt="Shared group detail with salary-based splits and bilateral member balances" width="100%">
+      <p align="center"><sub><strong>Shared group detail</strong> — bilateral balances, salary-proportional splits, and group expenses</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/03-payment-request-sheet.png" alt="Simulated payment request and creditor receipt confirmation sheet" width="100%">
+      <p align="center"><sub><strong>Collection & settlement sheet</strong> — CoDi-ready payment request with explicit demo-mode disclosure</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/04-inbox.png" alt="Bandeja inbox showing shared group invitations and bilateral contact balances" width="100%">
+      <p align="center"><sub><strong>Bandeja (Inbox)</strong> — pending shared-group invitations and cross-group contact balances</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/05-movements-reversals.png" alt="Movements feed showing expenses, compensating reversals, and settlements" width="100%">
+      <p align="center"><sub><strong>Immutable ledger & reversals</strong> — separate expense, settlement, and compensating-entry history</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/06-contact-balance.png" alt="Per-contact balance details grouped by shared expenses" width="100%">
+      <p align="center"><sub><strong>Contact balance breakdown</strong> — net bilateral position itemized by group and concept</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/07-financial-statistics.png" alt="Financial statistics sheet showing distributed and retained overpayments" width="100%">
+      <p align="center"><sub><strong>Financial statistics</strong> — distributed vs. retained tips and overpayments by period</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/08-contacts.png" alt="Contacts directory with phone import support" width="100%">
+      <p align="center"><sub><strong>Contacts</strong> — saved Mexican mobile contacts and opt-in phone import</sub></p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/09-profile.png" alt="Account profile with opt-in local group sync and settings" width="100%">
+      <p align="center"><sub><strong>Profile & sync</strong> — account status, opt-in local SQLite group sync, and bilingual preferences</sub></p>
+    </td>
+  </tr>
+</table>
+
 ## Repository status
 
-This is a portfolio demonstration with a working local vertical slice:
+This is a portfolio demonstration with a working full-stack vertical slice:
 
-- `apps/mobile`: Flutter application targeting Android and web.
-- `services/api`: dependency-free Go HTTP API with health and simulated payment-request endpoints.
+- `apps/mobile`: offline-first Flutter application targeting Android and web (SQLite local persistence, outbox replay, bilingual ES/EN copy, and light/dark Material 3 UI).
+- `services/api`: Go HTTP modular monolith backed by PostgreSQL migrations, rotating refresh sessions, deterministic centavo ledger, compensating reversals, idempotency keys, and simulated payment-request endpoints.
 - `docs`: product, architecture, CoDi, security, deployment, and delivery documentation.
 - `deploy`: deployment assets.
 
