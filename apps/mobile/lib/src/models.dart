@@ -371,6 +371,139 @@ String? _nonEmptyString(Object? value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
+DateTime? _parseOptionalDateTime(Object? value) {
+  final text = _nonEmptyString(value);
+  if (text == null) return null;
+  return DateTime.tryParse(text);
+}
+
+class PaymentRequestItem {
+  const PaymentRequestItem({
+    required this.id,
+    required this.groupId,
+    this.groupName = '',
+    this.groupEmoji = '',
+    required this.creditorId,
+    this.creditorName = '',
+    required this.debtorId,
+    this.debtorName = '',
+    required this.amountCents,
+    this.currency = 'MXN',
+    this.provider = 'simulated',
+    required this.status,
+    required this.paymentUrl,
+    this.expiresAt,
+    this.createdAt,
+    this.paidAt,
+    this.correlationId = '',
+    this.settlementId,
+    this.description = '',
+    this.role = '',
+  });
+
+  static const statusPending = 'PENDING';
+  static const statusPaid = 'PAID';
+  static const statusExpired = 'EXPIRED';
+  static const statusFailed = 'FAILED';
+
+  final String id;
+  final String groupId;
+  final String groupName;
+  final String groupEmoji;
+  final String creditorId;
+  final String creditorName;
+  final String debtorId;
+  final String debtorName;
+  final int amountCents;
+  final String currency;
+  final String provider;
+  final String status;
+  final String paymentUrl;
+  final DateTime? expiresAt;
+  final DateTime? createdAt;
+  final DateTime? paidAt;
+  final String correlationId;
+  final String? settlementId;
+  final String description;
+  final String role;
+
+  String get effectiveStatus {
+    if (status == statusPending &&
+        expiresAt != null &&
+        !expiresAt!.toUtc().isAfter(DateTime.now().toUtc())) {
+      return statusExpired;
+    }
+    return status;
+  }
+
+  bool get isPending => effectiveStatus == statusPending;
+  bool get isPaid => effectiveStatus == statusPaid;
+  bool get isExpired => effectiveStatus == statusExpired;
+  bool get isFailed => effectiveStatus == statusFailed;
+  bool get isCreditor => role == 'creditor';
+  bool get isDebtor => role == 'debtor';
+
+  factory PaymentRequestItem.fromJson(Map<String, dynamic> json) =>
+      PaymentRequestItem(
+        id: json['id'] as String,
+        groupId: json['group_id'] as String? ?? '',
+        groupName: json['group_name'] as String? ?? '',
+        groupEmoji: json['group_emoji'] as String? ?? '',
+        creditorId: json['creditor_id'] as String? ?? '',
+        creditorName: json['creditor_name'] as String? ?? '',
+        debtorId: json['debtor_id'] as String? ?? '',
+        debtorName: json['debtor_name'] as String? ?? '',
+        amountCents: json['amount_cents'] as int? ?? 0,
+        currency: json['currency'] as String? ?? 'MXN',
+        provider: json['provider'] as String? ?? 'simulated',
+        status: (json['status'] as String? ?? statusPending).toUpperCase(),
+        paymentUrl: json['payment_url'] as String? ?? '',
+        expiresAt: _parseOptionalDateTime(json['expires_at']),
+        createdAt: _parseOptionalDateTime(json['created_at']),
+        paidAt: _parseOptionalDateTime(json['paid_at']),
+        correlationId: json['correlation_id'] as String? ?? '',
+        settlementId: _nonEmptyString(json['settlement_id']),
+        description: json['description'] as String? ?? '',
+        role: json['role'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'group_id': groupId,
+        if (groupName.isNotEmpty) 'group_name': groupName,
+        if (groupEmoji.isNotEmpty) 'group_emoji': groupEmoji,
+        'creditor_id': creditorId,
+        if (creditorName.isNotEmpty) 'creditor_name': creditorName,
+        'debtor_id': debtorId,
+        if (debtorName.isNotEmpty) 'debtor_name': debtorName,
+        'amount_cents': amountCents,
+        'currency': currency,
+        'provider': provider,
+        'status': status,
+        'payment_url': paymentUrl,
+        if (expiresAt != null)
+          'expires_at': expiresAt!.toUtc().toIso8601String(),
+        if (createdAt != null)
+          'created_at': createdAt!.toUtc().toIso8601String(),
+        if (paidAt != null) 'paid_at': paidAt!.toUtc().toIso8601String(),
+        if (correlationId.isNotEmpty) 'correlation_id': correlationId,
+        if (settlementId != null && settlementId!.isNotEmpty)
+          'settlement_id': settlementId,
+        if (description.isNotEmpty) 'description': description,
+        if (role.isNotEmpty) 'role': role,
+      };
+}
+
+class PaymentRequestPage {
+  const PaymentRequestPage({
+    required this.items,
+    this.nextCursor,
+  });
+
+  final List<PaymentRequestItem> items;
+  final String? nextCursor;
+}
+
 class PaymentRelation {
   const PaymentRelation({
     required this.fromMemberId,

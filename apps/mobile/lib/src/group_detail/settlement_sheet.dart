@@ -71,6 +71,7 @@ class _SettlementSheet extends StatefulWidget {
 class _SettlementSheetState extends State<_SettlementSheet> {
   late final TextEditingController _amountController;
   String? _errorText;
+  bool _submittingRequest = false;
 
   @override
   void initState() {
@@ -119,19 +120,42 @@ class _SettlementSheetState extends State<_SettlementSheet> {
   }
 
   Future<void> _requestPayment() async {
+    if (_submittingRequest) return;
     final l10n = AppLocalizations.of(context)!;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _submittingRequest = true);
     final settled = await context.read<AppCubit>().requestPayment(
           groupId: widget.group.id,
           debtorId: widget.member.id,
           amountCents: widget.outstandingCents,
+          description: l10n.paymentRequestDefaultDescription,
         );
     if (!mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
+    setState(() => _submittingRequest = false);
+    final createdRequest = widget.store.lastCreatedPaymentRequest;
+    navigator.pop();
+    messenger.showSnackBar(
       SnackBar(
         content: Text(
           settled ? l10n.paymentRequestCreated : l10n.couldNotConfirmPayment,
         ),
+        action: settled && createdRequest != null
+            ? SnackBarAction(
+                label: l10n.viewRequest,
+                onPressed: () {
+                  navigator.push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PaymentRequestDetailScreen(
+                        store: widget.store,
+                        requestId: createdRequest.id,
+                        initialRequest: createdRequest,
+                      ),
+                    ),
+                  );
+                },
+              )
+            : null,
       ),
     );
     if (settled) widget.onSettled?.call();
@@ -288,9 +312,16 @@ class _SettlementSheetState extends State<_SettlementSheet> {
           if (widget.canRequestPayment) ...[
             OutlinedButton.icon(
               key: Key('request-${widget.member.id}'),
-              onPressed:
-                  widget.store.isOnline ? () async => _requestPayment() : null,
-              icon: const Icon(Icons.qr_code_2_rounded),
+              onPressed: widget.store.isOnline && !_submittingRequest
+                  ? () async => _requestPayment()
+                  : null,
+              icon: _submittingRequest
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.qr_code_2_rounded),
               label: Text(l10n.requestPayment),
             ),
             if (!widget.store.isOnline) ...[

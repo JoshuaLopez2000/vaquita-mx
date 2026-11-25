@@ -480,22 +480,89 @@ class ApiClient {
     _decode(response);
   }
 
-  Future<void> requestPayment({
+  Future<PaymentRequestPage> listPaymentRequests({
+    String? status,
+    String? orientation,
+    String? groupId,
+    int? limit,
+    String? cursor,
+  }) async {
+    final query = <String, String>{};
+    if (status != null && status.trim().isNotEmpty) {
+      query['status'] = status.trim();
+    }
+    if (orientation != null && orientation.trim().isNotEmpty) {
+      query['orientation'] = orientation.trim();
+    }
+    if (groupId != null && groupId.trim().isNotEmpty) {
+      query['group_id'] = groupId.trim();
+    }
+    if (limit != null) {
+      query['limit'] = '$limit';
+    }
+    if (cursor != null && cursor.trim().isNotEmpty) {
+      query['cursor'] = cursor.trim();
+    }
+    final path = Uri(
+      path: '/api/v1/payment-requests',
+      queryParameters: query.isEmpty ? null : query,
+    ).toString();
+    final response = await _request('GET', path);
+    final decoded = _decode(response);
+    final items = ((decoded['payment_requests'] as List<dynamic>?) ?? const [])
+        .map((value) =>
+            PaymentRequestItem.fromJson(value as Map<String, dynamic>))
+        .toList();
+    final nextCursor = decoded['next_cursor'] as String?;
+    return PaymentRequestPage(
+      items: items,
+      nextCursor:
+          (nextCursor == null || nextCursor.trim().isEmpty) ? null : nextCursor,
+    );
+  }
+
+  Future<PaymentRequestItem> getPaymentRequest(String requestId) async {
+    final encodedId = Uri.encodeComponent(requestId.trim());
+    final response =
+        await _request('GET', '/api/v1/payment-requests/$encodedId');
+    return PaymentRequestItem.fromJson(_decode(response));
+  }
+
+  Future<PaymentRequestItem?> requestPayment({
     required String groupId,
     required String debtorId,
     required int amountCents,
+    required String description,
+    String? idempotencyKey,
   }) async {
     final response =
         await _request('POST', '/api/v1/payment-requests', headers: {
-      'Idempotency-Key': _idempotencyKey(),
+      'Idempotency-Key': idempotencyKey ?? _idempotencyKey(),
     }, body: {
       'group_id': groupId,
       'debtor_id': debtorId,
       'amount_cents': amountCents,
       'currency': 'MXN',
-      'description': 'Group balance settlement',
+      'description': description,
     });
-    _decode(response);
+    final decoded = _decode(response);
+    if (decoded['id'] is String) {
+      return PaymentRequestItem.fromJson(decoded);
+    }
+    return null;
+  }
+
+  Future<PaymentRequestItem> completeSimulatedPayment({
+    required String requestId,
+    required String providerEventId,
+  }) async {
+    final encodedId = Uri.encodeComponent(requestId.trim());
+    final response = await _request(
+      'POST',
+      '/api/v1/payment-requests/$encodedId/simulate',
+      body: {'provider_event_id': providerEventId},
+    );
+    return PaymentRequestItem.fromJson(_decode(response));
   }
 
   Future<void> removeMember(String groupId, String memberId) async {

@@ -10,15 +10,18 @@ import 'package:vaquita_mx/l10n/localized_error.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/auth_screen.dart';
 import 'package:vaquita_mx/src/contacts_screen.dart';
+import 'package:vaquita_mx/src/deep_links.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/offline_database.dart';
+import 'package:vaquita_mx/src/screens/payment_request_detail_screen.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 import 'package:vaquita_mx/src/theme/vaquita_theme.dart';
 import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
+import 'package:vaquita_mx/src/widgets/payment_request_card.dart';
 import 'package:vaquita_mx/src/widgets/vaquita_brand.dart';
 
 part 'screens/dashboard_screen.dart';
@@ -34,12 +37,14 @@ part 'widgets/group_card.dart';
 class VaquitaApp extends StatefulWidget {
   const VaquitaApp({
     this.store,
+    this.deepLinkSource,
     this.initializeStore,
     this.themeMode = ThemeMode.system,
     super.key,
   });
 
   final DemoStore? store;
+  final DeepLinkSource? deepLinkSource;
   final Future<DemoStore> Function()? initializeStore;
   final ThemeMode themeMode;
 
@@ -55,9 +60,14 @@ class VaquitaApp extends StatefulWidget {
 }
 
 class _VaquitaAppState extends State<VaquitaApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   DemoStore? store;
   AppCubit? appCubit;
   late final bool _ownsStore;
+  late final bool _ownsDeepLinkSource;
+  DeepLinkSource? _deepLinkSource;
+  StreamSubscription<String>? _deepLinkSubscription;
+  String? _pendingDeepLinkRequestId;
   var _restoringSession = true;
   var _locale = const Locale('es');
   String? _initializationError;
@@ -69,12 +79,55 @@ class _VaquitaAppState extends State<VaquitaApp> {
   void initState() {
     super.initState();
     _ownsStore = widget.store == null;
+    _ownsDeepLinkSource = widget.deepLinkSource == null && !kIsWeb;
+    _deepLinkSource =
+        widget.deepLinkSource ?? (kIsWeb ? null : PlatformDeepLinkSource());
+    _deepLinkSubscription = _deepLinkSource?.links.listen(_handleIncomingLink);
     if (_ownsStore) {
       unawaited(_initializeStore());
     } else {
       store = widget.store!;
       appCubit = AppCubit(store!);
       _restoringSession = false;
+    }
+    unawaited(_checkInitialDeepLink());
+  }
+
+  Future<void> _checkInitialDeepLink() async {
+    final initial = await _deepLinkSource?.getInitialLink();
+    if (!mounted || initial == null) return;
+    _handleIncomingLink(initial);
+  }
+
+  void _handleIncomingLink(String rawUri) {
+    final requestId = parsePaymentRequestDeepLink(rawUri);
+    if (requestId == null) return;
+    if (_restoringSession || store == null) {
+      _pendingDeepLinkRequestId = requestId;
+      return;
+    }
+    _openPaymentRequestDeepLink(requestId);
+  }
+
+  void _openPaymentRequestDeepLink(String requestId) {
+    void push() {
+      final navigator = _navigatorKey.currentState;
+      final currentStore = store;
+      if (!mounted || navigator == null || currentStore == null) return;
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => PaymentRequestDetailScreen(
+            store: currentStore,
+            requestId: requestId,
+          ),
+        ),
+      );
+    }
+
+    if (_navigatorKey.currentState == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => push());
+    } else {
+      push();
     }
   }
 
@@ -114,6 +167,13 @@ class _VaquitaAppState extends State<VaquitaApp> {
     setState(() {
       _restoringSession = false;
     });
+    final pendingId = _pendingDeepLinkRequestId;
+    if (pendingId != null && _initializationError == null) {
+      _pendingDeepLinkRequestId = null;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openPaymentRequestDeepLink(pendingId),
+      );
+    }
   }
 
   void _handleInvalidSession() {
@@ -151,6 +211,10 @@ class _VaquitaAppState extends State<VaquitaApp> {
 
   @override
   void dispose() {
+    unawaited(_deepLinkSubscription?.cancel());
+    if (_ownsDeepLinkSource) {
+      _deepLinkSource?.dispose();
+    }
     unawaited(_connectivitySubscription?.cancel());
     appCubit?.close();
     if (_ownsStore) {
@@ -161,53 +225,62 @@ class _VaquitaAppState extends State<VaquitaApp> {
 
   @override
   Widget build(BuildContext context) {
-    final bootstrapNeeded = _restoringSession ||
+    if (_restoringSession ||
         _initializationError != null ||
         store == null ||
-        appCubit == null;
+        appCubit == null) {
+      return MaterialApp(
+        key: const ValueKey('vaquita-bootstrap'),
+        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: _locale,
+        debugShowCheckedModeBanner: false,
+        theme: VaquitaTheme.light(),
+        darkTheme: VaquitaTheme.dark(),
+        themeMode: widget.themeMode,
+        home: Builder(
+          builder: (innerContext) {
+            final l10n = AppLocalizations.of(innerContext)!;
+            return VaquitaBootstrapScreen(
+              appTitle: l10n.appTitle,
+              loadingLabel: l10n.startupLoading,
+              errorTitle:
+                  _initializationError != null ? l10n.startupErrorTitle : null,
+              errorDescription: _initializationError != null
+                  ? l10n.startupErrorDescription
+                  : null,
+              errorDetail: _initializationError,
+              retryLabel: l10n.retry,
+              onRetry: _initializationError != null
+                  ? () => unawaited(_initializeStore())
+                  : null,
+            );
+          },
+        ),
+      );
+    }
 
-    final materialApp = MaterialApp(
-      onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: _locale,
-      debugShowCheckedModeBanner: false,
-      theme: VaquitaTheme.light(),
-      darkTheme: VaquitaTheme.dark(),
-      themeMode: widget.themeMode,
-      home: bootstrapNeeded
-          ? Builder(
-              builder: (innerContext) {
-                final l10n = AppLocalizations.of(innerContext)!;
-                return VaquitaBootstrapScreen(
-                  appTitle: l10n.appTitle,
-                  loadingLabel: l10n.startupLoading,
-                  errorTitle: _initializationError != null
-                      ? l10n.startupErrorTitle
-                      : null,
-                  errorDescription: _initializationError != null
-                      ? l10n.startupErrorDescription
-                      : null,
-                  errorDetail: _initializationError,
-                  retryLabel: l10n.retry,
-                  onRetry: _initializationError != null
-                      ? () => unawaited(_initializeStore())
-                      : null,
-                );
-              },
-            )
-          : BlocProvider.value(
-              value: appCubit!,
-              child: AppShell(
-                store: store!,
-                onLocaleChanged: _setLocale,
-                onSignOut: _signOut,
-              ),
-            ),
+    return BlocProvider.value(
+      value: appCubit!,
+      child: MaterialApp(
+        key: const ValueKey('vaquita-app'),
+        navigatorKey: _navigatorKey,
+        onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: _locale,
+        debugShowCheckedModeBanner: false,
+        theme: VaquitaTheme.light(),
+        darkTheme: VaquitaTheme.dark(),
+        themeMode: widget.themeMode,
+        home: AppShell(
+          store: store!,
+          onLocaleChanged: _setLocale,
+          onSignOut: _signOut,
+        ),
+      ),
     );
-    return appCubit == null
-        ? materialApp
-        : BlocProvider.value(value: appCubit!, child: materialApp);
   }
 }
 

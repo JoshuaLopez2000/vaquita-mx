@@ -1,6 +1,7 @@
 package mx.vaquita.vaquita_mx
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.ContactsContract
 import androidx.core.app.ActivityCompat
@@ -11,9 +12,25 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private var pendingResult: MethodChannel.Result? = null
     private var pendingMethod: String? = null
+    private var deepLinkChannel: MethodChannel? = null
+    private var initialDeepLink: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        if (initialDeepLink == null) {
+            initialDeepLink = intent?.dataString
+        }
+        deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mx.vaquita.vaquita_mx/deep_links").apply {
+            setMethodCallHandler { call, result ->
+                if (call.method == "getInitialLink") {
+                    val link = initialDeepLink
+                    initialDeepLink = null
+                    result.success(link)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mx.vaquita.vaquita_mx/contacts").setMethodCallHandler { call, result ->
             if (call.method != "getPhoneNumbers" && call.method != "getContacts") { result.notImplemented(); return@setMethodCallHandler }
             if (checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
@@ -21,6 +38,15 @@ class MainActivity : FlutterActivity() {
                 pendingMethod = call.method
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_CONTACTS), 7)
             } else complete(result, call.method)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val link = intent.dataString
+        if (!link.isNullOrBlank()) {
+            deepLinkChannel?.invokeMethod("onDeepLink", link)
         }
     }
 

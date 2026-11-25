@@ -109,6 +109,8 @@ Recommended database rules:
 | `POST` | `/api/v1/groups/{id}/settlements/{settlementId}/reversals` | Record an immutable compensating reversal for a posted settlement |
 | `POST` | `/api/v1/offline-sync/groups` | Authenticated, opt-in merge of local groups and ledger history |
 | `GET` | `/api/v1/payment-providers` | Active provider capabilities |
+| `GET` | `/api/v1/payment-requests` | Cursor-paginated caller-scoped payment requests (`status`, `orientation`/`role`, `group_id`, `limit`, `cursor`) |
+| `GET` | `/api/v1/payment-requests/{id}` | Hydrate a single caller-scoped payment request (returns `404` for hidden groups or third-party requests) |
 | `POST` | `/api/v1/payment-requests` | Create a simulated MXN request |
 | `POST` | `/api/v1/payment-requests/{id}/simulate` | Complete a simulated payment |
 
@@ -141,14 +143,15 @@ persisted locally and are uploaded chronologically only after the account's
 explicit sync opt-in; local unsynced entries on server-backed groups must sync
 before they can be reversed.
 
-Manual payment requests are available only for authenticated shared groups.
-In shared groups, `POST /groups/{id}/settlements/received` records a full or
-partial receipt only for the authenticated creditor's exact bilateral
-receivable. Personal-group owners may record settlements in either direction.
-Unauthenticated local groups are always personal; their full or partial
-settlements are stored locally and do not call the server or imply a transfer.
-
-Manual payment requests are available only for authenticated shared groups.
+Manual payment requests are available only for authenticated shared groups and
+require an active internet connection (disabled offline, never queued). The
+mobile client reuses one stable `Idempotency-Key` per payment-request intent
+across transient retries (clearing it on success or permanent `4xx`), sends a
+localized description, and reuses a stable `provider_event_id` across retries
+for simulated completion. Android registers an intent filter for
+`vaquitamx://payment-requests/{id}` bridged via a platform `MethodChannel` so
+tapping a shared payment link opens the payment request detail screen and
+hydrates authoritative server state via `GET /api/v1/payment-requests/{id}`.
 In shared groups, `POST /groups/{id}/settlements/received` records a full or
 partial receipt only for the authenticated creditor's exact bilateral
 receivable. Personal-group owners may record settlements in either direction.

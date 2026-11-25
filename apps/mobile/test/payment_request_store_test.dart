@@ -89,14 +89,21 @@ Future<void> _pumpGroupDetail(WidgetTester tester, DemoStore store) async {
 void main() {
   testWidgets('creates a payment request with a valid idempotency key',
       (tester) async {
-    var requestCount = 0;
+    var postCount = 0;
     final store = await _remoteStore((request) async {
-      requestCount++;
       if (request.url.path == '/api/v1/auth/login') {
         return _loginResponse(request);
       }
+      if (request.method == 'GET' &&
+          request.url.path == '/api/v1/payment-requests') {
+        return http.Response(
+          jsonEncode({'payment_requests': <Object>[]}),
+          200,
+        );
+      }
       if (request.method == 'POST' &&
           request.url.path == '/api/v1/payment-requests') {
+        postCount++;
         expect(
           request.headers['idempotency-key'],
           matches(RegExp(r'^mobile-\d+-[0-9a-f]{32}$')),
@@ -108,10 +115,26 @@ void main() {
             'debtor_id': 'debtor-1',
             'amount_cents': 12500,
             'currency': 'MXN',
-            'description': 'Group balance settlement',
+            'description': 'Liquidación de saldo del grupo',
           },
         );
-        return http.Response(jsonEncode({'id': 'request-1'}), 201);
+        return http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'id': 'request-1',
+            'group_id': 'group-1',
+            'creditor_id': 'user-1',
+            'debtor_id': 'debtor-1',
+            'amount_cents': 12500,
+            'currency': 'MXN',
+            'provider': 'simulated',
+            'status': 'PENDING',
+            'payment_url': 'vaquitamx://payment-requests/request-1',
+            'role': 'creditor',
+            'description': 'Liquidación de saldo del grupo',
+          })),
+          201,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        );
       }
       if (request.method == 'GET' && request.url.path == '/api/v1/groups') {
         return http.Response(
@@ -121,6 +144,7 @@ void main() {
                 'id': 'group-1',
                 'name': 'Group',
                 'emoji': 'G',
+                'visibility': 'shared',
                 'members': [
                   {'id': 'user-1', 'user_id': 'user-1', 'name': 'You'},
                   {'id': 'debtor-1', 'name': 'Ana'},
@@ -151,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Solicitud de pago creada.'), findsOneWidget);
-    expect(requestCount, 3);
+    expect(postCount, 1);
   });
 
   testWidgets('refreshes shared-group balance after confirming receipt',

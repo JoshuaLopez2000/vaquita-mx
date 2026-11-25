@@ -32,8 +32,13 @@ Vaquita MX gives the group one ledger and gives each debtor a clear payment requ
 8. In a shared group, a creditor can request payment or record that they
    received all or part of the outstanding amount. A debtor cannot manually
    confirm receipt on the creditor's behalf.
-9. The debtor opens a request and completes payment externally; a verified
-   provider event, or the explicitly simulated demo, may record settlement.
+9. Pending and historical payment requests surface in the Bandeja (`Inbox`) tab
+   (filterable by `All`, `To pay`, and `Sent`) and inside shared group details.
+   Creditors can check status and share the `vaquitamx://payment-requests/{id}`
+   deep link; debtors can open a request directly or from the app and complete
+   it through the explicitly labeled simulated demo (or a verified provider
+   event in future live integrations). Paid, expired, and failed requests
+   clearly explain their state and disallow completion.
 10. In a personal group, its owner controls full or partial bilateral
     settlements. Local groups offer the same ledger control on-device.
 11. The balance view changes while the original expense remains immutable.

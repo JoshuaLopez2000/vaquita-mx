@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -693,6 +694,56 @@ func (app application) providers(w http.ResponseWriter, _ *http.Request) {
 			"id": app.payments.Name(), "live": false,
 		}},
 	})
+}
+
+func (app application) listPaymentRequests(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	orientation := strings.TrimSpace(query.Get("orientation"))
+	if orientation == "" {
+		orientation = strings.TrimSpace(query.Get("role"))
+	}
+	var limit int
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > payments.MaxListLimit {
+			writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "limit must be an integer between 1 and 100", map[string]string{"limit": "invalid"})
+			return
+		}
+		limit = parsed
+	}
+	page, err := app.requests.List(r.Context(), userID(r), payments.ListFilter{
+		Status:      query.Get("status"),
+		Orientation: orientation,
+		GroupID:     query.Get("group_id"),
+		Limit:       limit,
+		Cursor:      query.Get("cursor"),
+	})
+	if errors.Is(err, payments.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "group not found", nil)
+		return
+	}
+	if errors.Is(err, payments.ErrInvalidRequest) {
+		writeAPIError(w, http.StatusUnprocessableEntity, "validation_failed", "invalid status, orientation, limit, or cursor filter", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "list payment requests", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (app application) getPaymentRequest(w http.ResponseWriter, r *http.Request) {
+	item, err := app.requests.Get(r.Context(), userID(r), r.PathValue("requestID"))
+	if errors.Is(err, payments.ErrNotFound) {
+		writeAPIError(w, http.StatusNotFound, "resource_not_found", "payment request not found", nil)
+		return
+	}
+	if err != nil {
+		serverError(w, "get payment request", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (app application) createPaymentRequest(w http.ResponseWriter, r *http.Request) {

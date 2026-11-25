@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -38,6 +39,9 @@ func (r CreateRequest) Validate() error {
 		return ErrInvalidRequest
 	}
 	if r.AmountCents <= 0 || r.Currency != "MXN" {
+		return ErrInvalidRequest
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(r.Description)) > 200 {
 		return ErrInvalidRequest
 	}
 	return nil
