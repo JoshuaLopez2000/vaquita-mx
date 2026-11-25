@@ -31,6 +31,9 @@ class DemoStore extends ChangeNotifier {
   final List<AppContact> contacts = [];
   final List<ContactStatus> contactStatus = [];
   final List<GroupInvitation> invitations = [];
+  final List<PaymentRequestItem> paymentRequests = [];
+  String? paymentRequestsNextCursor;
+  PaymentRequestItem? _lastCreatedPaymentRequest;
   int _sequence = 100;
   int? _requestedTab;
   bool isLoading = false;
@@ -38,6 +41,10 @@ class DemoStore extends ChangeNotifier {
   final Set<String> _syncEnabledInMemory = {};
   final Set<String> _serverSyncedGroupIds = {};
   final List<PendingMutation> _queuedMutations = [];
+  final Map<String, String> _paymentRequestIntentKeys = {};
+  final Set<String> _paymentRequestInFlight = {};
+  final Map<String, String> _simulatedCompletionEventIds = {};
+  final Set<String> _simulatedCompletionInFlight = {};
   bool _syncing = false;
   bool _syncRequested = false;
   Future<bool>? _syncFuture;
@@ -51,7 +58,21 @@ class DemoStore extends ChangeNotifier {
   bool get isAuthenticated => _apiClient?.user != null;
   bool get isOnline => _isOnline;
   bool get lastMutationQueuedOffline => _lastMutationQueuedOffline;
+  PaymentRequestItem? get lastCreatedPaymentRequest =>
+      _lastCreatedPaymentRequest;
   ApiClient? get apiClient => _apiClient;
+
+  List<PaymentRequestItem> paymentRequestsForGroup(String groupId) =>
+      List.unmodifiable(
+        paymentRequests.where((item) => item.groupId == groupId),
+      );
+
+  PaymentRequestItem? paymentRequestById(String requestId) {
+    for (final item in paymentRequests) {
+      if (item.id == requestId) return item;
+    }
+    return null;
+  }
 
   List<PendingMutation> get pendingMutations {
     final accountId = _apiClient?.userId;
@@ -780,6 +801,91 @@ class DemoStore extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       // Keep cached invitations when offline or unreachable.
+    }
+  }
+
+  Future<PaymentRequestPage?> loadPaymentRequests({
+    String? status,
+    String? orientation,
+    String? groupId,
+    int limit = 50,
+    bool append = false,
+  }) async {
+    final api = _apiClient;
+    if (api == null || api.user == null) return null;
+    if (_offlineFirst && !_isOnline) return null;
+    try {
+      final page = await api.listPaymentRequests(
+        status: status,
+        orientation: orientation,
+        groupId: groupId,
+        limit: limit,
+        cursor: append ? paymentRequestsNextCursor : null,
+      );
+      if (groupId != null && groupId.trim().isNotEmpty && !append) {
+        final targetGroupId = groupId.trim();
+        paymentRequests.removeWhere((item) => item.groupId == targetGroupId);
+        for (final item in page.items) {
+          _upsertPaymentRequest(item, appendToEnd: true);
+        }
+      } else if (append) {
+        for (final item in page.items) {
+          _upsertPaymentRequest(item, appendToEnd: true);
+        }
+        paymentRequestsNextCursor = page.nextCursor;
+      } else {
+        paymentRequests
+          ..clear()
+          ..addAll(page.items);
+        paymentRequestsNextCursor = page.nextCursor;
+      }
+      notifyListeners();
+      return page;
+    } catch (_) {
+      // Keep cached read-only payment requests when offline or unreachable.
+      return null;
+    }
+  }
+
+  Future<PaymentRequestItem?> loadPaymentRequestById(String requestId) async {
+    final api = _apiClient;
+    final trimmed = requestId.trim();
+    if (api == null || api.user == null || trimmed.isEmpty) {
+      return null;
+    }
+    if (_offlineFirst && !_isOnline) {
+      errorMessage = 'server_unavailable';
+      notifyListeners();
+      return paymentRequestById(trimmed);
+    }
+    errorMessage = null;
+    try {
+      final item = await api.getPaymentRequest(trimmed);
+      _upsertPaymentRequest(item);
+      notifyListeners();
+      return item;
+    } on ApiException catch (error) {
+      errorMessage = error.code;
+      notifyListeners();
+      return null;
+    } catch (_) {
+      errorMessage = 'server_unavailable';
+      notifyListeners();
+      return paymentRequestById(trimmed);
+    }
+  }
+
+  void _upsertPaymentRequest(
+    PaymentRequestItem item, {
+    bool appendToEnd = false,
+  }) {
+    final index = paymentRequests.indexWhere((row) => row.id == item.id);
+    if (index >= 0) {
+      paymentRequests[index] = item;
+    } else if (appendToEnd) {
+      paymentRequests.add(item);
+    } else {
+      paymentRequests.insert(0, item);
     }
   }
 
@@ -1735,21 +1841,125 @@ class DemoStore extends ChangeNotifier {
     required String groupId,
     required String debtorId,
     required int amountCents,
-  }) {
+    String description = 'Group balance settlement',
+  }) async {
     final api = _apiClient;
     if (api == null || !canRequestPayment(groupById(groupId))) {
-      return Future.value(false);
+      return false;
     }
+    final normalizedDescription = description.trim().isEmpty
+        ? 'Group balance settlement'
+        : description.trim();
+    final intentKey = '$groupId|$debtorId|$amountCents|$normalizedDescription';
+    if (_paymentRequestInFlight.contains(intentKey)) {
+      return false;
+    }
+    final idempotencyKey =
+        _paymentRequestIntentKeys.putIfAbsent(intentKey, api.newIdempotencyKey);
     if (_offlineFirst && !_isOnline) {
       errorMessage = 'server_unavailable';
       notifyListeners();
-      return Future.value(false);
+      return false;
     }
-    return _sync(() => api.requestPayment(
-          groupId: groupId,
-          debtorId: debtorId,
-          amountCents: amountCents,
-        ));
+    _paymentRequestInFlight.add(intentKey);
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final created = await api.requestPayment(
+        groupId: groupId,
+        debtorId: debtorId,
+        amountCents: amountCents,
+        description: normalizedDescription,
+        idempotencyKey: idempotencyKey,
+      );
+      _paymentRequestIntentKeys.remove(intentKey);
+      _lastCreatedPaymentRequest = created;
+      if (created != null) {
+        _upsertPaymentRequest(created);
+      }
+      if (_offlineFirst) {
+        await load();
+      } else {
+        final loaded = await api.listGroups();
+        groups
+          ..clear()
+          ..addAll(loaded);
+      }
+      return true;
+    } on ApiException catch (error) {
+      if (!_isTransientApiError(error)) {
+        _paymentRequestIntentKeys.remove(intentKey);
+      }
+      errorMessage = error.code;
+      return false;
+    } catch (_) {
+      errorMessage = 'server_request_failed';
+      return false;
+    } finally {
+      _paymentRequestInFlight.remove(intentKey);
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> completeSimulatedPayment(String requestId) async {
+    final api = _apiClient;
+    final trimmedId = requestId.trim();
+    if (api == null || !isAuthenticated || trimmedId.isEmpty) {
+      return false;
+    }
+    if (_simulatedCompletionInFlight.contains(trimmedId)) {
+      return false;
+    }
+    final eventId = _simulatedCompletionEventIds.putIfAbsent(
+      trimmedId,
+      () => 'sim_${api.newIdempotencyKey()}',
+    );
+    if (_offlineFirst && !_isOnline) {
+      errorMessage = 'server_unavailable';
+      notifyListeners();
+      return false;
+    }
+    _simulatedCompletionInFlight.add(trimmedId);
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final updated = await api.completeSimulatedPayment(
+        requestId: trimmedId,
+        providerEventId: eventId,
+      );
+      _simulatedCompletionEventIds.remove(trimmedId);
+      _upsertPaymentRequest(updated);
+      if (_offlineFirst) {
+        await load();
+      } else {
+        final loaded = await api.listGroups();
+        groups
+          ..clear()
+          ..addAll(loaded);
+      }
+      try {
+        await loadStatus();
+      } catch (_) {
+        // Keep completed payment state even if status refresh fails transiently.
+      }
+      return true;
+    } on ApiException catch (error) {
+      if (!_isTransientApiError(error)) {
+        _simulatedCompletionEventIds.remove(trimmedId);
+      }
+      errorMessage = error.code;
+      return false;
+    } catch (_) {
+      errorMessage = 'server_unavailable';
+      return false;
+    } finally {
+      _simulatedCompletionInFlight.remove(trimmedId);
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
   // Positive means the contact owes the signed-in user; negative means the
@@ -2078,8 +2288,15 @@ class DemoStore extends ChangeNotifier {
         );
         await _persistGroup(group);
       }
-    } else if (_offlineFirst && user == null && _offlineDatabase != null) {
-      _queuedMutations.clear();
+    } else if (user == null) {
+      if (_offlineFirst && _offlineDatabase != null) {
+        _queuedMutations.clear();
+      }
+      paymentRequests.clear();
+      paymentRequestsNextCursor = null;
+      _lastCreatedPaymentRequest = null;
+      _paymentRequestIntentKeys.clear();
+      _simulatedCompletionEventIds.clear();
     }
     notifyListeners();
   }

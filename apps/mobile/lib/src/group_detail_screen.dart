@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -6,11 +8,13 @@ import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/financial_statistics.dart';
 import 'package:vaquita_mx/src/models.dart';
+import 'package:vaquita_mx/src/screens/payment_request_detail_screen.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
 import 'package:vaquita_mx/src/theme/vaquita_theme.dart';
 import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
 import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
+import 'package:vaquita_mx/src/widgets/payment_request_card.dart';
 import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
 import 'package:vaquita_mx/src/widgets/vaquita_brand.dart';
 
@@ -26,7 +30,7 @@ part 'group_detail/pending_payments_sheet.dart';
 part 'group_detail/financial_statistics_sheet.dart';
 part 'group_detail/empty_expenses.dart';
 
-class GroupDetailScreen extends StatelessWidget {
+class GroupDetailScreen extends StatefulWidget {
   const GroupDetailScreen({
     required this.store,
     required this.groupId,
@@ -35,6 +39,26 @@ class GroupDetailScreen extends StatelessWidget {
 
   final DemoStore store;
   final String groupId;
+
+  @override
+  State<GroupDetailScreen> createState() => _GroupDetailScreenState();
+}
+
+class _GroupDetailScreenState extends State<GroupDetailScreen> {
+  DemoStore get store => widget.store;
+  String get groupId => widget.groupId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (store.isOnline &&
+        store.groups.any((group) => group.id == groupId) &&
+        store.canRequestPayment(store.groupById(groupId))) {
+      unawaited(
+        context.read<AppCubit>().loadPaymentRequests(groupId: groupId),
+      );
+    }
+  }
 
   Future<void> _addExpense(
     BuildContext context,
@@ -157,6 +181,7 @@ class GroupDetailScreen extends StatelessWidget {
         final balances = store.balances(group);
         final activeMembers =
             group.members.where((member) => member.active).toList();
+        final groupPaymentRequests = store.paymentRequestsForGroup(group.id);
         return Scaffold(
           appBar: AppBar(
             title: Text(group.name),
@@ -240,6 +265,30 @@ class GroupDetailScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              if (groupPaymentRequests.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                _SectionHeader(
+                  title: l10n.paymentRequestsTitle,
+                  detail: '${groupPaymentRequests.length}',
+                ),
+                const SizedBox(height: 10),
+                for (final request in groupPaymentRequests) ...[
+                  PaymentRequestCard(
+                    request: request,
+                    showGroup: false,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => PaymentRequestDetailScreen(
+                          store: store,
+                          requestId: request.id,
+                          initialRequest: request,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
               const SizedBox(height: 24),
               _SectionHeader(
                 title: l10n.expenses,

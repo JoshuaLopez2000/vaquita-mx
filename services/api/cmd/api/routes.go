@@ -33,6 +33,8 @@ func (app application) routes(allowedOrigins string) http.Handler {
 	mux.HandleFunc("GET /api/v1/payment-providers", app.providers)
 	// The simulator is protected and validates its input against the ledger. It
 	// remains a portfolio/demo boundary; it does not move money or settle debt.
+	mux.HandleFunc("GET /api/v1/payment-requests", app.requireUser(app.listPaymentRequests))
+	mux.HandleFunc("GET /api/v1/payment-requests/{requestID}", app.requireUser(app.getPaymentRequest))
 	mux.HandleFunc("POST /api/v1/payment-requests", app.requireUser(app.createPaymentRequest))
 	mux.HandleFunc("POST /api/v1/payment-requests/{requestID}/simulate", app.requireUser(app.completeSimulatedPayment))
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {

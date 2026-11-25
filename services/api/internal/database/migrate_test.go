@@ -100,6 +100,13 @@ func TestMigrateCleanDatabase(t *testing.T) {
 	if !replacesSettlement {
 		t.Fatal("settlements.replaces_settlement_id was not created")
 	}
+	var paymentRequestDescription bool
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='payment_requests' AND column_name='description')`).Scan(&paymentRequestDescription); err != nil {
+		t.Fatal(err)
+	}
+	if !paymentRequestDescription {
+		t.Fatal("payment_requests.description was not created")
+	}
 	version, err := Verify(ctx, db)
 	if err != nil || version != latestVersion {
 		t.Fatalf("verify version = %d, error = %v", version, err)

@@ -1023,4 +1023,127 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securitySection => 'Session';
+
+  @override
+  String get paymentRequestDefaultDescription => 'Group balance settlement';
+
+  @override
+  String get paymentRequestsTitle => 'Payment requests';
+
+  @override
+  String get paymentRequestDetailsTitle => 'Payment request';
+
+  @override
+  String get paymentRequestsFilterAll => 'All';
+
+  @override
+  String get paymentRequestsFilterToPay => 'To pay';
+
+  @override
+  String get paymentRequestsFilterSent => 'Sent';
+
+  @override
+  String get paymentRequestStatusPending => 'Pending';
+
+  @override
+  String get paymentRequestStatusPaid => 'Paid';
+
+  @override
+  String get paymentRequestStatusExpired => 'Expired';
+
+  @override
+  String get paymentRequestStatusFailed => 'Failed';
+
+  @override
+  String paymentRequestToPayTo(String name) {
+    return 'Requested by $name';
+  }
+
+  @override
+  String paymentRequestRequestedFrom(String name) {
+    return 'Requested from $name';
+  }
+
+  @override
+  String get paymentRequestDemoDisclaimerTitle => 'Simulated payment (demo)';
+
+  @override
+  String get paymentRequestDemoDisclaimerBody =>
+      'This request uses the simulated test provider. Completing it updates balances in Vaquita and does not make a real bank transfer.';
+
+  @override
+  String get completeSimulatedPayment => 'Complete simulated payment';
+
+  @override
+  String get simulatedPaymentCompleted =>
+      'Simulated payment completed. Balances updated.';
+
+  @override
+  String get couldNotCompleteSimulatedPayment =>
+      'Could not complete the simulated payment.';
+
+  @override
+  String get sharePaymentLink => 'Share link';
+
+  @override
+  String get paymentLinkCopied => 'Payment link copied';
+
+  @override
+  String get paymentLinkLabel => 'Request link';
+
+  @override
+  String get paymentRequestCreditorLabel => 'Requested by';
+
+  @override
+  String get paymentRequestDebtorLabel => 'Debtor';
+
+  @override
+  String get paymentRequestDescriptionLabel => 'Description';
+
+  @override
+  String paymentRequestExpiresAt(String date) {
+    return 'Expires: $date';
+  }
+
+  @override
+  String paymentRequestPaidAt(String date) {
+    return 'Paid: $date';
+  }
+
+  @override
+  String get paymentRequestPaidExplanation =>
+      'This request has already been paid and its settlement is recorded in the group.';
+
+  @override
+  String get paymentRequestExpiredExplanation =>
+      'This request expired and can no longer be completed. Ask for a new request if a balance is still owed.';
+
+  @override
+  String get paymentRequestFailedExplanation =>
+      'This request failed and cannot be completed. Create a new request to try again.';
+
+  @override
+  String paymentRequestWaitingDebtor(String name) {
+    return 'Waiting for $name to complete the simulated payment.';
+  }
+
+  @override
+  String get paymentRequestNotFoundTitle => 'Request unavailable';
+
+  @override
+  String get paymentRequestNotFoundDescription =>
+      'We could not find this payment request or you do not have access to it.';
+
+  @override
+  String get paymentRequestSignInRequired =>
+      'Sign in to view this payment request.';
+
+  @override
+  String get loadMore => 'Load more';
+
+  @override
+  String get noMatchingPaymentRequests => 'No payment requests in this filter.';
+
+  @override
+  String get viewRequest => 'View request';
 }

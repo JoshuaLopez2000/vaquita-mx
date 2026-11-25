@@ -1030,4 +1030,128 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get securitySection => 'Sesión';
+
+  @override
+  String get paymentRequestDefaultDescription =>
+      'Liquidación de saldo del grupo';
+
+  @override
+  String get paymentRequestsTitle => 'Solicitudes de pago';
+
+  @override
+  String get paymentRequestDetailsTitle => 'Solicitud de pago';
+
+  @override
+  String get paymentRequestsFilterAll => 'Todas';
+
+  @override
+  String get paymentRequestsFilterToPay => 'Por pagar';
+
+  @override
+  String get paymentRequestsFilterSent => 'Enviadas';
+
+  @override
+  String get paymentRequestStatusPending => 'Pendiente';
+
+  @override
+  String get paymentRequestStatusPaid => 'Pagada';
+
+  @override
+  String get paymentRequestStatusExpired => 'Expirada';
+
+  @override
+  String get paymentRequestStatusFailed => 'Fallida';
+
+  @override
+  String paymentRequestToPayTo(String name) {
+    return '$name te solicitó';
+  }
+
+  @override
+  String paymentRequestRequestedFrom(String name) {
+    return 'Solicitada a $name';
+  }
+
+  @override
+  String get paymentRequestDemoDisclaimerTitle => 'Pago simulado (demo)';
+
+  @override
+  String get paymentRequestDemoDisclaimerBody =>
+      'Esta solicitud usa el proveedor simulado para pruebas. Completarla actualiza los saldos en Vaquita y no realiza ninguna transferencia bancaria real.';
+
+  @override
+  String get completeSimulatedPayment => 'Completar pago simulado';
+
+  @override
+  String get simulatedPaymentCompleted =>
+      'Pago simulado completado. Saldos actualizados.';
+
+  @override
+  String get couldNotCompleteSimulatedPayment =>
+      'No se pudo completar el pago simulado.';
+
+  @override
+  String get sharePaymentLink => 'Compartir enlace';
+
+  @override
+  String get paymentLinkCopied => 'Enlace de pago copiado';
+
+  @override
+  String get paymentLinkLabel => 'Enlace de la solicitud';
+
+  @override
+  String get paymentRequestCreditorLabel => 'Solicita';
+
+  @override
+  String get paymentRequestDebtorLabel => 'Debe pagar';
+
+  @override
+  String get paymentRequestDescriptionLabel => 'Concepto';
+
+  @override
+  String paymentRequestExpiresAt(String date) {
+    return 'Expira: $date';
+  }
+
+  @override
+  String paymentRequestPaidAt(String date) {
+    return 'Pagada: $date';
+  }
+
+  @override
+  String get paymentRequestPaidExplanation =>
+      'Esta solicitud ya fue pagada y su liquidación quedó registrada en el grupo.';
+
+  @override
+  String get paymentRequestExpiredExplanation =>
+      'Esta solicitud expiró y ya no puede completarse. Pide una nueva solicitud si aún existe saldo pendiente.';
+
+  @override
+  String get paymentRequestFailedExplanation =>
+      'Esta solicitud falló y no puede completarse. Crea una nueva solicitud para intentarlo de nuevo.';
+
+  @override
+  String paymentRequestWaitingDebtor(String name) {
+    return 'Esperando que $name complete el pago simulado.';
+  }
+
+  @override
+  String get paymentRequestNotFoundTitle => 'Solicitud no disponible';
+
+  @override
+  String get paymentRequestNotFoundDescription =>
+      'No encontramos esta solicitud de pago o no tienes acceso a ella.';
+
+  @override
+  String get paymentRequestSignInRequired =>
+      'Inicia sesión para ver esta solicitud de pago.';
+
+  @override
+  String get loadMore => 'Cargar más';
+
+  @override
+  String get noMatchingPaymentRequests => 'No hay solicitudes en este filtro.';
+
+  @override
+  String get viewRequest => 'Ver solicitud';
 }

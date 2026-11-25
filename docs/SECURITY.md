@@ -62,6 +62,8 @@ response so callers cannot enumerate group or member records.
 | Reverse an expense in a personal group | Owner only | Deny | Deny |
 | Reverse an expense in a shared group | Allow | Allow | Deny |
 | Create a payment request | Exact creditor/debtor relation only | Exact creditor/debtor relation only | Deny |
+| List or read payment requests | Own creditor/debtor requests in visible groups only (`404` otherwise) | Own creditor/debtor requests in visible groups only (`404` otherwise) | Deny |
+| Complete simulated payment | Request debtor only | Request debtor only | Deny |
 | Record a manual settlement in a personal group | Owner only | Deny | Deny |
 | Confirm received payment in a shared group | Exact creditor relation only | Exact creditor relation only | Deny |
 | Reverse a settlement in a personal group | Owner only | Deny | Deny |
@@ -77,7 +79,7 @@ authenticated member's creditor relationship with the named debtor.
 
 - Keep access and refresh tokens in Android-backed secure storage. The client restores them at launch, shares one refresh attempt across concurrent requests, and clears rejected sessions.
 - Do not embed production secrets through `--dart-define`.
-- Use Android App Links or verified deep links in production.
+- Use Android App Links or verified deep links in production. Custom-scheme deep links (`vaquitamx://payment-requests/{id}`) never carry secrets and always hydrate authoritative state through the authenticated, caller-scoped `GET /api/v1/payment-requests/{id}` endpoint.
 - Redact sensitive content from screenshots and push notifications.
 - Consider Play Integrity signals as risk input, not authentication.
 - Offline group history, cached server-backed groups, and queued server

@@ -21,9 +21,34 @@ class AppCubit extends Cubit<AppState> {
       store.syncPendingMutations(retryFailed: retryFailed);
   Future<void> discardFailedMutation(String mutationId) =>
       store.discardFailedMutation(mutationId);
-  Future<void> loadInbox() async {
-    await Future.wait([store.loadStatus(), store.loadInvitations()]);
+  Future<void> loadInbox({String? paymentRequestOrientation}) async {
+    await Future.wait([
+      store.loadStatus(),
+      store.loadInvitations(),
+      store.loadPaymentRequests(orientation: paymentRequestOrientation),
+    ]);
   }
+
+  Future<PaymentRequestPage?> loadPaymentRequests({
+    String? status,
+    String? orientation,
+    String? groupId,
+    int limit = 50,
+    bool append = false,
+  }) =>
+      store.loadPaymentRequests(
+        status: status,
+        orientation: orientation,
+        groupId: groupId,
+        limit: limit,
+        append: append,
+      );
+
+  Future<PaymentRequestItem?> loadPaymentRequestById(String requestId) =>
+      store.loadPaymentRequestById(requestId);
+
+  Future<bool> completeSimulatedPayment(String requestId) =>
+      store.completeSimulatedPayment(requestId);
 
   Future<bool> createGroup({
     required String name,
@@ -86,11 +111,13 @@ class AppCubit extends Cubit<AppState> {
     required String groupId,
     required String debtorId,
     required int amountCents,
+    String description = 'Group balance settlement',
   }) =>
       store.requestPayment(
         groupId: groupId,
         debtorId: debtorId,
         amountCents: amountCents,
+        description: description,
       );
 
   Future<bool> addExpense({

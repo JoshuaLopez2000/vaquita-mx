@@ -1886,6 +1886,216 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Sesión'**
   String get securitySection;
+
+  /// No description provided for @paymentRequestDefaultDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Liquidación de saldo del grupo'**
+  String get paymentRequestDefaultDescription;
+
+  /// No description provided for @paymentRequestsTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicitudes de pago'**
+  String get paymentRequestsTitle;
+
+  /// No description provided for @paymentRequestDetailsTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicitud de pago'**
+  String get paymentRequestDetailsTitle;
+
+  /// No description provided for @paymentRequestsFilterAll.
+  ///
+  /// In es, this message translates to:
+  /// **'Todas'**
+  String get paymentRequestsFilterAll;
+
+  /// No description provided for @paymentRequestsFilterToPay.
+  ///
+  /// In es, this message translates to:
+  /// **'Por pagar'**
+  String get paymentRequestsFilterToPay;
+
+  /// No description provided for @paymentRequestsFilterSent.
+  ///
+  /// In es, this message translates to:
+  /// **'Enviadas'**
+  String get paymentRequestsFilterSent;
+
+  /// No description provided for @paymentRequestStatusPending.
+  ///
+  /// In es, this message translates to:
+  /// **'Pendiente'**
+  String get paymentRequestStatusPending;
+
+  /// No description provided for @paymentRequestStatusPaid.
+  ///
+  /// In es, this message translates to:
+  /// **'Pagada'**
+  String get paymentRequestStatusPaid;
+
+  /// No description provided for @paymentRequestStatusExpired.
+  ///
+  /// In es, this message translates to:
+  /// **'Expirada'**
+  String get paymentRequestStatusExpired;
+
+  /// No description provided for @paymentRequestStatusFailed.
+  ///
+  /// In es, this message translates to:
+  /// **'Fallida'**
+  String get paymentRequestStatusFailed;
+
+  /// No description provided for @paymentRequestToPayTo.
+  ///
+  /// In es, this message translates to:
+  /// **'{name} te solicitó'**
+  String paymentRequestToPayTo(String name);
+
+  /// No description provided for @paymentRequestRequestedFrom.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicitada a {name}'**
+  String paymentRequestRequestedFrom(String name);
+
+  /// No description provided for @paymentRequestDemoDisclaimerTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'Pago simulado (demo)'**
+  String get paymentRequestDemoDisclaimerTitle;
+
+  /// No description provided for @paymentRequestDemoDisclaimerBody.
+  ///
+  /// In es, this message translates to:
+  /// **'Esta solicitud usa el proveedor simulado para pruebas. Completarla actualiza los saldos en Vaquita y no realiza ninguna transferencia bancaria real.'**
+  String get paymentRequestDemoDisclaimerBody;
+
+  /// No description provided for @completeSimulatedPayment.
+  ///
+  /// In es, this message translates to:
+  /// **'Completar pago simulado'**
+  String get completeSimulatedPayment;
+
+  /// No description provided for @simulatedPaymentCompleted.
+  ///
+  /// In es, this message translates to:
+  /// **'Pago simulado completado. Saldos actualizados.'**
+  String get simulatedPaymentCompleted;
+
+  /// No description provided for @couldNotCompleteSimulatedPayment.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo completar el pago simulado.'**
+  String get couldNotCompleteSimulatedPayment;
+
+  /// No description provided for @sharePaymentLink.
+  ///
+  /// In es, this message translates to:
+  /// **'Compartir enlace'**
+  String get sharePaymentLink;
+
+  /// No description provided for @paymentLinkCopied.
+  ///
+  /// In es, this message translates to:
+  /// **'Enlace de pago copiado'**
+  String get paymentLinkCopied;
+
+  /// No description provided for @paymentLinkLabel.
+  ///
+  /// In es, this message translates to:
+  /// **'Enlace de la solicitud'**
+  String get paymentLinkLabel;
+
+  /// No description provided for @paymentRequestCreditorLabel.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicita'**
+  String get paymentRequestCreditorLabel;
+
+  /// No description provided for @paymentRequestDebtorLabel.
+  ///
+  /// In es, this message translates to:
+  /// **'Debe pagar'**
+  String get paymentRequestDebtorLabel;
+
+  /// No description provided for @paymentRequestDescriptionLabel.
+  ///
+  /// In es, this message translates to:
+  /// **'Concepto'**
+  String get paymentRequestDescriptionLabel;
+
+  /// No description provided for @paymentRequestExpiresAt.
+  ///
+  /// In es, this message translates to:
+  /// **'Expira: {date}'**
+  String paymentRequestExpiresAt(String date);
+
+  /// No description provided for @paymentRequestPaidAt.
+  ///
+  /// In es, this message translates to:
+  /// **'Pagada: {date}'**
+  String paymentRequestPaidAt(String date);
+
+  /// No description provided for @paymentRequestPaidExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Esta solicitud ya fue pagada y su liquidación quedó registrada en el grupo.'**
+  String get paymentRequestPaidExplanation;
+
+  /// No description provided for @paymentRequestExpiredExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Esta solicitud expiró y ya no puede completarse. Pide una nueva solicitud si aún existe saldo pendiente.'**
+  String get paymentRequestExpiredExplanation;
+
+  /// No description provided for @paymentRequestFailedExplanation.
+  ///
+  /// In es, this message translates to:
+  /// **'Esta solicitud falló y no puede completarse. Crea una nueva solicitud para intentarlo de nuevo.'**
+  String get paymentRequestFailedExplanation;
+
+  /// No description provided for @paymentRequestWaitingDebtor.
+  ///
+  /// In es, this message translates to:
+  /// **'Esperando que {name} complete el pago simulado.'**
+  String paymentRequestWaitingDebtor(String name);
+
+  /// No description provided for @paymentRequestNotFoundTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'Solicitud no disponible'**
+  String get paymentRequestNotFoundTitle;
+
+  /// No description provided for @paymentRequestNotFoundDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'No encontramos esta solicitud de pago o no tienes acceso a ella.'**
+  String get paymentRequestNotFoundDescription;
+
+  /// No description provided for @paymentRequestSignInRequired.
+  ///
+  /// In es, this message translates to:
+  /// **'Inicia sesión para ver esta solicitud de pago.'**
+  String get paymentRequestSignInRequired;
+
+  /// No description provided for @loadMore.
+  ///
+  /// In es, this message translates to:
+  /// **'Cargar más'**
+  String get loadMore;
+
+  /// No description provided for @noMatchingPaymentRequests.
+  ///
+  /// In es, this message translates to:
+  /// **'No hay solicitudes en este filtro.'**
+  String get noMatchingPaymentRequests;
+
+  /// No description provided for @viewRequest.
+  ///
+  /// In es, this message translates to:
+  /// **'Ver solicitud'**
+  String get viewRequest;
 }
 
 class _AppLocalizationsDelegate
