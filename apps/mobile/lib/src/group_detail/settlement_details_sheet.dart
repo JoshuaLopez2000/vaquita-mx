@@ -87,13 +87,15 @@ class _SettlementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final vColors = VaquitaColors.of(context);
     final members = {for (final member in group.members) member.id: member};
     final fromName =
         members[settlement.fromMemberId]?.name ?? l10n.genericMember;
     final toName = members[settlement.toMemberId]?.name ?? l10n.genericMember;
     final reversal = group.reversalForSettlement(settlement.id);
     final isReversed = reversal != null;
-    final colorScheme = Theme.of(context).colorScheme;
     final dateLabel =
         DateFormat.yMd(l10n.localeName).format(settlement.createdAt.toLocal());
 
@@ -115,61 +117,76 @@ class _SettlementCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: isReversed
                 ? colorScheme.errorContainer
-                : colorScheme.primaryContainer,
+                : vColors.positiveContainer,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
             isReversed ? Icons.undo_rounded : Icons.handshake_outlined,
             color: isReversed
                 ? colorScheme.onErrorContainer
-                : colorScheme.onPrimaryContainer,
+                : vColors.onPositiveContainer,
           ),
         ),
-        title: Row(
+        title: Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Text(
-                l10n.memberPaidMember(fromName, toName),
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  decoration: isReversed ? TextDecoration.lineThrough : null,
-                ),
+            Text(
+              l10n.memberPaidMember(fromName, toName),
+              style: theme.textTheme.titleSmall?.copyWith(
+                decoration: isReversed ? TextDecoration.lineThrough : null,
               ),
             ),
             if (isReversed)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Chip(
-                  label: Text(l10n.reversed),
-                  visualDensity: VisualDensity.compact,
-                  backgroundColor: colorScheme.errorContainer,
-                  labelStyle: TextStyle(
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  l10n.reversed,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onErrorContainer,
-                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               )
             else if (settlement.replacesSettlementId != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Chip(
-                  label: Text(l10n.replacement),
-                  visualDensity: VisualDensity.compact,
-                  labelStyle: const TextStyle(fontSize: 11),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  l10n.replacement,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onTertiaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
           ],
         ),
-        subtitle: Text(
-          isReversed
-              ? '${l10n.reversed} · ${reversal.reason}'
-              : '${l10n.settlement} · $dateLabel',
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            isReversed
+                ? '${l10n.reversed} · ${reversal.reason}'
+                : '${l10n.settlement} · $dateLabel',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         trailing: Text(
           formatMoney(settlement.amountCents),
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
+          style: VaquitaTheme.money(
+            theme.textTheme.titleSmall,
+            color: isReversed ? colorScheme.error : vColors.positive,
+          ).copyWith(
             decoration: isReversed ? TextDecoration.lineThrough : null,
           ),
         ),
@@ -201,128 +218,152 @@ void showSettlementDetailsSheet(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (sheetContext) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheetContext).height * .85,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          children: [
-            Text(
-              l10n.settlementDetails,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              l10n.memberPaidMember(fromName, toName),
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(timestampFormat.format(settlement.createdAt.toLocal())),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final colors = theme.colorScheme;
+      final vColors = VaquitaColors.of(sheetContext);
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .85,
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            children: [
+              Text(
+                l10n.settlementDetails,
+                style: theme.textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.memberPaidMember(fromName, toName),
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                timestampFormat.format(settlement.createdAt.toLocal()),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
                 padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: colors.outlineVariant),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(l10n.total),
+                    Text(l10n.total, style: theme.textTheme.titleMedium),
                     Text(
                       formatMoney(settlement.amountCents),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            decoration: reversal != null
-                                ? TextDecoration.lineThrough
-                                : null,
-                          ),
+                      style: VaquitaTheme.money(
+                        theme.textTheme.titleLarge,
+                        color:
+                            reversal != null ? colors.error : vColors.positive,
+                      ).copyWith(
+                        decoration: reversal != null
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            if (settlement.replacesSettlementId != null) ...[
-              const SizedBox(height: 12),
-              Text(l10n.replacesOriginalRecord),
-            ],
-            if (reversal != null) ...[
-              const SizedBox(height: 16),
-              _ReversalAuditCard(
-                actorName:
-                    members[reversal.actorMemberId]?.name ?? l10n.genericMember,
-                reason: reversal.reason,
-                createdAt: reversal.createdAt,
-                hasReplacement: replacement != null,
-              ),
-            ],
-            if (pendingServerSync && reversal == null) ...[
-              const SizedBox(height: 12),
-              Text(l10n.syncBeforeReversal),
-            ],
-            if (canReverse) ...[
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                key: Key('reverse-settlement-${settlement.id}'),
-                onPressed: () async {
-                  final reason = await showReversalReasonDialog(
-                    sheetContext,
-                    title: l10n.reverseSettlement,
-                  );
-                  if (reason == null || !sheetContext.mounted) return;
-                  final reversed =
-                      await sheetContext.read<AppCubit>().reverseSettlement(
-                            groupId: group.id,
-                            settlementId: settlement.id,
-                            reason: reason,
-                          );
-                  if (!sheetContext.mounted) return;
-                  Navigator.pop(sheetContext);
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        reversed
-                            ? (store.lastMutationQueuedOffline
-                                ? l10n.savedOfflineWillSync
-                                : l10n.settlementReversed)
-                            : l10n.couldNotReverseRecord,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.undo_rounded),
-                label: Text(l10n.reverseSettlement),
-              ),
-              if (onReverseAndReplace != null) ...[
-                const SizedBox(height: 8),
+              if (settlement.replacesSettlementId != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.replacesOriginalRecord,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (reversal != null) ...[
+                const SizedBox(height: 16),
+                _ReversalAuditCard(
+                  actorName: members[reversal.actorMemberId]?.name ??
+                      l10n.genericMember,
+                  reason: reversal.reason,
+                  createdAt: reversal.createdAt,
+                  hasReplacement: replacement != null,
+                ),
+              ],
+              if (pendingServerSync && reversal == null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  l10n.syncBeforeReversal,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (canReverse) ...[
+                const SizedBox(height: 16),
                 OutlinedButton.icon(
-                  key: Key('reverse-replace-settlement-${settlement.id}'),
+                  key: Key('reverse-settlement-${settlement.id}'),
                   onPressed: () async {
                     final reason = await showReversalReasonDialog(
                       sheetContext,
-                      title: l10n.reverseAndReplaceSettlement,
+                      title: l10n.reverseSettlement,
                     );
                     if (reason == null || !sheetContext.mounted) return;
+                    final reversed =
+                        await sheetContext.read<AppCubit>().reverseSettlement(
+                              groupId: group.id,
+                              settlementId: settlement.id,
+                              reason: reason,
+                            );
+                    if (!sheetContext.mounted) return;
                     Navigator.pop(sheetContext);
-                    await onReverseAndReplace(settlement, reason);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          reversed
+                              ? (store.lastMutationQueuedOffline
+                                  ? l10n.savedOfflineWillSync
+                                  : l10n.settlementReversed)
+                              : l10n.couldNotReverseRecord,
+                        ),
+                      ),
+                    );
                   },
-                  icon: const Icon(Icons.published_with_changes_rounded),
-                  label: Text(l10n.reverseAndReplaceSettlement),
+                  icon: const Icon(Icons.undo_rounded),
+                  label: Text(l10n.reverseSettlement),
                 ),
+                if (onReverseAndReplace != null) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: Key('reverse-replace-settlement-${settlement.id}'),
+                    onPressed: () async {
+                      final reason = await showReversalReasonDialog(
+                        sheetContext,
+                        title: l10n.reverseAndReplaceSettlement,
+                      );
+                      if (reason == null || !sheetContext.mounted) return;
+                      Navigator.pop(sheetContext);
+                      await onReverseAndReplace(settlement, reason);
+                    },
+                    icon: const Icon(Icons.published_with_changes_rounded),
+                    label: Text(l10n.reverseAndReplaceSettlement),
+                  ),
+                ],
               ],
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.pop(sheetContext),
+                child: Text(l10n.close),
+              ),
             ],
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => Navigator.pop(sheetContext),
-              child: Text(l10n.close),
-            ),
-          ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -342,11 +383,16 @@ class _ReversalAuditCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final timestamp =
         DateFormat.yMd(l10n.localeName).add_Hm().format(createdAt.toLocal());
     return Card(
       color: colorScheme.errorContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.error.withValues(alpha: 0.3)),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -354,15 +400,19 @@ class _ReversalAuditCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.undo_rounded,
-                    size: 18, color: colorScheme.onErrorContainer),
+                Icon(
+                  Icons.undo_rounded,
+                  size: 18,
+                  color: colorScheme.onErrorContainer,
+                ),
                 const SizedBox(width: 8),
-                Text(
-                  l10n.reversalAuditTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.onErrorContainer,
-                      ),
+                Expanded(
+                  child: Text(
+                    l10n.reversalAuditTitle,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: colorScheme.onErrorContainer,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -378,7 +428,7 @@ class _ReversalAuditCard extends StatelessWidget {
             Text(
               timestamp,
               style: TextStyle(
-                color: colorScheme.onErrorContainer,
+                color: colorScheme.onErrorContainer.withValues(alpha: 0.85),
                 fontSize: 12,
               ),
             ),

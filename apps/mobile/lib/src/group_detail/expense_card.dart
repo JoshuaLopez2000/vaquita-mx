@@ -17,6 +17,8 @@ class _ExpenseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final payerIDs = expense.payers.isEmpty
         ? [expense.payerId]
         : expense.payers.map((payer) => payer.memberId);
@@ -26,7 +28,6 @@ class _ExpenseCard extends StatelessWidget {
         .join(', ');
     final reversal = group.reversalForExpense(expense.id);
     final isReversed = reversal != null;
-    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       key: Key('expense-card-${expense.id}'),
       child: ListTile(
@@ -50,62 +51,79 @@ class _ExpenseCard extends StatelessWidget {
           ),
           child: Icon(
             isReversed ? Icons.undo_rounded : Icons.receipt_long_rounded,
-            color: isReversed ? colorScheme.onErrorContainer : null,
+            color: isReversed
+                ? colorScheme.onErrorContainer
+                : colorScheme.onSecondaryContainer,
           ),
         ),
-        title: Row(
+        title: Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Text(
-                expense.description,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  decoration: isReversed ? TextDecoration.lineThrough : null,
-                ),
+            Text(
+              expense.description,
+              style: theme.textTheme.titleSmall?.copyWith(
+                decoration: isReversed ? TextDecoration.lineThrough : null,
               ),
             ),
             if (isReversed)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Chip(
-                  label: Text(l10n.reversed),
-                  visualDensity: VisualDensity.compact,
-                  backgroundColor: colorScheme.errorContainer,
-                  labelStyle: TextStyle(
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  l10n.reversed,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onErrorContainer,
-                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               )
             else if (expense.replacesExpenseId != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Chip(
-                  label: Text(l10n.replacement),
-                  visualDensity: VisualDensity.compact,
-                  labelStyle: const TextStyle(fontSize: 11),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  l10n.replacement,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onTertiaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
           ],
         ),
-        subtitle: Text(
-          isReversed
-              ? '${l10n.reversed} · ${reversal.reason}'
-              : l10n.expenseSplitDetails(
-                  payerNames,
-                  expense.splitMode == 'salary'
-                      ? l10n.bySalary
-                      : expense.splitMode == 'percentage'
-                          ? l10n.byPercentage
-                          : l10n.split,
-                  expense.participantIds.length,
-                ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            isReversed
+                ? '${l10n.reversed} · ${reversal.reason}'
+                : l10n.expenseSplitDetails(
+                    payerNames,
+                    expense.splitMode == 'salary'
+                        ? l10n.bySalary
+                        : expense.splitMode == 'percentage'
+                            ? l10n.byPercentage
+                            : l10n.split,
+                    expense.participantIds.length,
+                  ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         trailing: Text(
           formatMoney(expense.amountCents),
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
+          style: VaquitaTheme.money(
+            theme.textTheme.titleSmall,
+            color: isReversed ? colorScheme.error : colorScheme.onSurface,
+          ).copyWith(
             decoration: isReversed ? TextDecoration.lineThrough : null,
           ),
         ),

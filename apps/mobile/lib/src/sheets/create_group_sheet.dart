@@ -57,9 +57,11 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
       NewGroupInput(
         name: _nameController.text.trim(),
         memberNames: _members.map((member) => member.name).toList(),
-        members: List.unmodifiable(_members
-            .map((member) => {'name': member.name, 'phone': member.phone})
-            .toList()),
+        members: List.unmodifiable(
+          _members
+              .map((member) => {'name': member.name, 'phone': member.phone})
+              .toList(),
+        ),
         emoji: _emojiController.text.trim(),
         visibility: _visibility,
         salarySplitEnabled: _salarySplits,
@@ -100,6 +102,8 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -108,153 +112,169 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
         24 + MediaQuery.viewInsetsOf(context).bottom,
       ),
       child: SingleChildScrollView(
-          child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const _SheetHandle(),
-            Text(
-              l10n.createAGroup,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              l10n.createGroupDescription,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            TextFormField(
-              key: const Key('group-name-field'),
-              controller: _nameController,
-              autofocus: true,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                labelText: l10n.groupName,
-                hintText: l10n.beachWeekend,
-                prefixIcon: const Icon(Icons.groups_rounded),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _SheetHandle(),
+              Text(
+                l10n.createAGroup,
+                style: theme.textTheme.headlineSmall,
               ),
-              validator: (value) => value == null || value.trim().length < 2
-                  ? l10n.enterGroupName
-                  : null,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              key: const Key('group-emoji-picker'),
-              controller: _emojiController,
-              readOnly: true,
-              onTap: () async {
-                final selected = await showGroupEmojiPicker(
-                  context,
-                );
-                if (selected != null) _emojiController.text = selected;
-              },
-              decoration: InputDecoration(
-                labelText: l10n.groupIcon,
-                prefixIcon: const Icon(Icons.emoji_emotions_outlined),
-                suffixIcon: const Icon(Icons.expand_more_rounded),
+              const SizedBox(height: 6),
+              Text(
+                l10n.createGroupDescription,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
-              validator: (value) =>
-                  value == null || value.trim().isEmpty ? l10n.groupIcon : null,
-            ),
-            const SizedBox(height: 10),
-            if (widget.allowShared) ...[
-              SegmentedButton<String>(
+              const SizedBox(height: 20),
+              TextFormField(
+                key: const Key('group-name-field'),
+                controller: _nameController,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: l10n.groupName,
+                  hintText: l10n.beachWeekend,
+                  prefixIcon: const Icon(Icons.groups_rounded),
+                ),
+                validator: (value) => value == null || value.trim().length < 2
+                    ? l10n.enterGroupName
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const Key('group-emoji-picker'),
+                controller: _emojiController,
+                readOnly: true,
+                onTap: () async {
+                  final selected = await showGroupEmojiPicker(context);
+                  if (selected != null) _emojiController.text = selected;
+                },
+                decoration: InputDecoration(
+                  labelText: l10n.groupIcon,
+                  prefixIcon: const Icon(Icons.emoji_emotions_outlined),
+                  suffixIcon: const Icon(Icons.expand_more_rounded),
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? l10n.groupIcon
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              if (widget.allowShared) ...[
+                SegmentedButton<String>(
                   segments: [
                     ButtonSegment(
-                        value: 'personal', label: Text(l10n.personal)),
-                    ButtonSegment(value: 'shared', label: Text(l10n.shared))
+                      value: 'personal',
+                      icon: const Icon(Icons.lock_outline_rounded, size: 18),
+                      label: Text(l10n.personal),
+                    ),
+                    ButtonSegment(
+                      value: 'shared',
+                      icon: const Icon(Icons.groups_outlined, size: 18),
+                      label: Text(l10n.shared),
+                    ),
                   ],
-                  selected: {
-                    _visibility
-                  },
+                  selected: {_visibility},
                   onSelectionChanged: (value) =>
-                      setState(() => _visibility = value.first)),
-              SwitchListTile(
+                      setState(() => _visibility = value.first),
+                ),
+                const SizedBox(height: 4),
+                SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _salarySplits,
                   title: Text(l10n.allowSalarySplits),
                   subtitle: Text(l10n.salaryOptInOnly),
-                  onChanged: (value) => setState(() => _salarySplits = value)),
-              if (_salarySplits) const SalaryInferenceNotice(),
-            ],
-            if (widget.contacts.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(l10n.addSavedContacts,
-                  style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final contact in widget.contacts)
-                    FilterChip(
-                      label: Text(contact.name),
-                      selected: _members
-                          .any((member) => member.phone == contact.phone),
-                      onSelected: (_) => _toggleContact(contact),
-                    ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 6),
-            TextFormField(
-              key: const Key('group-members-field'),
-              controller: _memberNameController,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _addMember(),
-              decoration: InputDecoration(
-                labelText: l10n.memberName,
-                hintText: l10n.memberNamesExample,
-                prefixIcon: const Icon(Icons.person_add_alt_1_rounded),
-              ),
-              validator: (_) => null,
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _memberPhoneController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                labelText: l10n.mexicanMobileNumber,
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.add_circle_outline),
-                  tooltip: l10n.addMember,
-                  onPressed: _addMember,
+                  onChanged: (value) => setState(() => _salarySplits = value),
                 ),
-              ),
-              onSubmitted: (_) => _addMember(),
-            ),
-            if (_members.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Wrap(
+                if (_salarySplits) ...[
+                  const SalaryInferenceNotice(),
+                  const SizedBox(height: 8),
+                ],
+              ],
+              if (widget.contacts.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  l10n.addSavedContacts,
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
                   spacing: 8,
                   runSpacing: 6,
                   children: [
-                    for (var index = 0; index < _members.length; index++)
-                      InputChip(
-                        label: Text(_members[index].phone.isEmpty
-                            ? _members[index].name
-                            : '${_members[index].name} Â· ${_members[index].phone}'),
-                        onDeleted: () =>
-                            setState(() => _members.removeAt(index)),
+                    for (final contact in widget.contacts)
+                      FilterChip(
+                        label: Text(contact.name),
+                        selected: _members
+                            .any((member) => member.phone == contact.phone),
+                        onSelected: (_) => _toggleContact(contact),
                       ),
                   ],
                 ),
+              ],
+              const SizedBox(height: 10),
+              TextFormField(
+                key: const Key('group-members-field'),
+                controller: _memberNameController,
+                textInputAction: TextInputAction.next,
+                onFieldSubmitted: (_) => _addMember(),
+                decoration: InputDecoration(
+                  labelText: l10n.memberName,
+                  hintText: l10n.memberNamesExample,
+                  prefixIcon: const Icon(Icons.person_add_alt_1_rounded),
+                ),
+                validator: (_) => null,
               ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              key: const Key('create-group-submit'),
-              onPressed: _submit,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(l10n.createGroup),
-            ),
-          ],
+              const SizedBox(height: 10),
+              TextField(
+                controller: _memberPhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: l10n.mexicanMobileNumber,
+                  prefixIcon: const Icon(Icons.phone_iphone_rounded),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    tooltip: l10n.addMember,
+                    onPressed: _addMember,
+                  ),
+                ),
+                onSubmitted: (_) => _addMember(),
+              ),
+              if (_members.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (var index = 0; index < _members.length; index++)
+                        InputChip(
+                          label: Text(
+                            _members[index].phone.isEmpty
+                                ? _members[index].name
+                                : '${_members[index].name} · ${_members[index].phone}',
+                          ),
+                          onDeleted: () =>
+                              setState(() => _members.removeAt(index)),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                key: const Key('create-group-submit'),
+                onPressed: _submit,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(l10n.createGroup),
+              ),
+            ],
+          ),
         ),
-      )),
+      ),
     );
   }
 }

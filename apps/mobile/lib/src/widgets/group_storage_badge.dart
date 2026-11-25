@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vaquita_mx/l10n/app_localizations.dart';
+import 'package:vaquita_mx/src/theme/vaquita_theme.dart';
 
 class GroupStorageBadge extends StatelessWidget {
   const GroupStorageBadge({
@@ -14,12 +15,17 @@ class GroupStorageBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final colors = Theme.of(context).colorScheme;
-    final color = serverBacked ? colors.primary : colors.secondary;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final vColors = VaquitaColors.of(context);
+    final fgColor = serverBacked ? colors.primary : colors.onSecondaryContainer;
+    final bgColor = serverBacked
+        ? colors.primaryContainer.withValues(alpha: 0.7)
+        : colors.secondaryContainer.withValues(alpha: 0.85);
     final storageBadge = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: bgColor,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -28,15 +34,18 @@ class GroupStorageBadge extends StatelessWidget {
           Icon(
             serverBacked ? Icons.cloud_done_outlined : Icons.phone_android,
             size: 13,
-            color: color,
+            color: fgColor,
           ),
           const SizedBox(width: 4),
-          Text(
-            serverBacked ? l10n.groupStoredOnServer : l10n.groupStoredLocally,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
+          Flexible(
+            child: Text(
+              serverBacked ? l10n.groupStoredOnServer : l10n.groupStoredLocally,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: fgColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -48,9 +57,9 @@ class GroupStorageBadge extends StatelessWidget {
       children: [
         storageBadge,
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: colors.tertiary.withValues(alpha: 0.14),
+            color: vColors.warningContainer,
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -59,15 +68,18 @@ class GroupStorageBadge extends StatelessWidget {
               Icon(
                 Icons.cloud_upload_outlined,
                 size: 13,
-                color: colors.tertiary,
+                color: vColors.onWarningContainer,
               ),
               const SizedBox(width: 4),
-              Text(
-                l10n.pendingSyncCount(pendingCount),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colors.tertiary,
-                      fontWeight: FontWeight.w600,
-                    ),
+              Flexible(
+                child: Text(
+                  l10n.pendingSyncCount(pendingCount),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: vColors.onWarningContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),

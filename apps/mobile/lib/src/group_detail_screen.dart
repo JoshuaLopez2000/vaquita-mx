@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
 import 'package:vaquita_mx/src/expense_allocation.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/financial_statistics.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
-import 'package:vaquita_mx/l10n/app_localizations.dart';
-import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
+import 'package:vaquita_mx/src/theme/vaquita_theme.dart';
 import 'package:vaquita_mx/src/widgets/group_emoji_picker.dart';
 import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
+import 'package:vaquita_mx/src/widgets/salary_inference_notice.dart';
+import 'package:vaquita_mx/src/widgets/vaquita_brand.dart';
 
 part 'group_detail/settlement_sheet.dart';
 part 'group_detail/settlement_details_sheet.dart';
@@ -153,6 +155,8 @@ class GroupDetailScreen extends StatelessWidget {
         final l10n = AppLocalizations.of(context)!;
         final group = store.groupById(groupId);
         final balances = store.balances(group);
+        final activeMembers =
+            group.members.where((member) => member.active).toList();
         return Scaffold(
           appBar: AppBar(
             title: Text(group.name),
@@ -199,63 +203,38 @@ class GroupDetailScreen extends StatelessWidget {
               const SizedBox(height: 24),
               _SectionHeader(
                 title: l10n.balances,
-                detail: l10n.membersCount(group.members.length),
+                detail: l10n.membersCount(activeMembers.length),
               ),
               const SizedBox(height: 10),
               Card(
                 child: Column(
                   children: [
                     for (var index = 0;
-                        index <
-                            group.members
-                                .where((member) => member.active)
-                                .length;
+                        index < activeMembers.length;
                         index++) ...[
-                      _MemberBalanceTile(
-                        member: group.members
-                            .where((member) => member.active)
-                            .elementAt(index),
-                        balance: balances[group.members
-                                .where((member) => member.active)
-                                .elementAt(index)
-                                .id] ??
-                            0,
-                        relationshipBalance: store.balanceWith(
-                          group,
-                          group.members
-                              .where((member) => member.active)
-                              .elementAt(index),
-                        ),
-                        isCurrentUser: group.members
-                                    .where((member) => member.active)
-                                    .elementAt(index)
-                                    .userId ==
-                                store.currentUserId ||
-                            group.members
-                                    .where((member) => member.active)
-                                    .elementAt(index)
-                                    .id ==
-                                store.currentUserId,
-                        sharedServerGroup: store.canRequestPayment(group),
-                        onSettle: () => _showSettlement(
-                          context,
-                          group,
-                          group.members
-                              .where((member) => member.active)
-                              .elementAt(index),
-                          store.balanceWith(
-                            group,
-                            group.members
-                                .where((member) => member.active)
-                                .elementAt(index),
-                          ),
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final member = activeMembers[index];
+                          final relationshipBalance =
+                              store.balanceWith(group, member);
+                          return _MemberBalanceTile(
+                            member: member,
+                            balance: balances[member.id] ?? 0,
+                            relationshipBalance: relationshipBalance,
+                            isCurrentUser:
+                                member.userId == store.currentUserId ||
+                                    member.id == store.currentUserId,
+                            sharedServerGroup: store.canRequestPayment(group),
+                            onSettle: () => _showSettlement(
+                              context,
+                              group,
+                              member,
+                              relationshipBalance,
+                            ),
+                          );
+                        },
                       ),
-                      if (index !=
-                          group.members
-                                  .where((member) => member.active)
-                                  .length -
-                              1)
+                      if (index != activeMembers.length - 1)
                         const Divider(height: 1, indent: 72),
                     ],
                   ],
@@ -265,6 +244,7 @@ class GroupDetailScreen extends StatelessWidget {
               _SectionHeader(
                 title: l10n.expenses,
                 detail: formatMoney(group.totalSpentCents),
+                isMoneyDetail: true,
               ),
               const SizedBox(height: 10),
               if (group.expenses.isEmpty)
@@ -317,31 +297,55 @@ class GroupDetailScreen extends StatelessWidget {
 
   Future<void> _showGroupInfo(BuildContext context, ExpenseGroup group) async {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final editGroup = await showModalBottomSheet<bool>(
       context: context,
+      showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '${group.emoji} ${group.name}',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
+              Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer,
+                      borderRadius: BorderRadius.circular(16),
                     ),
+                    child: Text(
+                      group.emoji,
+                      style: const TextStyle(fontSize: 26),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      group.name,
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Text(
-                  '${group.visibility == 'shared' && store.canUseServerFeatures(group) ? l10n.sharedGroup : l10n.personalGroup} · ${group.members.map((member) => member.name).join(', ')}'),
+                '${group.visibility == 'shared' && store.canUseServerFeatures(group) ? l10n.sharedGroup : l10n.personalGroup} · ${group.members.where((m) => m.active).map((member) => member.name).join(', ')}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 20),
-              OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(sheetContext, true);
-                  },
-                  icon: const Icon(Icons.edit_outlined),
-                  label: Text(l10n.editGroupContacts)),
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.pop(sheetContext, true),
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(l10n.editGroupContacts),
+              ),
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => Navigator.pop(sheetContext, false),
@@ -369,46 +373,66 @@ class GroupDetailScreen extends StatelessWidget {
     final member = TextEditingController();
     final phone = TextEditingController();
     await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        builder: (sheet) => Padding(
-            padding: EdgeInsets.fromLTRB(
-                24, 20, 24, 24 + MediaQuery.viewInsetsOf(sheet).bottom),
-            child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheet) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          4,
+          24,
+          24 + MediaQuery.viewInsetsOf(sheet).bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                l10n.editGroupContacts,
+                style: Theme.of(sheet).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
               TextField(
-                  controller: name,
-                  decoration: InputDecoration(labelText: l10n.groupName)),
-              const SizedBox(height: 8),
+                controller: name,
+                decoration: InputDecoration(
+                  labelText: l10n.groupName,
+                  prefixIcon: const Icon(Icons.groups_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
               TextField(
-                  controller: emoji,
-                  readOnly: true,
-                  onTap: () async {
-                    final selected = await showGroupEmojiPicker(
-                      sheet,
-                    );
-                    if (selected != null) emoji.text = selected;
-                  },
-                  decoration: InputDecoration(
-                    labelText: l10n.groupIcon,
-                    suffixIcon: const Icon(Icons.expand_more_rounded),
-                  )),
-              const SizedBox(height: 8),
+                controller: emoji,
+                readOnly: true,
+                onTap: () async {
+                  final selected = await showGroupEmojiPicker(sheet);
+                  if (selected != null) emoji.text = selected;
+                },
+                decoration: InputDecoration(
+                  labelText: l10n.groupIcon,
+                  prefixIcon: const Icon(Icons.emoji_emotions_outlined),
+                  suffixIcon: const Icon(Icons.expand_more_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
-                  onPressed: () async {
-                    final updated = await context.read<AppCubit>().updateGroup(
-                        group.id, {'name': name.text, 'emoji': emoji.text});
-                    if (!updated) {
-                      if (sheet.mounted) {
-                        ScaffoldMessenger.of(sheet).showSnackBar(
-                          SnackBar(content: Text(l10n.couldNotUpdateGroup)),
-                        );
-                      }
-                      return;
+                onPressed: () async {
+                  final updated = await context.read<AppCubit>().updateGroup(
+                    group.id,
+                    {'name': name.text, 'emoji': emoji.text},
+                  );
+                  if (!updated) {
+                    if (sheet.mounted) {
+                      ScaffoldMessenger.of(sheet).showSnackBar(
+                        SnackBar(content: Text(l10n.couldNotUpdateGroup)),
+                      );
                     }
-                    if (sheet.mounted) Navigator.pop(sheet);
-                  },
-                  child: Text(l10n.saveGroup)),
+                    return;
+                  }
+                  if (sheet.mounted) Navigator.pop(sheet);
+                },
+                child: Text(l10n.saveGroup),
+              ),
               if (group.salarySplitAvailable)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -416,8 +440,10 @@ class GroupDetailScreen extends StatelessWidget {
                   title: Text(l10n.enableSalarySplits),
                   subtitle: Text(l10n.everyMemberConsented),
                   onChanged: (value) async {
-                    final updated = await store
-                        .updateGroup(group.id, {'salary_split_enabled': value});
+                    final updated = await store.updateGroup(
+                      group.id,
+                      {'salary_split_enabled': value},
+                    );
                     if (!updated) {
                       if (sheet.mounted) {
                         ScaffoldMessenger.of(sheet).showSnackBar(
@@ -431,63 +457,84 @@ class GroupDetailScreen extends StatelessWidget {
                 )
               else if (serverSharedGroup)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(l10n.salarySplitsUnlock),
-                ),
-              if (group.salarySplitEnabled) ...[
-                const SalaryInferenceNotice(),
-                const SizedBox(height: 12),
-              ],
-              const Divider(height: 28),
-              TextField(
-                  controller: member,
-                  decoration: InputDecoration(labelText: l10n.contactName)),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: phone,
-                  keyboardType: TextInputType.phone,
-                  decoration:
-                      InputDecoration(labelText: l10n.mexicanMobileNumber)),
-              if (serverSharedGroup)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text(l10n.pendingUntilAccept),
+                  padding: const EdgeInsets.only(top: 10, bottom: 8),
+                  child: Text(
+                    l10n.salarySplitsUnlock,
+                    style: Theme.of(sheet).textTheme.bodySmall,
                   ),
                 ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                  onPressed: () async {
-                    final appCubit = context.read<AppCubit>();
-                    final added = await appCubit.addMember(
-                        group.id, member.text.trim(), phone.text.trim());
-                    if (!added) {
-                      if (sheet.mounted) {
-                        ScaffoldMessenger.of(sheet).showSnackBar(
-                          SnackBar(content: Text(l10n.couldNotAddContact)),
-                        );
-                      }
-                      return;
-                    }
-                    await appCubit.loadGroups();
+              if (group.salarySplitEnabled) ...[
+                const SizedBox(height: 8),
+                const SalaryInferenceNotice(),
+              ],
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Divider(height: 1),
+              ),
+              TextField(
+                controller: member,
+                decoration: InputDecoration(
+                  labelText: l10n.contactName,
+                  prefixIcon: const Icon(Icons.person_add_alt_1_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: phone,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: l10n.mexicanMobileNumber,
+                  prefixIcon: const Icon(Icons.phone_iphone_rounded),
+                ),
+              ),
+              if (serverSharedGroup)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    l10n.pendingUntilAccept,
+                    style: Theme.of(sheet).textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final appCubit = context.read<AppCubit>();
+                  final added = await appCubit.addMember(
+                    group.id,
+                    member.text.trim(),
+                    phone.text.trim(),
+                  );
+                  if (!added) {
                     if (sheet.mounted) {
-                      Navigator.pop(sheet);
-                    }
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(serverSharedGroup
-                              ? l10n.invitationSent(member.text.trim())
-                              : l10n.contactAdded),
-                        ),
+                      ScaffoldMessenger.of(sheet).showSnackBar(
+                        SnackBar(content: Text(l10n.couldNotAddContact)),
                       );
                     }
-                  },
-                  child: Text(serverSharedGroup
-                      ? l10n.sendInvitation
-                      : l10n.addContact)),
-              if (serverSharedGroup && self.isNotEmpty)
+                    return;
+                  }
+                  await appCubit.loadGroups();
+                  if (sheet.mounted) {
+                    Navigator.pop(sheet);
+                  }
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          serverSharedGroup
+                              ? l10n.invitationSent(member.text.trim())
+                              : l10n.contactAdded,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: Text(
+                  serverSharedGroup ? l10n.sendInvitation : l10n.addContact,
+                ),
+              ),
+              if (serverSharedGroup && self.isNotEmpty) ...[
+                const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   value: self.single.salarySharing,
@@ -495,11 +542,19 @@ class GroupDetailScreen extends StatelessWidget {
                   subtitle: Text(l10n.salaryPrivacy),
                   onChanged: (value) async {
                     await context.read<AppCubit>().updateMember(
-                        group.id, self.single.id, {'salary_sharing': value});
+                      group.id,
+                      self.single.id,
+                      {'salary_sharing': value},
+                    );
                     if (sheet.mounted) Navigator.pop(sheet);
                   },
                 ),
-            ]))));
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
     // The modal future resolves when dismissal begins, while a focused
     // EditableText can still be attached during the reverse animation.
     await Future<void>.delayed(const Duration(milliseconds: 300));

@@ -321,4 +321,18 @@
   ,"@expenseReversalMovement": {"placeholders":{"description":{"type":"String"}}}
   ,"settlementReversalMovement": "Settlement reversal"
   ,"compensatingEntry": "Compensating entry"
+  ,"startupLoading": "Preparing your groups and balances…"
+  ,"startupErrorTitle": "Could not start Vaquita MX"
+  ,"startupErrorDescription": "A problem occurred while restoring your local data. Your records remain safe."
+  ,"brandTagline": "Clear group accounts, down to the centavo"
+  ,"netPositionSettled": "All settled up"
+  ,"netPositionPositive": "Net in favor: {amount}"
+  ,"@netPositionPositive": {"placeholders":{"amount":{"type":"String"}}}
+  ,"netPositionNegative": "Net to cover: {amount}"
+  ,"@netPositionNegative": {"placeholders":{"amount":{"type":"String"}}}
+  ,"noContactsDescription": "Save frequent contacts or import them from your phone to set up groups faster."
+  ,"offlineModeNotice": "Local mode active on this device"
+  ,"accountSection": "Account & sync"
+  ,"preferencesSection": "Preferences & info"
+  ,"securitySection": "Session"
 }

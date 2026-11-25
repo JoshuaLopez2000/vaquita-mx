@@ -5,19 +5,21 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:vaquita_mx/l10n/app_localizations.dart';
+import 'package:vaquita_mx/l10n/localized_error.dart';
 import 'package:vaquita_mx/src/api_client.dart';
 import 'package:vaquita_mx/src/auth_screen.dart';
 import 'package:vaquita_mx/src/contacts_screen.dart';
 import 'package:vaquita_mx/src/features/app/application/app_cubit.dart';
 import 'package:vaquita_mx/src/features/app/application/app_state.dart';
 import 'package:vaquita_mx/src/group_detail_screen.dart';
-import 'package:vaquita_mx/l10n/app_localizations.dart';
-import 'package:vaquita_mx/l10n/localized_error.dart';
 import 'package:vaquita_mx/src/models.dart';
 import 'package:vaquita_mx/src/offline_database.dart';
 import 'package:vaquita_mx/src/sheets.dart';
 import 'package:vaquita_mx/src/store.dart';
+import 'package:vaquita_mx/src/theme/vaquita_theme.dart';
 import 'package:vaquita_mx/src/widgets/group_storage_badge.dart';
+import 'package:vaquita_mx/src/widgets/vaquita_brand.dart';
 
 part 'screens/dashboard_screen.dart';
 part 'screens/inbox_screen.dart';
@@ -30,9 +32,16 @@ part 'widgets/balance_metric.dart';
 part 'widgets/group_card.dart';
 
 class VaquitaApp extends StatefulWidget {
-  const VaquitaApp({this.store, super.key});
+  const VaquitaApp({
+    this.store,
+    this.initializeStore,
+    this.themeMode = ThemeMode.system,
+    super.key,
+  });
 
   final DemoStore? store;
+  final Future<DemoStore> Function()? initializeStore;
+  final ThemeMode themeMode;
 
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
@@ -61,7 +70,7 @@ class _VaquitaAppState extends State<VaquitaApp> {
     super.initState();
     _ownsStore = widget.store == null;
     if (_ownsStore) {
-      _initializeStore();
+      unawaited(_initializeStore());
     } else {
       store = widget.store!;
       appCubit = AppCubit(store!);
@@ -70,21 +79,34 @@ class _VaquitaAppState extends State<VaquitaApp> {
   }
 
   Future<void> _initializeStore() async {
+    if (mounted && (!_restoringSession || _initializationError != null)) {
+      setState(() {
+        _restoringSession = true;
+        _initializationError = null;
+      });
+    }
     try {
-      final api = ApiClient(baseUrl: VaquitaApp.apiBaseUrl);
-      api.onSessionInvalidated = _handleInvalidSession;
-      final database = kIsWeb ? null : await OfflineDatabase.open();
-      final initializedStore = DemoStore.offline(api, database);
-      final initializedCubit = AppCubit(initializedStore);
-      await initializedStore.initialize();
-      final restored = await api.restoreSession();
-      store = initializedStore;
-      appCubit = initializedCubit;
-      if (restored) {
-        await initializedStore.refreshAuthentication();
-        initializedStore.load();
+      final customInitializer = widget.initializeStore;
+      if (customInitializer != null) {
+        final initializedStore = await customInitializer();
+        store = initializedStore;
+        appCubit = AppCubit(initializedStore);
+      } else {
+        final api = ApiClient(baseUrl: VaquitaApp.apiBaseUrl);
+        api.onSessionInvalidated = _handleInvalidSession;
+        final database = kIsWeb ? null : await OfflineDatabase.open();
+        final initializedStore = DemoStore.offline(api, database);
+        final initializedCubit = AppCubit(initializedStore);
+        await initializedStore.initialize();
+        final restored = await api.restoreSession();
+        store = initializedStore;
+        appCubit = initializedCubit;
+        if (restored) {
+          await initializedStore.refreshAuthentication();
+          initializedStore.load();
+        }
+        if (!kIsWeb) _listenForReconnects();
       }
-      if (!kIsWeb) _listenForReconnects();
     } catch (error) {
       _initializationError = error.toString();
     }
@@ -100,6 +122,7 @@ class _VaquitaAppState extends State<VaquitaApp> {
   }
 
   void _listenForReconnects() {
+    unawaited(_connectivitySubscription?.cancel());
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
       _syncWhenOnline,
       onError: (Object error, StackTrace stackTrace) {
@@ -138,11 +161,10 @@ class _VaquitaAppState extends State<VaquitaApp> {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF006B5E);
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.light,
-    );
+    final bootstrapNeeded = _restoringSession ||
+        _initializationError != null ||
+        store == null ||
+        appCubit == null;
 
     final materialApp = MaterialApp(
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
@@ -150,54 +172,38 @@ class _VaquitaAppState extends State<VaquitaApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       locale: _locale,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: colorScheme,
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF5F7F4),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: colorScheme.surfaceContainerLowest,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          color: colorScheme.surfaceContainerLowest,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 52),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+      theme: VaquitaTheme.light(),
+      darkTheme: VaquitaTheme.dark(),
+      themeMode: widget.themeMode,
+      home: bootstrapNeeded
+          ? Builder(
+              builder: (innerContext) {
+                final l10n = AppLocalizations.of(innerContext)!;
+                return VaquitaBootstrapScreen(
+                  appTitle: l10n.appTitle,
+                  loadingLabel: l10n.startupLoading,
+                  errorTitle: _initializationError != null
+                      ? l10n.startupErrorTitle
+                      : null,
+                  errorDescription: _initializationError != null
+                      ? l10n.startupErrorDescription
+                      : null,
+                  errorDetail: _initializationError,
+                  retryLabel: l10n.retry,
+                  onRetry: _initializationError != null
+                      ? () => unawaited(_initializeStore())
+                      : null,
+                );
+              },
+            )
+          : BlocProvider.value(
+              value: appCubit!,
+              child: AppShell(
+                store: store!,
+                onLocaleChanged: _setLocale,
+                onSignOut: _signOut,
+              ),
             ),
-          ),
-        ),
-      ),
-      home: _restoringSession
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _initializationError != null
-              ? Scaffold(
-                  body: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(_initializationError!),
-                    ),
-                  ),
-                )
-              : BlocProvider.value(
-                  value: appCubit!,
-                  child: AppShell(
-                    store: store!,
-                    onLocaleChanged: _setLocale,
-                    onSignOut: _signOut,
-                  ),
-                ),
     );
     return appCubit == null
         ? materialApp
@@ -337,74 +343,97 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final vColors = VaquitaColors.of(context);
     return BlocListener<AppCubit, AppState>(
       listenWhen: (_, state) => state.navigationTarget != null,
       listener: (_, state) => _selectTab(state.navigationTarget!),
-      child: Scaffold(
-        body: SafeArea(
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (index) => _selectTab(index, animate: false),
-            children: [
-              DashboardScreen(store: widget.store),
-              StatusScreen(store: widget.store),
-              MovementsScreen(store: widget.store),
-              const ContactsScreen(),
-              ProfileScreen(
-                store: widget.store,
-                onLocaleChanged: widget.onLocaleChanged,
-                onSignOut: widget.onSignOut,
-                onAuthenticate: _authenticate,
-                onSync: _syncNow,
+      child: AnimatedBuilder(
+        animation: widget.store,
+        builder: (context, _) {
+          final inviteCount = widget.store.invitations.length;
+          Widget inboxIcon(IconData iconData) {
+            final icon = Icon(iconData);
+            if (inviteCount == 0) return icon;
+            return Badge.count(count: inviteCount, child: icon);
+          }
+
+          return Scaffold(
+            body: SafeArea(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) => _selectTab(index, animate: false),
+                children: [
+                  DashboardScreen(
+                    store: widget.store,
+                    onProfileTap: () => _selectTab(4),
+                  ),
+                  StatusScreen(store: widget.store),
+                  MovementsScreen(store: widget.store),
+                  const ContactsScreen(),
+                  ProfileScreen(
+                    store: widget.store,
+                    onLocaleChanged: widget.onLocaleChanged,
+                    onSignOut: widget.onSignOut,
+                    onAuthenticate: _authenticate,
+                    onSync: _syncNow,
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        floatingActionButton: _selectedIndex == 0
-            ? FloatingActionButton.extended(
-                key: const Key('create-group-button'),
-                onPressed: _createGroup,
-                icon: const Icon(Icons.add_rounded),
-                label: Text(l10n.newGroup),
-              )
-            : null,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) {
-            _selectTab(index);
-            if (index == 1) {
-              context.read<AppCubit>().loadInbox();
-            }
-            if (index == 2) context.read<AppCubit>().loadGroups();
-          },
-          destinations: [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: l10n.home,
             ),
-            NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long_rounded),
-              label: l10n.inbox,
+            floatingActionButton: _selectedIndex == 0
+                ? FloatingActionButton.extended(
+                    key: const Key('create-group-button'),
+                    onPressed: _createGroup,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(l10n.newGroup),
+                  )
+                : null,
+            bottomNavigationBar: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(color: vColors.cardBorder),
+                ),
+              ),
+              child: NavigationBar(
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: (index) {
+                  _selectTab(index);
+                  if (index == 1) {
+                    context.read<AppCubit>().loadInbox();
+                  }
+                  if (index == 2) context.read<AppCubit>().loadGroups();
+                },
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.home_outlined),
+                    selectedIcon: const Icon(Icons.home_rounded),
+                    label: l10n.home,
+                  ),
+                  NavigationDestination(
+                    icon: inboxIcon(Icons.receipt_long_outlined),
+                    selectedIcon: inboxIcon(Icons.receipt_long_rounded),
+                    label: l10n.inbox,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.swap_horiz_outlined),
+                    selectedIcon: const Icon(Icons.swap_horiz_rounded),
+                    label: l10n.movements,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.contacts_outlined),
+                    selectedIcon: const Icon(Icons.contacts_rounded),
+                    label: l10n.contacts,
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.person_outline_rounded),
+                    selectedIcon: const Icon(Icons.person_rounded),
+                    label: l10n.profile,
+                  ),
+                ],
+              ),
             ),
-            NavigationDestination(
-              icon: Icon(Icons.swap_horiz_outlined),
-              selectedIcon: Icon(Icons.swap_horiz_rounded),
-              label: l10n.movements,
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.contacts_outlined),
-              selectedIcon: Icon(Icons.contacts_rounded),
-              label: l10n.contacts,
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: l10n.profile,
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

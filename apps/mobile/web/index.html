@@ -1,14 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Group expenses and payment requests for Mexico.">
+  <meta name="description" content="Gastos en grupo y solicitudes de cobro para México.">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F5F0">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1513">
   <title>Vaquita MX</title>
+  <style>
+    :root {
+      --splash-bg: #F6F5F0;
+      --splash-medallion: #0B6B5A;
+      --splash-fg: #0B6B5A;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --splash-bg: #0F1513;
+        --splash-medallion: #145347;
+        --splash-fg: #63DAC3;
+      }
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background-color: var(--splash-bg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #vaquita-splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background-color: var(--splash-bg);
+      pointer-events: none;
+      transition: opacity 180ms ease-out;
+    }
+    #vaquita-splash span {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 2.2px;
+      color: var(--splash-fg);
+    }
+    flt-glass-pane ~ #vaquita-splash,
+    flutter-view ~ #vaquita-splash {
+      opacity: 0;
+    }
+  </style>
 </head>
 <body>
+  <div id="vaquita-splash" aria-hidden="true">
+    <svg width="88" height="88" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="24" y="24" width="144" height="144" rx="40" fill="var(--splash-medallion)"/>
+      <rect x="74" y="54" width="44" height="7" rx="3.5" fill="#042620"/>
+      <circle cx="96" cy="44" r="15" fill="#F5B841"/>
+      <circle cx="96" cy="44" r="9.5" stroke="#FFDF94" stroke-width="3"/>
+      <path d="M72 86 Q60 72 65 60" stroke="#FDFBF7" stroke-width="9" stroke-linecap="round"/>
+      <path d="M120 86 Q132 72 127 60" stroke="#FDFBF7" stroke-width="9" stroke-linecap="round"/>
+      <ellipse cx="52" cy="96" rx="14" ry="8.5" transform="rotate(-20 52 96)" fill="#FDFBF7"/>
+      <ellipse cx="140" cy="96" rx="14" ry="8.5" transform="rotate(20 140 96)" fill="#FDFBF7"/>
+      <rect x="58" y="76" width="76" height="64" rx="26" fill="#FDFBF7"/>
+      <ellipse cx="111" cy="88" rx="10" ry="7.5" fill="var(--splash-medallion)"/>
+      <circle cx="80" cy="100" r="4.2" fill="#073B32"/>
+      <circle cx="112" cy="100" r="4.2" fill="#073B32"/>
+      <rect x="70" y="110" width="52" height="26" rx="13" fill="#F3D5C0"/>
+      <circle cx="87" cy="123" r="3.4" fill="#8C4A27"/>
+      <circle cx="105" cy="123" r="3.4" fill="#8C4A27"/>
+    </svg>
+    <span>VAQUITA MX</span>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

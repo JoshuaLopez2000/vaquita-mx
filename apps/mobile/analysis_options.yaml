@@ -6,6 +6,10 @@ analyzer:
     # GlobalMaterialLocalizations in favor of package:material_ui, which is not
     # available on older stable SDKs (e.g. 3.44.x). Remove once min SDK >= 3.47.
     deprecated_member_use: ignore
+  exclude:
+    - build/**
+    - android/**
+    - web/**
 
 linter:
   rules:
