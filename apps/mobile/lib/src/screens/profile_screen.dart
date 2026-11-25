@@ -15,11 +15,15 @@ class ProfileScreen extends StatelessWidget {
   final Future<void> Function(bool allDevices) onSignOut;
   final Future<void> Function() onAuthenticate;
   final Future<void> Function() onSync;
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, state) {
         final l10n = AppLocalizations.of(context)!;
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+        final vColors = VaquitaColors.of(context);
         final user = state.user;
         final name = user?.name ?? l10n.yourAccount;
         final initials = name
@@ -28,33 +32,126 @@ class ProfileScreen extends StatelessWidget {
             .map((part) => part.isEmpty ? '' : part[0])
             .join()
             .toUpperCase();
+
         return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
           children: [
             Text(
               l10n.profile,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: theme.textTheme.headlineMedium,
             ),
-            const SizedBox(height: 24),
-            CircleAvatar(
-                radius: 42, child: Text(initials.isEmpty ? '?' : initials)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [vColors.heroStart, vColors.heroEnd],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        initials.isEmpty ? '?' : initials,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: vColors.onHero,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: theme.textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: user != null
+                                  ? vColors.positiveContainer
+                                  : colors.secondaryContainer,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  user != null
+                                      ? Icons.cloud_done_outlined
+                                      : Icons.phone_android_rounded,
+                                  size: 14,
+                                  color: user != null
+                                      ? vColors.onPositiveContainer
+                                      : colors.onSecondaryContainer,
+                                ),
+                                const SizedBox(width: 5),
+                                Flexible(
+                                  child: Text(
+                                    user != null
+                                        ? user.email
+                                        : l10n.offlineModeNotice,
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: user != null
+                                          ? vColors.onPositiveContainer
+                                          : colors.onSecondaryContainer,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(
-              name,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              l10n.accountSection,
+              style: theme.textTheme.titleMedium,
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 8),
             if (user == null && store.apiClient != null)
               Card(
                 child: ListTile(
                   key: const Key('login-signup-button'),
-                  leading: const Icon(Icons.login_rounded),
-                  title: Text(l10n.loginOrSignUp),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: Container(
+                    width: 42,
+                    height: 42,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.login_rounded,
+                      color: colors.onPrimaryContainer,
+                    ),
+                  ),
+                  title: Text(
+                    l10n.loginOrSignUp,
+                    style: theme.textTheme.titleSmall,
+                  ),
                   subtitle: Text(l10n.loginOrSignUpDescription),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: onAuthenticate,
@@ -67,13 +164,13 @@ class ProfileScreen extends StatelessWidget {
                     ListTile(
                       leading: const Icon(Icons.email_outlined),
                       title: Text(l10n.email),
-                      trailing: Text(user.email),
+                      subtitle: Text(user.email),
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.phone_outlined),
                       title: Text(l10n.mobileNumber),
-                      trailing: Text(user.phone),
+                      subtitle: Text(user.phone),
                     ),
                   ],
                 ),
@@ -87,107 +184,148 @@ class ProfileScreen extends StatelessWidget {
                 label: Text(l10n.syncLocalGroupsButton),
               ),
             ],
-            const SizedBox(height: 18),
-            Text(l10n.contacts,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text(l10n.contactsDescription,
-                style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const ContactsScreen(),
-                      ),
-                    ),
-                icon: const Icon(Icons.contacts_outlined),
-                label: Text(l10n.manageContacts)),
-            if (state.contacts.isNotEmpty)
-              Card(
-                  child: Column(children: [
-                for (final contact in state.contacts)
-                  ListTile(
-                      leading: CircleAvatar(
-                          child:
-                              Text(contact.name.substring(0, 1).toUpperCase())),
-                      title: Text(contact.name),
-                      subtitle: Text(contact.phone),
-                      trailing: const Icon(Icons.person_add_alt_1_rounded))
-              ])),
-            const SizedBox(height: 18),
-            Card(
-              child: ListTile(
-                key: const Key('language-settings-button'),
-                leading: const Icon(Icons.language_outlined),
-                title: Text(l10n.language),
-                subtitle: Text(l10n.languageDescription),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  builder: (sheetContext) {
-                    final selected =
-                        Localizations.localeOf(context).languageCode;
-                    return SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(l10n.chooseLanguage,
-                                style: Theme.of(context).textTheme.titleLarge),
-                            RadioGroup<String>(
-                              groupValue: selected,
-                              onChanged: (language) {
-                                if (language == null) return;
-                                onLocaleChanged(Locale(language));
-                                Navigator.pop(sheetContext);
-                              },
-                              child: Column(
-                                children: [
-                                  RadioListTile<String>(
-                                    value: 'es',
-                                    title: Text(l10n.spanish),
-                                  ),
-                                  RadioListTile<String>(
-                                    value: 'en',
-                                    title: Text(l10n.english),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            const SizedBox(height: 16),
+            Text(
+              l10n.contacts,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              l10n.contactsDescription,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 18),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.shield_outlined),
-                title: Text(l10n.paymentProvider),
-                subtitle: Text(l10n.simulatedProvider),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  showAboutDialog(
-                    context: context,
-                    applicationName: l10n.appTitle,
-                    applicationVersion: '0.1.0',
-                    children: [
-                      Text(l10n.aboutSimulatedProvider),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const ContactsScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.contacts_outlined),
+              label: Text(l10n.manageContacts),
+            ),
+            if (state.contacts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Card(
+                child: Column(
+                  children: [
+                    for (var i = 0; i < state.contacts.length; i++) ...[
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: colors.primaryContainer,
+                          foregroundColor: colors.onPrimaryContainer,
+                          child: Text(
+                            state.contacts[i].name.trim().isEmpty
+                                ? '?'
+                                : state.contacts[i].name
+                                    .trim()
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                          ),
+                        ),
+                        title: Text(state.contacts[i].name),
+                        subtitle: Text(state.contacts[i].phone),
+                      ),
+                      if (i != state.contacts.length - 1)
+                        const Divider(height: 1, indent: 72),
                     ],
-                  );
-                },
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Text(
+              l10n.preferencesSection,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    key: const Key('language-settings-button'),
+                    leading: const Icon(Icons.language_outlined),
+                    title: Text(l10n.language),
+                    subtitle: Text(l10n.languageDescription),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showModalBottomSheet<void>(
+                      context: context,
+                      showDragHandle: true,
+                      builder: (sheetContext) {
+                        final selected =
+                            Localizations.localeOf(context).languageCode;
+                        return SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  l10n.chooseLanguage,
+                                  style: theme.textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 8),
+                                RadioGroup<String>(
+                                  groupValue: selected,
+                                  onChanged: (language) {
+                                    if (language == null) return;
+                                    onLocaleChanged(Locale(language));
+                                    Navigator.pop(sheetContext);
+                                  },
+                                  child: Column(
+                                    children: [
+                                      RadioListTile<String>(
+                                        value: 'es',
+                                        title: Text(l10n.spanish),
+                                      ),
+                                      RadioListTile<String>(
+                                        value: 'en',
+                                        title: Text(l10n.english),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(
+                      Icons.shield_outlined,
+                      color: vColors.warning,
+                    ),
+                    title: Text(l10n.paymentProvider),
+                    subtitle: Text(l10n.simulatedProvider),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      showAboutDialog(
+                        context: context,
+                        applicationIcon: const VaquitaLogoMark(size: 48),
+                        applicationName: l10n.appTitle,
+                        applicationVersion: '0.1.0',
+                        children: [
+                          Text(l10n.aboutSimulatedProvider),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
             if (user != null) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 22),
+              Text(
+                l10n.securitySection,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 10),
               Card(
                 child: Column(
                   children: [
@@ -201,8 +339,14 @@ class ProfileScreen extends StatelessWidget {
                     const Divider(height: 1),
                     ListTile(
                       key: const Key('sign-out-all-button'),
-                      leading: const Icon(Icons.phonelink_erase_rounded),
-                      title: Text(l10n.signOutAll),
+                      leading: Icon(
+                        Icons.phonelink_erase_rounded,
+                        color: colors.error,
+                      ),
+                      title: Text(
+                        l10n.signOutAll,
+                        style: TextStyle(color: colors.error),
+                      ),
                       subtitle: Text(l10n.signOutAllDescription),
                       onTap: () => onSignOut(true),
                     ),

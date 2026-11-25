@@ -8,26 +8,55 @@ class InvitationDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.invitationDetails)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          CircleAvatar(
-            radius: 32,
-            child: Text(invitation.group.emoji,
-                style: const TextStyle(fontSize: 28)),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: colors.primaryContainer,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Text(
+                      invitation.group.emoji,
+                      style: const TextStyle(fontSize: 34),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    invitation.group.name,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.sharedGroupInvitation,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 16),
-          Text(invitation.group.name,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(l10n.sharedGroupInvitation, textAlign: TextAlign.center),
-          const SizedBox(height: 32),
           Card(
             child: ListTile(
-              leading: Icon(Icons.info_outline),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: Icon(Icons.info_outline_rounded, color: colors.primary),
               title: Text(l10n.responseRequired),
               subtitle: Text(l10n.returnToInbox),
             ),

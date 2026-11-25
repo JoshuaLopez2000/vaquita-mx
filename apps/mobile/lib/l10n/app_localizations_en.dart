@@ -981,4 +981,46 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get compensatingEntry => 'Compensating entry';
+
+  @override
+  String get startupLoading => 'Preparing your groups and balances…';
+
+  @override
+  String get startupErrorTitle => 'Could not start Vaquita MX';
+
+  @override
+  String get startupErrorDescription =>
+      'A problem occurred while restoring your local data. Your records remain safe.';
+
+  @override
+  String get brandTagline => 'Clear group accounts, down to the centavo';
+
+  @override
+  String get netPositionSettled => 'All settled up';
+
+  @override
+  String netPositionPositive(String amount) {
+    return 'Net in favor: $amount';
+  }
+
+  @override
+  String netPositionNegative(String amount) {
+    return 'Net to cover: $amount';
+  }
+
+  @override
+  String get noContactsDescription =>
+      'Save frequent contacts or import them from your phone to set up groups faster.';
+
+  @override
+  String get offlineModeNotice => 'Local mode active on this device';
+
+  @override
+  String get accountSection => 'Account & sync';
+
+  @override
+  String get preferencesSection => 'Preferences & info';
+
+  @override
+  String get securitySection => 'Session';
 }

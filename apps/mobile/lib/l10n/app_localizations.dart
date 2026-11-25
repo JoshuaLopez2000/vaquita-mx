@@ -1814,6 +1814,78 @@ abstract class AppLocalizations {
   /// In es, this message translates to:
   /// **'Asiento compensatorio'**
   String get compensatingEntry;
+
+  /// No description provided for @startupLoading.
+  ///
+  /// In es, this message translates to:
+  /// **'Preparando tus grupos y saldos…'**
+  String get startupLoading;
+
+  /// No description provided for @startupErrorTitle.
+  ///
+  /// In es, this message translates to:
+  /// **'No se pudo iniciar Vaquita MX'**
+  String get startupErrorTitle;
+
+  /// No description provided for @startupErrorDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Ocurrió un problema al restaurar tus datos locales. Tus registros siguen protegidos.'**
+  String get startupErrorDescription;
+
+  /// No description provided for @brandTagline.
+  ///
+  /// In es, this message translates to:
+  /// **'Cuentas claras en cada vaquita, al centavo'**
+  String get brandTagline;
+
+  /// No description provided for @netPositionSettled.
+  ///
+  /// In es, this message translates to:
+  /// **'Todo a mano'**
+  String get netPositionSettled;
+
+  /// No description provided for @netPositionPositive.
+  ///
+  /// In es, this message translates to:
+  /// **'Neto a favor: {amount}'**
+  String netPositionPositive(String amount);
+
+  /// No description provided for @netPositionNegative.
+  ///
+  /// In es, this message translates to:
+  /// **'Neto por cubrir: {amount}'**
+  String netPositionNegative(String amount);
+
+  /// No description provided for @noContactsDescription.
+  ///
+  /// In es, this message translates to:
+  /// **'Guarda contactos frecuentes o impórtalos desde tu teléfono para armar grupos más rápido.'**
+  String get noContactsDescription;
+
+  /// No description provided for @offlineModeNotice.
+  ///
+  /// In es, this message translates to:
+  /// **'Modo local activo en este dispositivo'**
+  String get offlineModeNotice;
+
+  /// No description provided for @accountSection.
+  ///
+  /// In es, this message translates to:
+  /// **'Cuenta y sincronización'**
+  String get accountSection;
+
+  /// No description provided for @preferencesSection.
+  ///
+  /// In es, this message translates to:
+  /// **'Preferencias e información'**
+  String get preferencesSection;
+
+  /// No description provided for @securitySection.
+  ///
+  /// In es, this message translates to:
+  /// **'Sesión'**
+  String get securitySection;
 }
 
 class _AppLocalizationsDelegate

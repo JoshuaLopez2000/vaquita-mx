@@ -160,10 +160,6 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   }
 
   void _populateExactShares() {
-    // Existing multiple-payer behavior treats every contributed centavo as
-    // group spending, even when it exceeds the entered expense amount. Until
-    // the user edits an exact share, keep the generated shares in sync with
-    // that allocation total.
     final total = _parseAmount();
     if (total == null || _participantIds.isEmpty) return;
     final ordered = widget.group.members
@@ -302,7 +298,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
           allocationTotalCents: amountCents,
         )) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.exactSharesMustMatchTotal)));
+        SnackBar(content: Text(l10n.exactSharesMustMatchTotal)),
+      );
       return;
     }
     if (_splitMode == 'exact' &&
@@ -374,6 +371,8 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final percentagePreview =
         _splitMode == 'percentage' ? _percentagePreviewShares() : null;
     return SingleChildScrollView(
@@ -392,11 +391,9 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
             const _SheetHandle(),
             Text(
               l10n.addAnExpense,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: theme.textTheme.headlineSmall,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             TextFormField(
               key: const Key('expense-description-field'),
               controller: _descriptionController,
@@ -411,7 +408,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                   ? l10n.addDescription
                   : null,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextFormField(
               key: const Key('expense-amount-field'),
               controller: _amountController,
@@ -436,55 +433,69 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               decoration: InputDecoration(
                 labelText: l10n.amount,
                 hintText: '0.00',
+                prefixIcon: const Icon(Icons.payments_outlined),
                 prefixText: r'$ ',
                 suffixText: 'MXN',
               ),
               validator: (_) =>
                   _parseAmount() == null ? l10n.amountGreaterZero : null,
             ),
-            const SizedBox(height: 14),
-            Text(l10n.paidBy, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 16),
+            Text(l10n.paidBy, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
             for (final member in widget.group.members)
-              Row(children: [
-                Checkbox(
-                  key: Key('expense-payer-checkbox-${member.id}'),
-                  value: _payerIds.contains(member.id),
-                  onChanged: (selected) => setState(() {
-                    if (selected ?? false) {
-                      _payerIds.add(member.id);
-                    } else if (_payerIds.length > 1) {
-                      _payerIds.remove(member.id);
-                      _payerAmountControllers[member.id]!.clear();
-                    }
-                    if (_splitMode == 'exact' && !_exactSharesEdited) {
-                      _populateExactShares();
-                    }
-                  }),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      key: Key('expense-payer-checkbox-${member.id}'),
+                      value: _payerIds.contains(member.id),
+                      onChanged: (selected) => setState(() {
+                        if (selected ?? false) {
+                          _payerIds.add(member.id);
+                        } else if (_payerIds.length > 1) {
+                          _payerIds.remove(member.id);
+                          _payerAmountControllers[member.id]!.clear();
+                        }
+                        if (_splitMode == 'exact' && !_exactSharesEdited) {
+                          _populateExactShares();
+                        }
+                      }),
+                    ),
+                    Expanded(child: Text(member.name)),
+                    if (_payerIds.contains(member.id))
+                      SizedBox(
+                        width: 118,
+                        child: TextFormField(
+                          key: Key('expense-payer-${member.id}'),
+                          controller: _payerAmountControllers[member.id],
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.,]'),
+                            ),
+                          ],
+                          onChanged: (_) {
+                            _payerAmountsEdited = true;
+                            if (_splitMode == 'exact' && !_exactSharesEdited) {
+                              setState(_populateExactShares);
+                            } else if (_splitMode == 'percentage') {
+                              setState(() {});
+                            }
+                          },
+                          decoration: const InputDecoration(
+                            prefixText: r'$ ',
+                            hintText: '0.00',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                Expanded(child: Text(member.name)),
-                if (_payerIds.contains(member.id))
-                  SizedBox(
-                      width: 110,
-                      child: TextFormField(
-                        key: Key('expense-payer-${member.id}'),
-                        controller: _payerAmountControllers[member.id],
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))
-                        ],
-                        onChanged: (_) {
-                          _payerAmountsEdited = true;
-                          if (_splitMode == 'exact' && !_exactSharesEdited) {
-                            setState(_populateExactShares);
-                          } else if (_splitMode == 'percentage') {
-                            setState(() {});
-                          }
-                        },
-                        decoration: const InputDecoration(
-                            prefixText: r'$ ', hintText: '0.00'),
-                      )),
-              ]),
+              ),
             CheckboxListTile(
               key: const Key('expense-split-overpayment-checkbox'),
               contentPadding: EdgeInsets.zero,
@@ -495,39 +506,53 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 _splitOverpayment = value ?? true;
               }),
             ),
-            const SizedBox(height: 18),
-            SegmentedButton<String>(
+            const SizedBox(height: 14),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<String>(
                 showSelectedIcon: false,
                 segments: [
                   ButtonSegment(value: 'equal', label: Text(l10n.equal)),
                   ButtonSegment(
-                      value: 'percentage', label: Text(l10n.byPercentage)),
+                    value: 'percentage',
+                    label: Text(l10n.byPercentage),
+                  ),
                   if (widget.group.salarySplitEnabled)
                     ButtonSegment(value: 'salary', label: Text(l10n.bySalary)),
                   ButtonSegment(value: 'exact', label: Text(l10n.exactAmount)),
                 ],
                 selected: {_splitMode},
                 onSelectionChanged: (value) => setState(() {
-                      _splitMode = value.first;
-                      if (_splitMode == 'salary') {
-                        _participantIds.removeWhere((id) => !widget
-                            .group.members
-                            .firstWhere((m) => m.id == id)
-                            .salarySharing);
-                      }
-                      if (_splitMode == 'exact') {
-                        _exactSharesEdited = false;
-                        _populateExactShares();
-                      }
-                      if (_splitMode == 'percentage') {
-                        _percentagesEdited = false;
-                        _populatePercentages();
-                      }
-                    })),
+                  _splitMode = value.first;
+                  if (_splitMode == 'salary') {
+                    _participantIds.removeWhere(
+                      (id) => !widget.group.members
+                          .firstWhere((m) => m.id == id)
+                          .salarySharing,
+                    );
+                  }
+                  if (_splitMode == 'exact') {
+                    _exactSharesEdited = false;
+                    _populateExactShares();
+                  }
+                  if (_splitMode == 'percentage') {
+                    _percentagesEdited = false;
+                    _populatePercentages();
+                  }
+                }),
+              ),
+            ),
             if (_splitMode == 'salary')
               Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(l10n.salaryEligibleOnly)),
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  l10n.salaryEligibleOnly,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
             Text(
               _splitMode == 'salary'
                   ? l10n.splitBySalaryBetween
@@ -536,123 +561,159 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                       : _splitMode == 'percentage'
                           ? l10n.percentageSplitBetween
                           : l10n.splitEquallyBetween,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
             for (final member in widget.group.members)
-              Row(children: [
-                Expanded(
-                  child: CheckboxListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    value: _participantIds.contains(member.id),
-                    title: Text(member.name),
-                    subtitle: _splitMode == 'percentage' &&
-                            _participantIds.contains(member.id)
-                        ? Text(
-                            percentagePreview != null
-                                ? formatMoney(percentagePreview[member.id]!)
-                                : '—',
-                            key: Key('expense-percentage-preview-${member.id}'),
-                          )
-                        : null,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    onChanged: _splitMode == 'salary' && !member.salarySharing
-                        ? null
-                        : (selected) {
-                            setState(() {
-                              if (selected ?? false) {
-                                _participantIds.add(member.id);
-                                if (_splitMode == 'exact' &&
-                                    !_exactSharesEdited) {
-                                  _populateExactShares();
-                                }
-                                if (_splitMode == 'percentage' &&
-                                    !_percentagesEdited) {
-                                  _populatePercentages();
-                                }
-                              } else {
-                                _participantIds.remove(member.id);
-                                if (_splitMode == 'percentage' &&
-                                    !_percentagesEdited) {
-                                  _populatePercentages();
-                                }
-                              }
-                            });
-                          },
-                  ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        value: _participantIds.contains(member.id),
+                        title: Text(member.name),
+                        subtitle: _splitMode == 'percentage' &&
+                                _participantIds.contains(member.id)
+                            ? Text(
+                                percentagePreview != null
+                                    ? formatMoney(percentagePreview[member.id]!)
+                                    : '—',
+                                key: Key(
+                                  'expense-percentage-preview-${member.id}',
+                                ),
+                              )
+                            : null,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        onChanged:
+                            _splitMode == 'salary' && !member.salarySharing
+                                ? null
+                                : (selected) {
+                                    setState(() {
+                                      if (selected ?? false) {
+                                        _participantIds.add(member.id);
+                                        if (_splitMode == 'exact' &&
+                                            !_exactSharesEdited) {
+                                          _populateExactShares();
+                                        }
+                                        if (_splitMode == 'percentage' &&
+                                            !_percentagesEdited) {
+                                          _populatePercentages();
+                                        }
+                                      } else {
+                                        _participantIds.remove(member.id);
+                                        if (_splitMode == 'percentage' &&
+                                            !_percentagesEdited) {
+                                          _populatePercentages();
+                                        }
+                                      }
+                                    });
+                                  },
+                      ),
+                    ),
+                    if (_splitMode == 'exact' &&
+                        _participantIds.contains(member.id))
+                      SizedBox(
+                        width: 118,
+                        child: TextFormField(
+                          key: Key('expense-share-${member.id}'),
+                          controller: _shareAmountControllers[member.id],
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.,]'),
+                            ),
+                          ],
+                          onChanged: (_) => setState(() {
+                            _exactSharesEdited = true;
+                          }),
+                          decoration: InputDecoration(
+                            labelText: l10n.consumed,
+                            prefixText: r'$ ',
+                            hintText: '0.00',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    if (_splitMode == 'percentage' &&
+                        _participantIds.contains(member.id))
+                      SizedBox(
+                        width: 118,
+                        child: TextFormField(
+                          key: Key('expense-percentage-${member.id}'),
+                          controller: _percentageControllers[member.id],
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.,]'),
+                            ),
+                          ],
+                          onChanged: (_) => setState(() {
+                            _percentagesEdited = true;
+                          }),
+                          decoration: const InputDecoration(
+                            suffixText: '%',
+                            hintText: '0.00',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                if (_splitMode == 'exact' &&
-                    _participantIds.contains(member.id))
-                  SizedBox(
-                    width: 110,
-                    child: TextFormField(
-                      key: Key('expense-share-${member.id}'),
-                      controller: _shareAmountControllers[member.id],
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      onChanged: (_) => setState(() {
-                        _exactSharesEdited = true;
-                      }),
-                      decoration: InputDecoration(
-                        labelText: l10n.consumed,
-                        prefixText: r'$ ',
-                        hintText: '0.00',
-                      ),
-                    ),
-                  ),
-                if (_splitMode == 'percentage' &&
-                    _participantIds.contains(member.id))
-                  SizedBox(
-                    width: 110,
-                    child: TextFormField(
-                      key: Key('expense-percentage-${member.id}'),
-                      controller: _percentageControllers[member.id],
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      onChanged: (_) => setState(() {
-                        _percentagesEdited = true;
-                      }),
-                      decoration: const InputDecoration(
-                        suffixText: '%',
-                        hintText: '0.00',
-                      ),
-                    ),
-                  ),
-              ]),
+              ),
             if (_splitMode == 'exact')
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  l10n.exactAmountRemaining(_formatCentavos(
-                    (_parseAmount() ?? 0) - (_exactAllocatedCentavos ?? 0),
-                  )),
-                  style: Theme.of(context).textTheme.bodyMedium,
+                padding: const EdgeInsets.only(top: 10),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    l10n.exactAmountRemaining(
+                      _formatCentavos(
+                        (_parseAmount() ?? 0) - (_exactAllocatedCentavos ?? 0),
+                      ),
+                    ),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: colors.onSecondaryContainer,
+                    ),
+                  ),
                 ),
               ),
             if (_splitMode == 'percentage')
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  l10n.percentageRemaining(
-                    ExpenseAllocation.formatPercentageBps(
-                      ExpenseAllocation.percentageTotalBps -
-                          (_allocatedPercentageBps ?? 0),
+                padding: const EdgeInsets.only(top: 10),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    l10n.percentageRemaining(
+                      ExpenseAllocation.formatPercentageBps(
+                        ExpenseAllocation.percentageTotalBps -
+                            (_allocatedPercentageBps ?? 0),
+                      ),
+                    ),
+                    key: const Key('expense-percentage-remaining'),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: colors.onSecondaryContainer,
                     ),
                   ),
-                  key: const Key('expense-percentage-remaining'),
-                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             FilledButton.icon(
               key: const Key('add-expense-submit'),
               onPressed: _submit,

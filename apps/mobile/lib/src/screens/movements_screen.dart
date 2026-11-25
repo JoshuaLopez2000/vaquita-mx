@@ -27,68 +27,79 @@ class MovementsScreen extends StatelessWidget {
       };
       for (final expense in group.expenses) {
         final isReversed = group.isExpenseReversed(expense.id);
-        final payerDetail = l10n.memberPaid((expense.payers.isEmpty
-                ? [expense.payerId]
-                : expense.payers.map((payer) => payer.memberId))
-            .map(displayName)
-            .join(', '));
-        items.add(_Movement(
-          group: group,
-          title: expense.description,
-          detail: isReversed ? '${l10n.reversed} · $payerDetail' : payerDetail,
-          amountCents: expense.amountCents,
-          occurredAt: expense.createdAt,
-          isSettlement: false,
-          isReversed: isReversed,
-          isReversalEntry: false,
-        ));
+        final payerDetail = l10n.memberPaid(
+          (expense.payers.isEmpty
+                  ? [expense.payerId]
+                  : expense.payers.map((payer) => payer.memberId))
+              .map(displayName)
+              .join(', '),
+        );
+        items.add(
+          _Movement(
+            group: group,
+            title: expense.description,
+            detail:
+                isReversed ? '${l10n.reversed} · $payerDetail' : payerDetail,
+            amountCents: expense.amountCents,
+            occurredAt: expense.createdAt,
+            isSettlement: false,
+            isReversed: isReversed,
+            isReversalEntry: false,
+          ),
+        );
       }
       for (final reversal in group.expenseReversals) {
         final original = expensesById[reversal.originalExpenseId];
-        items.add(_Movement(
-          group: group,
-          title: l10n.expenseReversalMovement(
-            original?.description ?? reversal.originalExpenseId,
+        items.add(
+          _Movement(
+            group: group,
+            title: l10n.expenseReversalMovement(
+              original?.description ?? reversal.originalExpenseId,
+            ),
+            detail:
+                '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
+            amountCents: -(original?.amountCents ?? 0),
+            occurredAt: reversal.createdAt,
+            isSettlement: false,
+            isReversed: false,
+            isReversalEntry: true,
           ),
-          detail:
-              '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
-          amountCents: -(original?.amountCents ?? 0),
-          occurredAt: reversal.createdAt,
-          isSettlement: false,
-          isReversed: false,
-          isReversalEntry: true,
-        ));
+        );
       }
       for (final settlement in group.settlements) {
         final isReversed = group.isSettlementReversed(settlement.id);
         final from = displayName(settlement.fromMemberId);
         final to = displayName(settlement.toMemberId);
-        items.add(_Movement(
-          group: group,
-          title: l10n.memberPaidMember(from, to),
-          detail: isReversed
-              ? '${l10n.reversed} · ${l10n.settlement}'
-              : l10n.settlement,
-          amountCents: settlement.amountCents,
-          occurredAt: settlement.createdAt,
-          isSettlement: true,
-          isReversed: isReversed,
-          isReversalEntry: false,
-        ));
+        items.add(
+          _Movement(
+            group: group,
+            title: l10n.memberPaidMember(from, to),
+            detail: isReversed
+                ? '${l10n.reversed} · ${l10n.settlement}'
+                : l10n.settlement,
+            amountCents: settlement.amountCents,
+            occurredAt: settlement.createdAt,
+            isSettlement: true,
+            isReversed: isReversed,
+            isReversalEntry: false,
+          ),
+        );
       }
       for (final reversal in group.settlementReversals) {
         final original = settlementsById[reversal.originalSettlementId];
-        items.add(_Movement(
-          group: group,
-          title: l10n.settlementReversalMovement,
-          detail:
-              '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
-          amountCents: -(original?.amountCents ?? 0),
-          occurredAt: reversal.createdAt,
-          isSettlement: true,
-          isReversed: false,
-          isReversalEntry: true,
-        ));
+        items.add(
+          _Movement(
+            group: group,
+            title: l10n.settlementReversalMovement,
+            detail:
+                '${l10n.reversedByName(displayName(reversal.actorMemberId))} · ${reversal.reason}',
+            amountCents: -(original?.amountCents ?? 0),
+            occurredAt: reversal.createdAt,
+            isSettlement: true,
+            isReversed: false,
+            isReversalEntry: true,
+          ),
+        );
       }
     }
     items.sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
@@ -110,35 +121,24 @@ class MovementsScreen extends StatelessWidget {
     return BlocBuilder<AppCubit, AppState>(
       builder: (context, _) {
         final l10n = AppLocalizations.of(context)!;
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+        final vColors = VaquitaColors.of(context);
         final items = _items(l10n);
         return CustomScrollView(
           slivers: [
             SliverAppBar.large(
               title: Text(l10n.movements),
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              backgroundColor: theme.scaffoldBackgroundColor,
             ),
             if (items.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.receipt_long_outlined,
-                            size: 48,
-                            color: Theme.of(context).colorScheme.secondary),
-                        const SizedBox(height: 16),
-                        Text(l10n.noMovements,
-                            style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 8),
-                        Text(
-                          l10n.movementsEmptyDescription,
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
+                  child: VaquitaEmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title: l10n.noMovements,
+                    description: l10n.movementsEmptyDescription,
                   ),
                 ),
               )
@@ -150,44 +150,72 @@ class MovementsScreen extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final item = items[index];
+                    final isErrorTone = item.isReversed || item.isReversalEntry;
+                    final bg = isErrorTone
+                        ? colors.errorContainer
+                        : item.isSettlement
+                            ? vColors.positiveContainer
+                            : colors.secondaryContainer;
+                    final fg = isErrorTone
+                        ? colors.onErrorContainer
+                        : item.isSettlement
+                            ? vColors.onPositiveContainer
+                            : colors.onSecondaryContainer;
                     return Card(
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 7),
-                        leading: CircleAvatar(
-                          backgroundColor:
-                              item.isReversed || item.isReversalEntry
-                                  ? Theme.of(context).colorScheme.errorContainer
-                                  : null,
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           child: Icon(
-                            item.isReversalEntry || item.isReversed
+                            isErrorTone
                                 ? Icons.undo_rounded
                                 : item.isSettlement
                                     ? Icons.handshake_outlined
                                     : Icons.receipt_long_outlined,
-                            color: item.isReversed || item.isReversalEntry
-                                ? Theme.of(context).colorScheme.onErrorContainer
-                                : null,
+                            color: fg,
                           ),
                         ),
                         title: Text(
                           item.title,
-                          style: TextStyle(
+                          style: theme.textTheme.titleSmall?.copyWith(
                             decoration: item.isReversed
                                 ? TextDecoration.lineThrough
                                 : null,
                           ),
                         ),
-                        subtitle: Text(l10n.movementMetadata(
-                          item.group.emoji,
-                          item.group.name,
-                          item.detail,
-                          _relativeDate(item.occurredAt, l10n),
-                        )),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            l10n.movementMetadata(
+                              item.group.emoji,
+                              item.group.name,
+                              item.detail,
+                              _relativeDate(item.occurredAt, l10n),
+                            ),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
                         trailing: Text(
                           formatMoney(item.amountCents),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
+                          style: VaquitaTheme.money(
+                            theme.textTheme.titleSmall,
+                            color: isErrorTone
+                                ? colors.error
+                                : item.isSettlement
+                                    ? vColors.positive
+                                    : colors.onSurface,
+                          ).copyWith(
                             decoration: item.isReversed
                                 ? TextDecoration.lineThrough
                                 : null,

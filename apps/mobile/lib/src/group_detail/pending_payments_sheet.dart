@@ -42,55 +42,81 @@ void showPendingPaymentsSheet(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (sheetContext) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(sheetContext).height * .8,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          children: [
-            Text(
-              l10n.pendingPayments,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.pendingPaymentsDescription),
-            const SizedBox(height: 18),
-            if (payments.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  l10n.noPendingPayments,
-                  textAlign: TextAlign.center,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final colors = theme.colorScheme;
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .8,
+          ),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            children: [
+              Text(
+                l10n.pendingPayments,
+                style: theme.textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                l10n.pendingPaymentsDescription,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
                 ),
-              )
-            else
-              for (final payment in payments)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.arrow_forward_rounded),
-                    title: Text(l10n.pendingPaymentFromTo(
-                      displayName(payment.from),
-                      displayName(payment.to),
-                    )),
-                    trailing: Text(
-                      formatMoney(payment.amountCents),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 18),
+              if (payments.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: VaquitaEmptyState(
+                    icon: Icons.check_circle_outline_rounded,
+                    title: l10n.settledUp,
+                    description: l10n.noPendingPayments,
+                  ),
+                )
+              else
+                for (final payment in payments) ...[
+                  Card(
+                    color: colors.surfaceContainerLow,
+                    child: ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: colors.primaryContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          color: colors.onPrimaryContainer,
+                        ),
+                      ),
+                      title: Text(
+                        l10n.pendingPaymentFromTo(
+                          displayName(payment.from),
+                          displayName(payment.to),
+                        ),
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      trailing: Text(
+                        formatMoney(payment.amountCents),
+                        style: VaquitaTheme.money(theme.textTheme.titleSmall),
+                      ),
                     ),
                   ),
-                ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => Navigator.pop(sheetContext),
-              child: Text(l10n.close),
-            ),
-          ],
+                  const SizedBox(height: 8),
+                ],
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.pop(sheetContext),
+                child: Text(l10n.close),
+              ),
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }

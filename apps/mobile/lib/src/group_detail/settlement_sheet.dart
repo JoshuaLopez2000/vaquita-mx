@@ -19,17 +19,24 @@ void showSettlementSheet(
   final memberOwes = balance > 0;
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
     builder: (sheetContext) => SafeArea(
-      child: SingleChildScrollView(
-        child: _SettlementSheet(
-          store: store,
-          group: group,
-          member: member,
-          outstandingCents: balance.abs(),
-          memberOwes: memberOwes,
-          canRequestPayment: sharedServerGroup,
-          replacesSettlementId: replacesSettlementId,
-          onSettled: onSettled,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: SingleChildScrollView(
+          child: _SettlementSheet(
+            store: store,
+            group: group,
+            member: member,
+            outstandingCents: balance.abs(),
+            memberOwes: memberOwes,
+            canRequestPayment: sharedServerGroup,
+            replacesSettlementId: replacesSettlementId,
+            onSettled: onSettled,
+          ),
         ),
       ),
     ),
@@ -123,7 +130,8 @@ class _SettlementSheetState extends State<_SettlementSheet> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-            settled ? l10n.paymentRequestCreated : l10n.couldNotConfirmPayment),
+          settled ? l10n.paymentRequestCreated : l10n.couldNotConfirmPayment,
+        ),
       ),
     );
     if (settled) widget.onSettled?.call();
@@ -171,16 +179,31 @@ class _SettlementSheetState extends State<_SettlementSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final vColors = VaquitaColors.of(context);
+
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.qr_code_2_rounded,
-            size: 54,
-            color: Theme.of(context).colorScheme.primary,
+          Center(
+            child: Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(
+                Icons.qr_code_2_rounded,
+                size: 34,
+                color: colors.onPrimaryContainer,
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           Text(
@@ -190,33 +213,56 @@ class _SettlementSheetState extends State<_SettlementSheet> {
                     ? l10n.confirmReceivedFrom(widget.member.name)
                     : l10n.payContact(widget.member.name),
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            style: theme.textTheme.headlineSmall,
           ),
           const SizedBox(height: 6),
           Text(
             '${formatMoney(widget.outstandingCents)} MXN',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: VaquitaTheme.money(
+              theme.textTheme.titleLarge,
+              color: widget.memberOwes ? vColors.positive : vColors.negative,
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            widget.canRequestPayment && widget.memberOwes
-                ? l10n.sharedCreditorSettlementDescription
-                : widget.canRequestPayment
-                    ? l10n.demoPaymentDescription
-                    : l10n.manualSettlementDescription,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: vColors.warningContainer.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 18,
+                  color: vColors.onWarningContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.canRequestPayment && widget.memberOwes
+                        ? l10n.sharedCreditorSettlementDescription
+                        : widget.canRequestPayment
+                            ? l10n.demoPaymentDescription
+                            : l10n.manualSettlementDescription,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: vColors.onWarningContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           if (!widget.canRequestPayment || widget.memberOwes) ...[
-            const SizedBox(height: 22),
+            const SizedBox(height: 20),
             TextField(
               key: const Key('settlement-amount'),
               controller: _amountController,
               decoration: InputDecoration(
                 labelText: l10n.settlementAmount,
+                prefixText: r'$ ',
                 suffixText: 'MXN',
                 errorText: _errorText,
               ),
@@ -238,7 +284,7 @@ class _SettlementSheetState extends State<_SettlementSheet> {
               ),
             ),
           ],
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
           if (widget.canRequestPayment) ...[
             OutlinedButton.icon(
               key: Key('request-${widget.member.id}'),
@@ -252,18 +298,22 @@ class _SettlementSheetState extends State<_SettlementSheet> {
               Text(
                 l10n.paymentRequestsRequireInternet,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
           ],
           FilledButton.icon(
             key: Key('settle-${widget.member.id}'),
             onPressed: () async => _submitSettlement(),
             icon: const Icon(Icons.check_circle_outline_rounded),
-            label: Text(widget.memberOwes
-                ? l10n.confirmPaymentReceived
-                : l10n.recordPayment),
+            label: Text(
+              widget.memberOwes
+                  ? l10n.confirmPaymentReceived
+                  : l10n.recordPayment,
+            ),
           ),
         ],
       ),

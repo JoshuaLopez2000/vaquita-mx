@@ -321,4 +321,18 @@
   ,"@expenseReversalMovement": {"placeholders":{"description":{"type":"String"}}}
   ,"settlementReversalMovement": "Reversión de liquidación"
   ,"compensatingEntry": "Asiento compensatorio"
+  ,"startupLoading": "Preparando tus grupos y saldos…"
+  ,"startupErrorTitle": "No se pudo iniciar Vaquita MX"
+  ,"startupErrorDescription": "Ocurrió un problema al restaurar tus datos locales. Tus registros siguen protegidos."
+  ,"brandTagline": "Cuentas claras en cada vaquita, al centavo"
+  ,"netPositionSettled": "Todo a mano"
+  ,"netPositionPositive": "Neto a favor: {amount}"
+  ,"@netPositionPositive": {"placeholders":{"amount":{"type":"String"}}}
+  ,"netPositionNegative": "Neto por cubrir: {amount}"
+  ,"@netPositionNegative": {"placeholders":{"amount":{"type":"String"}}}
+  ,"noContactsDescription": "Guarda contactos frecuentes o impórtalos desde tu teléfono para armar grupos más rápido."
+  ,"offlineModeNotice": "Modo local activo en este dispositivo"
+  ,"accountSection": "Cuenta y sincronización"
+  ,"preferencesSection": "Preferencias e información"
+  ,"securitySection": "Sesión"
 }
